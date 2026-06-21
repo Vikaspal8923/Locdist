@@ -1,0 +1,56 @@
+from locdist.models import (
+    RuntimeConfig,
+    ParameterMetadata,
+    GradientChunk,
+    GradientPackage,
+)
+
+
+def main():
+
+    config = RuntimeConfig(
+        runtime_version=1,
+        job_id="job-1",
+        worker_id="worker-1",
+        master_host="127.0.0.1",
+        master_port=50051,
+    )
+
+    metadata = ParameterMetadata(
+        name="fc1.weight",
+        shape=(3, 4),
+        numel=12,
+        dtype="torch.float32",
+    )
+
+    chunk = GradientChunk(
+        metadata=metadata,
+        has_grad=True,
+        data=b"hello",
+        byte_size=5,
+    )
+
+    package = GradientPackage(
+        job_id="job-1",
+        worker_id="worker-1",
+        chunks=[chunk],
+    )
+
+    assert config.runtime_version == 1
+
+    assert metadata.name == "fc1.weight"
+    assert metadata.numel == 12
+
+    assert chunk.has_grad is True
+    assert chunk.byte_size == 5
+
+    assert len(package.chunks) == 1
+
+    print("✓ RuntimeConfig OK")
+    print("✓ ParameterMetadata OK")
+    print("✓ GradientChunk OK")
+    print("✓ GradientPackage OK")
+
+
+if __name__ == "__main__":
+    main()
