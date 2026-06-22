@@ -1,0 +1,619 @@
+# LocDist Runtime V1
+
+## Overview
+
+LocDist Runtime is the Python component that runs inside the user's training process.
+
+Its purpose is to synchronize gradients across multiple worker machines while keeping the training loop almost identical to normal PyTorch.
+
+Example:
+
+```python
+import locdist
+
+for batch in dataloader:
+
+    optimizer.zero_grad()
+
+    outputs = model(batch)
+
+    loss = outputs.loss
+
+    loss.backward()
+
+    locdist.sync_gradients(model)
+
+    optimizer.step()
+```
+
+The user does not need to understand:
+
+* Distributed Systems
+* Networking
+* Gradient Aggregation
+* Barrier Synchronization
+* Worker Coordination
+
+The Runtime handles all gradient synchronization automatically.
+
+---
+
+# Locdist LDGCC V1 Architecture
+
+This runtime is one component of the larger LDGCC system. The overall LDGCC architecture follows a coordinator-based design where the Brain Laptop owns orchestration and workers never communicate directly.
+
+```text
+┌──────────────────────────────────────────────────────────────┐
+│                    USER (Brain Laptop)                       │
+└──────────────────────────────────────────────────────────────┘
+
+Project/
+│
+├── train.py
+├── model.py
+├── requirements.txt
+├── dataset/
+└── ldgcc.yaml
+
+                    │
+                    ▼
+
+┌──────────────────────────────────────────────────────────────┐
+│                    LocDist Studio                            │
+│                  (VS Code Extension)                         │
+└──────────────────────────────────────────────────────────────┘
+
+Responsibilities
+
+• Discover Workers
+• Start Training
+• Show Logs
+• Show Cluster Status
+• Download Outputs
+
+                    │
+                    ▼
+
+┌──────────────────────────────────────────────────────────────┐
+│                    LDGCC Master                              │
+│                    (Brain Laptop)                            │
+└──────────────────────────────────────────────────────────────┘
+
+Components
+
+master/
+│
+├── discovery/
+├── scheduler/
+├── sharder/
+├── aggregator/
+├── orchestrator/
+├── worker-manager/
+└── storage/
+
+Flow
+
+1. Discover Workers
+2. Accept Workers
+3. Read Dataset
+4. Create Dataset Shards
+5. Package Project
+6. Generate Worker Configs
+7. Send Workspaces
+8. Start Training
+9. Aggregate Gradients
+10. Collect Outputs
+
+                    │
+                    ▼
+
+┌──────────────────────────────────────────────────────────────┐
+│                    WORKER LAPTOPS                            │
+└──────────────────────────────────────────────────────────────┘
+
+worker/
+│
+├── tray-app/
+├── executor/
+├── environment-manager/
+└── workspace-manager/
+
+                    │
+                    ▼
+
+┌──────────────────────────────────────────────────────────────┐
+│                    PYTHON TRAINING                           │
+└──────────────────────────────────────────────────────────────┘
+
+train.py
+
+loss.backward()
+
+locdist.sync_gradients(model)
+
+optimizer.step()
+```
+
+---
+
+# Runtime Architecture
+
+Runtime lives inside the worker training process.
+
+```text
+Brain Laptop
+
+Master
+Aggregator
+Scheduler
+
+       ▲
+       │ Persistent gRPC
+       │
+
+Worker Service (Go)
+
+       ▲
+       │ Local gRPC
+       │
+
+Python Runtime
+
+       ▲
+       │
+
+train.py
+```
+
+---
+
+# Runtime Execution Flow
+
+```text
+loss.backward()
+      ↓
+Extract Gradient Chunks
+      ↓
+Build GradientPackage
+      ↓
+Convert To Proto
+      ↓
+Send To Worker Service
+      ↓
+WAIT
+      ↓
+Worker Service
+      ↓
+Aggregator
+      ↓
+Barrier Synchronization
+      ↓
+Gradient Aggregation
+      ↓
+Aggregated Response
+      ↓
+Convert From Proto
+      ↓
+Apply Aggregated Gradients
+      ↓
+Return
+      ↓
+optimizer.step()
+```
+
+---
+
+# Runtime V1 Production Decisions
+
+## Architecture
+
+Runtime communicates only with the local Worker Service.
+
+```text
+Runtime
+    ↓
+Worker Service
+```
+
+Runtime never communicates directly with the Aggregator.
+
+```text
+Runtime
+    ✗
+    Aggregator
+```
+
+---
+
+## Communication
+
+Runtime ↔ Worker Service
+
+```text
+Local gRPC
+```
+
+Worker Service ↔ Aggregator
+
+```text
+Persistent gRPC
+```
+
+---
+
+## Aggregation Ownership
+
+Aggregator owns:
+
+* Barrier Synchronization
+* Aggregation Logic
+* Worker Coordination
+
+Runtime owns:
+
+* Gradient Extraction
+* Serialization
+* Communication
+* Reconstruction
+
+---
+
+## Synchronization Model
+
+Runtime performs:
+
+```text
+Send
+↓
+Wait
+↓
+Receive
+```
+
+Runtime never knows:
+
+* Worker Count
+* Cluster Size
+* Aggregation Strategy
+
+---
+
+## Gradient Strategy
+
+Runtime V1 uses:
+
+```text
+GradientChunk Per Parameter
+```
+
+Not:
+
+```text
+One Giant Flattened Tensor
+```
+
+Reason:
+
+* Mixed dtype safe
+* Easier reconstruction
+* Lower memory risk
+* Simpler debugging
+
+---
+
+## Dtype Preservation
+
+Runtime preserves:
+
+```text
+torch.float16
+torch.float32
+torch.bfloat16
+```
+
+No dtype conversion is performed.
+
+---
+
+## Configuration Driven
+
+Runtime behavior comes entirely from:
+
+```text
+locdist_config.json
+```
+
+No hardcoded networking values.
+
+No environment variables.
+
+---
+
+## Timeout Handling
+
+Runtime uses:
+
+```text
+rpc_timeout_seconds
+```
+
+from configuration.
+
+Purpose:
+
+```text
+Protection against synchronization hangs.
+```
+
+Examples:
+
+* Aggregator crash
+* Worker Service crash
+* Barrier never completes
+
+---
+
+## Persistent Connections
+
+TransportClient creates:
+
+```text
+gRPC Channel
+WorkerBridge Stub
+```
+
+once.
+
+The connection is reused throughout training.
+
+---
+
+## Singleton Design
+
+Runtime uses:
+
+```text
+get_transport()
+```
+
+and
+
+```text
+get_runtime_config()
+```
+
+to avoid repeatedly creating expensive objects.
+
+---
+
+# Runtime Folder Structure
+
+```text
+runtime/
+│
+├── README.md
+├── pyproject.toml
+│
+├── locdist/
+│   │
+│   ├── __init__.py
+│   ├── api.py
+│   ├── config.py
+│   ├── exceptions.py
+│   ├── gradients.py
+│   ├── metadata.py
+│   ├── models.py
+│   ├── transport.py
+│   ├── wire.py
+│   │
+│   └── generated/
+│
+└── tests/
+```
+
+---
+
+# File Responsibilities
+
+## **init**.py
+
+Public Runtime API.
+
+Exports:
+
+```python
+sync_gradients()
+```
+
+---
+
+## api.py
+
+Runtime orchestration layer.
+
+Responsibilities:
+
+* Extract gradients
+* Build packages
+* Invoke transport
+* Apply aggregated gradients
+
+---
+
+## config.py
+
+Loads and validates:
+
+```text
+locdist_config.json
+```
+
+Provides:
+
+```python
+RuntimeConfig
+```
+
+---
+
+## exceptions.py
+
+Runtime exception hierarchy.
+
+Provides:
+
+* ConfigError
+* GradientError
+* SerializationError
+* TransportError
+* ConnectionError
+* SynchronizationError
+
+---
+
+## models.py
+
+Core Runtime dataclasses.
+
+Provides:
+
+* RuntimeConfig
+* ParameterMetadata
+* GradientChunk
+* GradientPackage
+* AggregatedGradientPackage
+
+---
+
+## metadata.py
+
+Extracts static parameter metadata.
+
+Provides:
+
+* Parameter names
+* Shapes
+* Dtypes
+* Tensor sizes
+
+---
+
+## gradients.py
+
+Gradient processing engine.
+
+Responsibilities:
+
+* Extract gradients
+* Serialize tensors
+* Reconstruct tensors
+* Apply gradients
+
+---
+
+## wire.py
+
+Runtime ↔ Proto conversion layer.
+
+Responsibilities:
+
+```text
+Python Objects
+      ↔
+Protocol Buffers
+```
+
+---
+
+## transport.py
+
+Worker Service client.
+
+Responsibilities:
+
+* Create gRPC channel
+* Create WorkerBridge stub
+* Send requests
+* Receive responses
+
+---
+
+## generated/
+
+Generated protobuf files.
+
+Produced by:
+
+```bash
+grpc_tools.protoc
+```
+
+---
+
+# Testing
+
+Runtime V1 includes:
+
+```text
+test_models.py
+test_config.py
+test_gradients.py
+test_wire.py
+test_transport.py
+test_runtime_flow.py
+```
+
+Coverage includes:
+
+* Configuration loading
+* Metadata extraction
+* Gradient extraction
+* Gradient reconstruction
+* Serialization roundtrip
+* Transport singleton behavior
+* Runtime flow validation
+
+---
+
+# Runtime Responsibilities
+
+Runtime owns:
+
+* Gradient extraction
+* Metadata generation
+* Serialization
+* Worker Service communication
+* Gradient reconstruction
+* Gradient replacement
+
+Runtime does NOT own:
+
+* Dataset sharding
+* Worker discovery
+* Scheduling
+* Aggregation
+* Cluster management
+* Job orchestration
+
+---
+
+# Runtime V1 Success Criteria
+
+Runtime V1 is complete when:
+
+```python
+loss.backward()
+
+locdist.sync_gradients(model)
+
+optimizer.step()
+```
+
+works correctly while preserving:
+
+* Gradient correctness
+* Shape correctness
+* Parameter ordering
+* Mixed dtype support
+
+without requiring users to write distributed-training-specific code.
