@@ -40,6 +40,24 @@ class GradientChunk:
 
 @dataclass
 class GradientPackage:
+    runtime_version: int
+
     job_id: str
+
     worker_id: str
+
     chunks: List[GradientChunk]
+
+
+@dataclass
+class AggregatedGradientPackage:
+
+    runtime_version: int
+
+    job_id: str
+
+    participating_workers: int
+
+    aggregation_round: int
+
+    chunks: list[GradientChunk]

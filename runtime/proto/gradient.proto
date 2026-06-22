@@ -1,0 +1,83 @@
+syntax = "proto3";
+
+package locdist.v1;
+
+
+// =====================================================
+// Parameter Metadata
+// =====================================================
+
+message ParameterMetadata {
+
+  string name = 1;
+
+  repeated int64 shape = 2;
+
+  int64 numel = 3;
+
+  string dtype = 4;
+}
+
+
+// =====================================================
+// Gradient Chunk
+// =====================================================
+
+message GradientChunk {
+
+  ParameterMetadata metadata = 1;
+
+  bool has_grad = 2;
+
+  bytes data = 3;
+
+  uint64 byte_size = 4;
+}
+
+
+// =====================================================
+// Worker → Aggregator
+// =====================================================
+
+message GradientSubmission {
+
+  uint32 runtime_version = 1;
+
+  string job_id = 2;
+
+  string worker_id = 3;
+
+  repeated GradientChunk chunks = 4;
+}
+
+
+// =====================================================
+// Aggregator → Worker
+// =====================================================
+
+message AggregatedGradientResponse {
+
+  uint32 runtime_version = 1;
+
+  string job_id = 2;
+
+  uint32 participating_workers = 3;
+
+  uint64 aggregation_round = 4;
+
+  repeated GradientChunk chunks = 5;
+}
+
+
+// =====================================================
+// RPC Service
+// =====================================================
+
+service GradientAggregator {
+
+  rpc SynchronizeGradients(
+    GradientSubmission
+  ) returns (
+    AggregatedGradientResponse
+  );
+}
