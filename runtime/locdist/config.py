@@ -1,20 +1,15 @@
-# runtime/locdist/config.py
-
 import json
 from pathlib import Path
 
 from locdist.models import RuntimeConfig
+from locdist.exceptions import ConfigError
 
 
 DEFAULT_CONFIG_FILE = "locdist_config.json"
 
 
-class ConfigError(Exception):
-    """Raised when runtime configuration is invalid."""
-
-
 def load_config(
-    config_path: str = DEFAULT_CONFIG_FILE
+    config_path: str = DEFAULT_CONFIG_FILE,
 ) -> RuntimeConfig:
     """
     Load and validate LDGCC Runtime V1 configuration.
@@ -41,10 +36,17 @@ def load_config(
     # --------------------------------------------------
 
     try:
-        with open(path, "r", encoding="utf-8") as f:
+
+        with open(
+            path,
+            "r",
+            encoding="utf-8",
+        ) as f:
+
             data = json.load(f)
 
     except json.JSONDecodeError as e:
+
         raise ConfigError(
             f"Invalid JSON: {e}"
         ) from e
@@ -57,59 +59,89 @@ def load_config(
         "runtime_version",
         "job_id",
         "worker_id",
-        "master_host",
-        "master_port",
+        "worker_host",
+        "worker_port",
+        "rpc_timeout_seconds",
     }
 
     actual_fields = set(data.keys())
 
-    # Missing fields
-
-    missing_fields = required_fields - actual_fields
+    missing_fields = (
+        required_fields - actual_fields
+    )
 
     if missing_fields:
+
         raise ConfigError(
             "Missing required configuration fields: "
-            + ", ".join(sorted(missing_fields))
+            + ", ".join(
+                sorted(missing_fields)
+            )
         )
 
-    # Unknown fields
-
-    unknown_fields = actual_fields - required_fields
+    unknown_fields = (
+        actual_fields - required_fields
+    )
 
     if unknown_fields:
+
         raise ConfigError(
             "Unknown configuration fields: "
-            + ", ".join(sorted(unknown_fields))
+            + ", ".join(
+                sorted(unknown_fields)
+            )
         )
 
     # --------------------------------------------------
     # Type validation
     # --------------------------------------------------
 
-    if not isinstance(data["runtime_version"], int):
+    if not isinstance(
+        data["runtime_version"],
+        int,
+    ):
         raise ConfigError(
             "runtime_version must be an integer"
         )
 
-    if not isinstance(data["job_id"], str):
+    if not isinstance(
+        data["job_id"],
+        str,
+    ):
         raise ConfigError(
             "job_id must be a string"
         )
 
-    if not isinstance(data["worker_id"], str):
+    if not isinstance(
+        data["worker_id"],
+        str,
+    ):
         raise ConfigError(
             "worker_id must be a string"
         )
 
-    if not isinstance(data["master_host"], str):
+    if not isinstance(
+        data["worker_host"],
+        str,
+    ):
         raise ConfigError(
-            "master_host must be a string"
+            "worker_host must be a string"
         )
 
-    if not isinstance(data["master_port"], int):
+    if not isinstance(
+        data["worker_port"],
+        int,
+    ):
         raise ConfigError(
-            "master_port must be an integer"
+            "worker_port must be an integer"
+        )
+
+    if not isinstance(
+        data["rpc_timeout_seconds"],
+        int,
+    ):
+        raise ConfigError(
+            "rpc_timeout_seconds must be an integer"
         )
 
     # --------------------------------------------------
@@ -117,29 +149,42 @@ def load_config(
     # --------------------------------------------------
 
     if data["runtime_version"] != 1:
+
         raise ConfigError(
             f"Unsupported runtime_version: "
             f"{data['runtime_version']}"
         )
 
     if not data["job_id"].strip():
+
         raise ConfigError(
             "job_id cannot be empty"
         )
 
     if not data["worker_id"].strip():
+
         raise ConfigError(
             "worker_id cannot be empty"
         )
 
-    if not data["master_host"].strip():
+    if not data["worker_host"].strip():
+
         raise ConfigError(
-            "master_host cannot be empty"
+            "worker_host cannot be empty"
         )
 
-    if not (1 <= data["master_port"] <= 65535):
+    if not (
+        1 <= data["worker_port"] <= 65535
+    ):
+
         raise ConfigError(
-            "master_port must be between 1 and 65535"
+            "worker_port must be between 1 and 65535"
+        )
+
+    if data["rpc_timeout_seconds"] <= 0:
+
+        raise ConfigError(
+            "rpc_timeout_seconds must be positive"
         )
 
     # --------------------------------------------------
@@ -150,6 +195,9 @@ def load_config(
         runtime_version=data["runtime_version"],
         job_id=data["job_id"],
         worker_id=data["worker_id"],
-        master_host=data["master_host"],
-        master_port=data["master_port"],
+        worker_host=data["worker_host"],
+        worker_port=data["worker_port"],
+        rpc_timeout_seconds=data[
+            "rpc_timeout_seconds"
+        ],
     )

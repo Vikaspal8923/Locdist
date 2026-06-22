@@ -24,7 +24,7 @@ _sym_db = _symbol_database.Default()
 
 
 
-DESCRIPTOR = _descriptor_pool.Default().AddSerializedFile(b'\n\x0egradient.proto\x12\nlocdist.v1\"N\n\x11ParameterMetadata\x12\x0c\n\x04name\x18\x01 \x01(\t\x12\r\n\x05shape\x18\x02 \x03(\x03\x12\r\n\x05numel\x18\x03 \x01(\x03\x12\r\n\x05\x64type\x18\x04 \x01(\t\"s\n\rGradientChunk\x12/\n\x08metadata\x18\x01 \x01(\x0b\x32\x1d.locdist.v1.ParameterMetadata\x12\x10\n\x08has_grad\x18\x02 \x01(\x08\x12\x0c\n\x04\x64\x61ta\x18\x03 \x01(\x0c\x12\x11\n\tbyte_size\x18\x04 \x01(\x04\"{\n\x12GradientSubmission\x12\x17\n\x0fruntime_version\x18\x01 \x01(\r\x12\x0e\n\x06job_id\x18\x02 \x01(\t\x12\x11\n\tworker_id\x18\x03 \x01(\t\x12)\n\x06\x63hunks\x18\x04 \x03(\x0b\x32\x19.locdist.v1.GradientChunk\"\xaa\x01\n\x1a\x41ggregatedGradientResponse\x12\x17\n\x0fruntime_version\x18\x01 \x01(\r\x12\x0e\n\x06job_id\x18\x02 \x01(\t\x12\x1d\n\x15participating_workers\x18\x03 \x01(\r\x12\x19\n\x11\x61ggregation_round\x18\x04 \x01(\x04\x12)\n\x06\x63hunks\x18\x05 \x03(\x0b\x32\x19.locdist.v1.GradientChunk2t\n\x12GradientAggregator\x12^\n\x14SynchronizeGradients\x12\x1e.locdist.v1.GradientSubmission\x1a&.locdist.v1.AggregatedGradientResponseb\x06proto3')
+DESCRIPTOR = _descriptor_pool.Default().AddSerializedFile(b'\n\x0egradient.proto\x12\nlocdist.v1\"N\n\x11ParameterMetadata\x12\x0c\n\x04name\x18\x01 \x01(\t\x12\r\n\x05shape\x18\x02 \x03(\x03\x12\r\n\x05numel\x18\x03 \x01(\x03\x12\r\n\x05\x64type\x18\x04 \x01(\t\"s\n\rGradientChunk\x12/\n\x08metadata\x18\x01 \x01(\x0b\x32\x1d.locdist.v1.ParameterMetadata\x12\x10\n\x08has_grad\x18\x02 \x01(\x08\x12\x0c\n\x04\x64\x61ta\x18\x03 \x01(\x0c\x12\x11\n\tbyte_size\x18\x04 \x01(\x04\"{\n\x12GradientSubmission\x12\x17\n\x0fruntime_version\x18\x01 \x01(\r\x12\x0e\n\x06job_id\x18\x02 \x01(\t\x12\x11\n\tworker_id\x18\x03 \x01(\t\x12)\n\x06\x63hunks\x18\x04 \x03(\x0b\x32\x19.locdist.v1.GradientChunk\"\xaa\x01\n\x1a\x41ggregatedGradientResponse\x12\x17\n\x0fruntime_version\x18\x01 \x01(\r\x12\x0e\n\x06job_id\x18\x02 \x01(\t\x12\x1d\n\x15participating_workers\x18\x03 \x01(\r\x12\x19\n\x11\x61ggregation_round\x18\x04 \x01(\x04\x12)\n\x06\x63hunks\x18\x05 \x03(\x0b\x32\x19.locdist.v1.GradientChunk2n\n\x0cWorkerBridge\x12^\n\x14SynchronizeGradients\x12\x1e.locdist.v1.GradientSubmission\x1a&.locdist.v1.AggregatedGradientResponseb\x06proto3')
 
 _globals = globals()
 _builder.BuildMessageAndEnumDescriptors(DESCRIPTOR, _globals)
@@ -39,6 +39,6 @@ if not _descriptor._USE_C_DESCRIPTORS:
   _globals['_GRADIENTSUBMISSION']._serialized_end=350
   _globals['_AGGREGATEDGRADIENTRESPONSE']._serialized_start=353
   _globals['_AGGREGATEDGRADIENTRESPONSE']._serialized_end=523
-  _globals['_GRADIENTAGGREGATOR']._serialized_start=525
-  _globals['_GRADIENTAGGREGATOR']._serialized_end=641
+  _globals['_WORKERBRIDGE']._serialized_start=525
+  _globals['_WORKERBRIDGE']._serialized_end=635
 # @@protoc_insertion_point(module_scope)

@@ -5,11 +5,16 @@ from typing import List
 @dataclass
 class RuntimeConfig:
     runtime_version: int
-    job_id: str
-    worker_id: str
-    master_host: str
-    master_port: int
 
+    job_id: str
+
+    worker_id: str
+
+    worker_host: str
+
+    worker_port: int
+
+    rpc_timeout_seconds: int
 
 @dataclass
 class ParameterMetadata:

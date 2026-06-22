@@ -10,10 +10,11 @@ def main():
 
     config = RuntimeConfig(
         runtime_version=1,
-        job_id="job-1",
+        job_id="job-123",
         worker_id="worker-1",
-        master_host="127.0.0.1",
-        master_port=50051,
+        worker_host="127.0.0.1",
+        worker_port=7000,
+        rpc_timeout_seconds=120,
     )
 
     metadata = ParameterMetadata(
@@ -31,6 +32,7 @@ def main():
     )
 
     package = GradientPackage(
+        runtime_version=1,
         job_id="job-1",
         worker_id="worker-1",
         chunks=[chunk],
@@ -45,6 +47,7 @@ def main():
     assert chunk.byte_size == 5
 
     assert len(package.chunks) == 1
+    assert package.runtime_version == 1
 
     print("✓ RuntimeConfig OK")
     print("✓ ParameterMetadata OK")

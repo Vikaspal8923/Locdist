@@ -1,0 +1,19 @@
+[build-system]
+requires = ["setuptools>=61"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "locdist"
+version = "0.1.0"
+description = "LDGCC Runtime V1"
+readme = "README.md"
+requires-python = ">=3.10"
+
+dependencies = [
+    "torch",
+    "grpcio",
+    "protobuf"
+]
+
+[tool.setuptools.packages.find]
+include = ["locdist*"]

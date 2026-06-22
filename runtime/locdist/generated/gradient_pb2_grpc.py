@@ -3,7 +3,9 @@
 import grpc
 import warnings
 
-import gradient_pb2 as gradient__pb2
+from locdist.generated import (
+    gradient_pb2 as gradient__pb2
+)
 
 GRPC_GENERATED_VERSION = '1.81.1'
 GRPC_VERSION = grpc.__version__
@@ -25,7 +27,7 @@ if _version_not_supported:
     )
 
 
-class GradientAggregatorStub:
+class WorkerBridgeStub:
     """=====================================================
     RPC Service
     =====================================================
@@ -39,13 +41,13 @@ class GradientAggregatorStub:
             channel: A grpc.Channel.
         """
         self.SynchronizeGradients = channel.unary_unary(
-                '/locdist.v1.GradientAggregator/SynchronizeGradients',
+                '/locdist.v1.WorkerBridge/SynchronizeGradients',
                 request_serializer=gradient__pb2.GradientSubmission.SerializeToString,
                 response_deserializer=gradient__pb2.AggregatedGradientResponse.FromString,
                 _registered_method=True)
 
 
-class GradientAggregatorServicer:
+class WorkerBridgeServicer:
     """=====================================================
     RPC Service
     =====================================================
@@ -59,7 +61,7 @@ class GradientAggregatorServicer:
         raise NotImplementedError('Method not implemented!')
 
 
-def add_GradientAggregatorServicer_to_server(servicer, server):
+def add_WorkerBridgeServicer_to_server(servicer, server):
     rpc_method_handlers = {
             'SynchronizeGradients': grpc.unary_unary_rpc_method_handler(
                     servicer.SynchronizeGradients,
@@ -68,13 +70,13 @@ def add_GradientAggregatorServicer_to_server(servicer, server):
             ),
     }
     generic_handler = grpc.method_handlers_generic_handler(
-            'locdist.v1.GradientAggregator', rpc_method_handlers)
+            'locdist.v1.WorkerBridge', rpc_method_handlers)
     server.add_generic_rpc_handlers((generic_handler,))
-    server.add_registered_method_handlers('locdist.v1.GradientAggregator', rpc_method_handlers)
+    server.add_registered_method_handlers('locdist.v1.WorkerBridge', rpc_method_handlers)
 
 
  # This class is part of an EXPERIMENTAL API.
-class GradientAggregator:
+class WorkerBridge:
     """=====================================================
     RPC Service
     =====================================================
@@ -95,7 +97,7 @@ class GradientAggregator:
         return grpc.experimental.unary_unary(
             request,
             target,
-            '/locdist.v1.GradientAggregator/SynchronizeGradients',
+            '/locdist.v1.WorkerBridge/SynchronizeGradients',
             gradient__pb2.GradientSubmission.SerializeToString,
             gradient__pb2.AggregatedGradientResponse.FromString,
             options,

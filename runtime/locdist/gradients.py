@@ -101,7 +101,7 @@ def apply_gradient_chunks(
             continue
 
         tensor = torch.frombuffer(
-            chunk.data,
+            bytearray(chunk.data),
             dtype=TORCH_DTYPE_MAP[
                 chunk.metadata.dtype
             ],

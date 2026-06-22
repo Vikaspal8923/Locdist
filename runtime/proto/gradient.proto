@@ -36,7 +36,7 @@ message GradientChunk {
 
 
 // =====================================================
-// Worker → Aggregator
+// Runtime → Worker Service
 // =====================================================
 
 message GradientSubmission {
@@ -52,7 +52,7 @@ message GradientSubmission {
 
 
 // =====================================================
-// Aggregator → Worker
+// Worker Service → Runtime
 // =====================================================
 
 message AggregatedGradientResponse {
@@ -73,7 +73,7 @@ message AggregatedGradientResponse {
 // RPC Service
 // =====================================================
 
-service GradientAggregator {
+service WorkerBridge {
 
   rpc SynchronizeGradients(
     GradientSubmission
