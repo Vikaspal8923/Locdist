@@ -1,0 +1,82 @@
+package tests
+
+import (
+	"context"
+	"testing"
+
+	gradient "github.com/Vikaspal8923/Locdist/worker/generated/gradient"
+	workergrpc "github.com/Vikaspal8923/Locdist/worker/grpc"
+	"github.com/Vikaspal8923/Locdist/worker/runtimebridge"
+)
+
+func TestHandlerSynchronizeGradients(t *testing.T) {
+
+	runtimeBridge := runtimebridge.New()
+
+	handler := workergrpc.NewWorkerBridgeServer(
+		runtimeBridge,
+	)
+
+	request := &gradient.GradientSubmission{
+		RuntimeVersion: 1,
+		JobId:          "job-123",
+		WorkerId:       "worker-123",
+		Chunks: []*gradient.GradientChunk{
+			{
+				HasGrad:  true,
+				Data:     []byte{1, 2, 3, 4},
+				ByteSize: 4,
+			},
+		},
+	}
+
+	response, err := handler.SynchronizeGradients(
+		context.Background(),
+		request,
+	)
+	if err != nil {
+		t.Fatalf("expected no error, got %v", err)
+	}
+
+	if response.RuntimeVersion != request.RuntimeVersion {
+		t.Fatalf(
+			"expected runtime version %d, got %d",
+			request.RuntimeVersion,
+			response.RuntimeVersion,
+		)
+	}
+
+	if response.JobId != request.JobId {
+		t.Fatalf(
+			"expected job id %s, got %s",
+			request.JobId,
+			response.JobId,
+		)
+	}
+
+	if response.ParticipatingWorkers != 1 {
+		t.Fatalf(
+			"expected participating workers 1, got %d",
+			response.ParticipatingWorkers,
+		)
+	}
+
+	if response.AggregationRound != 1 {
+		t.Fatalf(
+			"expected aggregation round 1, got %d",
+			response.AggregationRound,
+		)
+	}
+
+	if len(response.Chunks) != len(request.Chunks) {
+		t.Fatalf(
+			"expected %d chunks, got %d",
+			len(request.Chunks),
+			len(response.Chunks),
+		)
+	}
+
+	if string(response.Chunks[0].Data) != string(request.Chunks[0].Data) {
+		t.Fatal("gradient data changed during handler flow")
+	}
+}
