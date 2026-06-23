@@ -143,26 +143,36 @@ Runtime lives inside the worker training process.
 ```text
 Brain Laptop
 
-Master
-Aggregator
-Scheduler
+┌──────────────────────────────────┐
+│             Master               │
+├──────────────────────────────────┤
+│ Discovery                        │
+│ Scheduler                        │
+│ Worker Manager                   │
+│ Orchestrator                     │
+│ Aggregator                       │
+│ Storage                          │
+└──────────────────────────────────┘
 
-       ▲
-       │ Persistent gRPC
-       │
+                ▲
+                │ Persistent gRPC
+                │
 
-Worker Service (Go)
+┌──────────────────────────────────┐
+│       Worker Service (Go)        │
+└──────────────────────────────────┘
 
-       ▲
-       │ Local gRPC
-       │
+                ▲
+                │ Local gRPC
+                │
 
-Python Runtime
+┌──────────────────────────────────┐
+│        Python Runtime            │
+└──────────────────────────────────┘
 
-       ▲
-       │
+                ▲
 
-train.py
+             train.py
 ```
 
 ---
@@ -172,32 +182,55 @@ train.py
 ```text
 loss.backward()
       ↓
+
 Extract Gradient Chunks
       ↓
+
 Build GradientPackage
       ↓
+
 Convert To Proto
       ↓
+
 Send To Worker Service
       ↓
+
 WAIT
       ↓
+
 Worker Service
       ↓
-Aggregator
+
+Master Server
       ↓
+
+Aggregator Component
+      ↓
+
 Barrier Synchronization
       ↓
+
 Gradient Aggregation
       ↓
+
+Master Server
+      ↓
+
+Worker Service
+      ↓
+
 Aggregated Response
       ↓
+
 Convert From Proto
       ↓
+
 Apply Aggregated Gradients
       ↓
+
 Return
       ↓
+
 optimizer.step()
 ```
 
@@ -233,7 +266,7 @@ Runtime ↔ Worker Service
 Local gRPC
 ```
 
-Worker Service ↔ Aggregator
+Worker Service ↔ Master
 
 ```text
 Persistent gRPC
@@ -255,6 +288,16 @@ Runtime owns:
 * Serialization
 * Communication
 * Reconstruction
+
+Aggregator exists as an internal Master component.
+
+Runtime is unaware of:
+
+* Master Internals
+* Aggregator Location
+* Scheduler
+* Worker Manager
+* Orchestrator
 
 ---
 
@@ -326,6 +369,21 @@ locdist_config.json
 No hardcoded networking values.
 
 No environment variables.
+
+Runtime only knows how to reach the local Worker Service.
+
+Example:
+
+{
+  "worker_host": "127.0.0.1",
+  "worker_port": 50051
+}
+
+Runtime never knows:
+
+• Master Address
+• Aggregator Address
+• Cluster Topology
 
 ---
 
@@ -561,6 +619,7 @@ test_gradients.py
 test_wire.py
 test_transport.py
 test_runtime_flow.py
+test_runtime_worker_integration.py
 ```
 
 Coverage includes:
@@ -572,6 +631,11 @@ Coverage includes:
 * Serialization roundtrip
 * Transport singleton behavior
 * Runtime flow validation
+ Runtime
+    ↓
+Worker Service
+    ↓
+Runtime
 
 ---
 
@@ -594,6 +658,11 @@ Runtime does NOT own:
 * Aggregation
 * Cluster management
 * Job orchestration
+* Master Communication
+* Aggregator Communication
+* Worker Registration
+* Heartbeats
+* Log Streaming
 
 ---
 
