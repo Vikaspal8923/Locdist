@@ -4,7 +4,7 @@
   "worker_id": "worker-a",
 
   "worker_host": "127.0.0.1",
-  "worker_port": 7000,
+  "worker_port": 50051,
 
   "rpc_timeout_seconds": 120
 }
