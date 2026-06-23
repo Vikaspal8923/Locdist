@@ -13,7 +13,13 @@ import (
 
 func main() {
 
-	cfg := config.Default()
+	cfg, err := config.Load("worker_config.json")
+	if err != nil {
+		log.Fatalf(
+			"failed to load worker config: %v",
+			err,
+		)
+	}
 
 	runtimeBridge := runtimebridge.New()
 
@@ -30,8 +36,8 @@ func main() {
 
 	go func() {
 		log.Printf(
-			"worker service listening on port %s",
-			cfg.Port,
+			"worker service listening on port %d",
+			cfg.GRPCPort,
 		)
 
 		if err := server.Start(); err != nil {

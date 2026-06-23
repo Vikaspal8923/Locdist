@@ -23,7 +23,7 @@ func NewServer(
 
 	listener, err := net.Listen(
 		"tcp",
-		fmt.Sprintf(":%s", cfg.Port),
+		fmt.Sprintf(":%d", cfg.GRPCPort),
 	)
 	if err != nil {
 		return nil, err
