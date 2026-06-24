@@ -11,7 +11,9 @@ import (
 
 func TestHandlerSynchronizeGradients(t *testing.T) {
 
-	runtimeBridge := runtimebridge.New()
+	runtimeBridge := runtimebridge.New(
+		&FakeSynchronizer{},
+	)
 
 	handler := workergrpc.NewWorkerBridgeServer(
 		runtimeBridge,

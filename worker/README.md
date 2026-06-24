@@ -25,7 +25,9 @@ Workers never communicate directly with each other.
 │                                               │
 │ Discovery                                     │
 │ Scheduler                                     │
-│ Aggregator                                    │
+│ Aggregator                                    |
+| Storage                                       |
+| Worker Manager                                │
 │ Orchestrator                                  │
 └───────────────────────────────────────────────┘
                      ▲
@@ -170,7 +172,9 @@ Runtime
     ↓
 Worker Service
     ↓
-Aggregator
+Master Server
+    ↓
+Aggregator Component
 ```
 
 ---
@@ -993,4 +997,512 @@ Gradient After Sync
 
 for a single worker.
 
-This establishes the Runtime ↔ Worker contract and provides the foundation for Phase 2, where Worker Service will evolve from a local synchronization service into a true Runtime Bridge that communicates with a real Aggregator.
+This establishes the Runtime ↔ Worker contract and provides the foundation for Phase 2, where Worker Service will evolve from a local synchronization service into a true Runtime Bridge that communicates with the Master Server and participates in real distributed gradient aggregation through the Aggregator component.
+
+
+NOTE:
+
+Phase 1 stores worker_config.json in the Worker root directory.
+
+This is a temporary development setup.
+
+A future Worker Infrastructure phase may relocate the file to:
+
+configs/worker_config.json
+
+or
+
+~/.ldgcc/worker_config.json
+
+to support installation-wide configuration and Master-managed deployment.
+
+
+# Worker Phase 2
+
+## Goal
+
+Worker Phase 2 exists to connect the Worker Service to the Master.
+
+Phase 1 validated:
+
+```text
+Runtime
+    ↓
+Worker
+    ↓
+Identity Aggregation
+    ↓
+Runtime
+```
+
+Phase 2 replaces local Identity Aggregation with a real Master connection.
+
+Target architecture:
+
+```text
+Runtime
+    ↓
+Worker
+    ↓
+Master
+    ↓
+Aggregator
+    ↓
+Master
+    ↓
+Worker
+    ↓
+Runtime
+```
+
+---
+
+## Worker Phase 2 Architecture Decisions
+
+### Worker Becomes A Proxy
+
+Worker no longer owns aggregation logic.
+
+Current:
+
+```text
+Runtime
+    ↓
+Worker
+    ↓
+Identity Aggregation
+```
+
+Phase 2:
+
+```text
+Runtime
+    ↓
+Worker
+    ↓
+Master
+```
+
+Aggregation is owned entirely by Master.
+
+---
+
+### Runtime API Remains Unchanged
+
+Runtime continues using:
+
+```python
+loss.backward()
+
+locdist.sync_gradients(model)
+
+optimizer.step()
+```
+
+No Runtime modifications were required.
+
+---
+
+### Persistent Worker → Master Connection
+
+Worker maintains:
+
+```text
+ONE persistent gRPC connection
+```
+
+to Master.
+
+Connection creation occurs once during Worker startup.
+
+The connection is reused throughout training.
+
+---
+
+### Configuration Driven
+
+Master location comes from:
+
+```text
+worker_config.json
+```
+
+Example:
+
+```json
+{
+  "grpc_port": "50051",
+
+  "master_host": "127.0.0.1",
+  "master_port": "60051"
+}
+```
+
+No Master networking values are hardcoded.
+
+---
+
+### Shared Protocol
+
+Worker and Master continue using:
+
+```text
+GradientSubmission
+
+AggregatedGradientResponse
+```
+
+No new protobuf definitions were introduced.
+
+---
+
+## Phase 2 Execution Flow
+
+```text
+Runtime
+    ↓
+
+Worker Handler
+
+    ↓
+
+RuntimeBridge
+
+    ↓
+
+MasterClient
+
+    ↓
+
+Master Server
+
+    ↓
+
+Aggregator
+
+    ↓
+
+Master Server
+
+    ↓
+
+MasterClient
+
+    ↓
+
+RuntimeBridge
+
+    ↓
+
+Worker Handler
+
+    ↓
+
+Runtime
+```
+
+---
+
+## New Components
+
+### masterclient/client.go
+
+Introduced in Phase 2.
+
+Responsibilities:
+
+* Create Master connection
+* Create WorkerBridge client
+* Forward GradientSubmission
+* Receive AggregatedGradientResponse
+* Manage connection lifecycle
+
+---
+
+### runtimebridge/synchronizer.go
+
+Introduced in Phase 2.
+
+Provides:
+
+```go
+type Synchronizer interface
+```
+
+Purpose:
+
+* Decouple RuntimeBridge from MasterClient
+* Improve testability
+* Allow fake implementations during tests
+
+---
+
+## RuntimeBridge Refactor
+
+Phase 1:
+
+```text
+Validate
+    ↓
+Identity Aggregation
+    ↓
+Return
+```
+
+Phase 2:
+
+```text
+Validate
+    ↓
+Synchronizer
+    ↓
+Master
+    ↓
+Return
+```
+
+RuntimeBridge no longer performs aggregation.
+
+---
+
+## Testing Refactor
+
+Phase 1 tests depended on local Identity Aggregation.
+
+Phase 2 introduced:
+
+```text
+FakeSynchronizer
+```
+
+for testing.
+
+Production:
+
+```text
+Synchronizer
+    ↓
+MasterClient
+```
+
+Tests:
+
+```text
+Synchronizer
+    ↓
+FakeSynchronizer
+```
+
+This preserves isolated Worker tests without requiring a running Master.
+
+---
+
+## Live Validation
+
+### Validation 1
+
+Master Running
+
+Runtime integration test:
+
+```text
+Before Sync
+After Sync
+Identical: True
+```
+
+Result:
+
+```text
+Runtime
+    ↓
+Worker
+    ↓
+Master
+    ↓
+Aggregator
+    ↓
+Master
+    ↓
+Worker
+    ↓
+Runtime
+```
+
+validated successfully.
+
+---
+
+### Validation 2
+
+Master Stopped
+
+Runtime integration test produced:
+
+```text
+SynchronizationError
+
+connection refused
+
+127.0.0.1:60051
+```
+
+Result:
+
+```text
+Runtime
+    ↓
+Worker
+    ↓
+Master
+```
+
+failed as expected.
+
+This proves Worker is forwarding requests to Master and no longer performs local aggregation.
+
+---
+
+## Phase 2 Result
+
+Worker Phase 2 successfully replaces local Identity Aggregation with a real Master connection.
+
+Validated communication path:
+
+```text
+Runtime
+    ↓
+Worker
+    ↓
+Master
+    ↓
+Aggregator
+    ↓
+Master
+    ↓
+Worker
+    ↓
+Runtime
+```
+
+using the shared LDGCC protocol.
+
+This establishes the first complete end-to-end LDGCC execution path.
+
+---
+
+## Current Status
+
+```text
+Worker Phase 1
+    ✓ COMPLETE
+
+Worker Phase 2
+    ✓ COMPLETE
+
+MasterClient
+    ✓ COMPLETE
+
+Synchronizer Interface
+    ✓ COMPLETE
+
+RuntimeBridge Refactor
+    ✓ COMPLETE
+
+Unit Tests
+    ✓ PASS
+
+Integration Tests
+    ✓ PASS
+
+Runtime ↔ Worker ↔ Master
+    ✓ LIVE VALIDATED
+
+go build ./...
+    ✓ PASS
+
+go test ./...
+    ✓ PASS
+```
+
+---
+
+## Future TODOs
+
+### Master Phase 2
+
+Current:
+
+```text
+G = G
+```
+
+Future:
+
+```text
+G = Average(All Worker Gradients)
+```
+
+---
+
+### Barrier Synchronization
+
+Aggregator will eventually:
+
+* Wait for all workers
+* Coordinate aggregation rounds
+* Release workers simultaneously
+
+---
+
+### Multi-Worker Training
+
+Current:
+
+```text
+Single Worker Validation
+```
+
+Future:
+
+```text
+Multiple Workers
+    ↓
+Master
+    ↓
+Aggregation
+```
+
+---
+
+## Worker Phase 2 Success Criteria
+
+Worker Phase 2 is considered complete because:
+
+```text
+go build ./...
+    ✓ PASS
+
+go test ./...
+    ✓ PASS
+```
+
+and:
+
+```text
+Runtime
+    ↓
+Worker
+    ↓
+Master
+    ↓
+Aggregator
+    ↓
+Master
+    ↓
+Worker
+    ↓
+Runtime
+```
+
+has been successfully validated using a real Runtime process, Worker Service, and Master Service.

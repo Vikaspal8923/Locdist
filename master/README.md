@@ -718,39 +718,6 @@ This establishes the Worker ↔ Master contract.
 
 # Phase 1 Future TODOs
 
-## Worker Phase 2 Integration
-
-Current:
-
-```text
-Runtime
-    ↓
-Worker
-    ↓
-Identity Aggregation
-```
-
-Future:
-
-```text
-Runtime
-    ↓
-Worker
-    ↓
-Master
-    ↓
-Identity Aggregation
-    ↓
-Master
-    ↓
-Worker
-    ↓
-Runtime
-```
-
-Worker Service will replace local Identity Aggregation with a Master client.
-
----
 
 ## Real Aggregation
 

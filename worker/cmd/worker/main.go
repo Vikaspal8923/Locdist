@@ -8,12 +8,15 @@ import (
 
 	"github.com/Vikaspal8923/Locdist/worker/grpc"
 	"github.com/Vikaspal8923/Locdist/worker/internal/config"
+	"github.com/Vikaspal8923/Locdist/worker/masterclient"
 	"github.com/Vikaspal8923/Locdist/worker/runtimebridge"
 )
 
 func main() {
 
-	cfg, err := config.Load("worker_config.json")
+	cfg, err := config.Load(
+		"worker_config.json",
+	)
 	if err != nil {
 		log.Fatalf(
 			"failed to load worker config: %v",
@@ -21,7 +24,20 @@ func main() {
 		)
 	}
 
-	runtimeBridge := runtimebridge.New()
+	masterClient, err := masterclient.New(
+		cfg,
+	)
+	if err != nil {
+		log.Fatalf(
+			"failed to create master client: %v",
+			err,
+		)
+	}
+	defer masterClient.Close()
+
+	runtimeBridge := runtimebridge.New(
+		masterClient,
+	)
 
 	server, err := grpc.NewServer(
 		cfg,
@@ -36,8 +52,8 @@ func main() {
 
 	go func() {
 		log.Printf(
-			"worker service listening on port %d",
-			cfg.GRPCPort,
+			"worker service listening on port %s",
+			cfg.Port,
 		)
 
 		if err := server.Start(); err != nil {

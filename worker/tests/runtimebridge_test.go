@@ -10,7 +10,9 @@ import (
 
 func TestSynchronizeSuccess(t *testing.T) {
 
-	service := runtimebridge.New()
+	service := runtimebridge.New(
+		&FakeSynchronizer{},
+	)
 
 	request := &gradient.GradientSubmission{
 		RuntimeVersion: 1,
@@ -75,7 +77,9 @@ func TestSynchronizeSuccess(t *testing.T) {
 
 func TestSynchronizeInvalidRuntimeVersion(t *testing.T) {
 
-	service := runtimebridge.New()
+	service := runtimebridge.New(
+		&FakeSynchronizer{},
+	)
 
 	request := &gradient.GradientSubmission{
 		RuntimeVersion: 0,
@@ -97,7 +101,9 @@ func TestSynchronizeInvalidRuntimeVersion(t *testing.T) {
 
 func TestSynchronizeMissingJobID(t *testing.T) {
 
-	service := runtimebridge.New()
+	service := runtimebridge.New(
+		&FakeSynchronizer{},
+	)
 
 	request := &gradient.GradientSubmission{
 		RuntimeVersion: 1,
@@ -119,7 +125,9 @@ func TestSynchronizeMissingJobID(t *testing.T) {
 
 func TestSynchronizeMissingWorkerID(t *testing.T) {
 
-	service := runtimebridge.New()
+	service := runtimebridge.New(
+		&FakeSynchronizer{},
+	)
 
 	request := &gradient.GradientSubmission{
 		RuntimeVersion: 1,
@@ -141,7 +149,9 @@ func TestSynchronizeMissingWorkerID(t *testing.T) {
 
 func TestSynchronizeMissingChunks(t *testing.T) {
 
-	service := runtimebridge.New()
+	service := runtimebridge.New(
+		&FakeSynchronizer{},
+	)
 
 	request := &gradient.GradientSubmission{
 		RuntimeVersion: 1,

@@ -5,10 +5,17 @@ import (
 	internalerrors "github.com/Vikaspal8923/Locdist/worker/internal/errors"
 )
 
-type Service struct{}
+type Service struct {
+	synchronizer Synchronizer
+}
 
-func New() *Service {
-	return &Service{}
+func New(
+	synchronizer Synchronizer,
+) *Service {
+
+	return &Service{
+		synchronizer: synchronizer,
+	}
 }
 
 func (s *Service) Synchronize(
@@ -31,13 +38,7 @@ func (s *Service) Synchronize(
 		return nil, internalerrors.ErrMissingChunks
 	}
 
-	response := &gradient.AggregatedGradientResponse{
-		RuntimeVersion:       request.GetRuntimeVersion(),
-		JobId:                request.GetJobId(),
-		ParticipatingWorkers: 1,
-		AggregationRound:     1,
-		Chunks:               request.GetChunks(),
-	}
-
-	return response, nil
+	return s.synchronizer.Synchronize(
+		request,
+	)
 }

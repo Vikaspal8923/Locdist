@@ -27,7 +27,9 @@ func TestRuntimeWorkerIntegration(t *testing.T) {
 
 	server := grpcserver.NewServer()
 
-	runtimeBridge := runtimebridge.New()
+	runtimeBridge := runtimebridge.New(
+		&FakeSynchronizer{},
+	)
 
 	gradient.RegisterWorkerBridgeServer(
 		server,

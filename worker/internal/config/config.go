@@ -6,15 +6,38 @@ import (
 )
 
 type Config struct {
-	GRPCPort int `json:"grpc_port"`
+	Port string `json:"grpc_port"`
+
+	MasterHost string `json:"master_host"`
+	MasterPort string `json:"master_port"`
 }
 
 func Default() Config {
 	return Config{
-		GRPCPort: 50051,
+		Port: "50051",
+
+		MasterHost: "127.0.0.1",
+		MasterPort: "60051",
 	}
 }
 
+// TODO(Worker Infrastructure Phase):
+//
+// Current Phase 1 loads worker_config.json from the current
+// working directory for simplicity.
+//
+// Future Worker architecture should move configuration to a
+// dedicated location such as:
+//
+//	configs/worker_config.json
+//
+// or
+//
+//	~/.ldgcc/worker_config.json
+//
+// so configuration becomes independent of the process
+// working directory and can be managed by the Worker
+// installation, Tray App, or Master-generated setup
 func Load(path string) (Config, error) {
 
 	cfg := Default()
