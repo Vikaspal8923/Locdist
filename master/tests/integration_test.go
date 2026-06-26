@@ -6,8 +6,10 @@ import (
 	"testing"
 
 	"github.com/Vikaspal8923/Locdist/master/aggregator"
+	"github.com/Vikaspal8923/Locdist/master/coordinator"
 	gradient "github.com/Vikaspal8923/Locdist/master/generated/gradient"
 	mastergrpc "github.com/Vikaspal8923/Locdist/master/grpc"
+	"github.com/Vikaspal8923/Locdist/master/jobs"
 
 	grpcclient "google.golang.org/grpc"
 	grpcserver "google.golang.org/grpc"
@@ -29,14 +31,30 @@ func TestMasterIntegration(
 		)
 	}
 
-	server := grpcserver.NewServer()
-
 	aggregatorService := aggregator.New()
 
+	jobManager := jobs.New()
+
+	coordinatorService := coordinator.New(
+		aggregatorService,
+		jobManager,
+	)
+
+	if err := coordinatorService.StartTraining(
+		"job-123",
+		1,
+	); err != nil {
+		t.Fatalf(
+			"failed to start training: %v",
+			err,
+		)
+	}
+
+	server := grpcserver.NewServer()
 	gradient.RegisterWorkerBridgeServer(
 		server,
 		mastergrpc.NewMasterServer(
-			aggregatorService,
+			coordinatorService,
 		),
 	)
 
@@ -64,18 +82,12 @@ func TestMasterIntegration(
 		conn,
 	)
 
-	request := &gradient.GradientSubmission{
-		RuntimeVersion: 1,
-		JobId:          "job-123",
-		WorkerId:       "worker-a",
-		Chunks: []*gradient.GradientChunk{
-			{},
-		},
-	}
-
 	response, err := client.SynchronizeGradients(
 		context.Background(),
-		request,
+		gradientSubmission(
+			"worker-a",
+			[]float32{1, 3},
+		),
 	)
 
 	if err != nil {
@@ -85,33 +97,5 @@ func TestMasterIntegration(
 		)
 	}
 
-	if response.RuntimeVersion != 1 {
-		t.Fatalf(
-			"unexpected runtime version",
-		)
-	}
-
-	if response.JobId != "job-123" {
-		t.Fatalf(
-			"unexpected job id",
-		)
-	}
-
-	if response.ParticipatingWorkers != 1 {
-		t.Fatalf(
-			"unexpected participating workers",
-		)
-	}
-
-	if response.AggregationRound != 1 {
-		t.Fatalf(
-			"unexpected aggregation round",
-		)
-	}
-
-	if len(response.Chunks) != 1 {
-		t.Fatalf(
-			"unexpected chunk count",
-		)
-	}
+	assertResponse(t, response, 1, 1, []float32{1, 3})
 }

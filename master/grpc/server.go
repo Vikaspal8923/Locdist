@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"net"
 
-	"github.com/Vikaspal8923/Locdist/master/aggregator"
+	"github.com/Vikaspal8923/Locdist/master/coordinator"
 	gradient "github.com/Vikaspal8923/Locdist/master/generated/gradient"
 	"github.com/Vikaspal8923/Locdist/master/internal/config"
 
@@ -19,7 +19,7 @@ type Server struct {
 
 func NewServer(
 	cfg config.Config,
-	aggregatorService *aggregator.Service,
+	coordinatorService *coordinator.Coordinator,
 ) (*Server, error) {
 
 	listener, err := net.Listen(
@@ -33,7 +33,7 @@ func NewServer(
 	grpcSrv := grpcserver.NewServer()
 
 	masterServer := NewMasterServer(
-		aggregatorService,
+		coordinatorService,
 	)
 
 	gradient.RegisterWorkerBridgeServer(

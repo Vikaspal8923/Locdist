@@ -7,8 +7,10 @@ import (
 	"syscall"
 
 	"github.com/Vikaspal8923/Locdist/master/aggregator"
+	"github.com/Vikaspal8923/Locdist/master/coordinator"
 	"github.com/Vikaspal8923/Locdist/master/grpc"
 	"github.com/Vikaspal8923/Locdist/master/internal/config"
+	"github.com/Vikaspal8923/Locdist/master/jobs"
 )
 
 func main() {
@@ -25,9 +27,16 @@ func main() {
 
 	aggregatorService := aggregator.New()
 
+	jobManager := jobs.New()
+
+	coordinatorService := coordinator.New(
+		aggregatorService,
+		jobManager,
+	)
+
 	server, err := grpc.NewServer(
 		cfg,
-		aggregatorService,
+		coordinatorService,
 	)
 	if err != nil {
 		log.Fatalf(

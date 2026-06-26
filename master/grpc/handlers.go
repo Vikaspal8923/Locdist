@@ -3,22 +3,22 @@ package grpc
 import (
 	"context"
 
-	"github.com/Vikaspal8923/Locdist/master/aggregator"
+	"github.com/Vikaspal8923/Locdist/master/coordinator"
 	gradient "github.com/Vikaspal8923/Locdist/master/generated/gradient"
 )
 
 type MasterServer struct {
 	gradient.UnimplementedWorkerBridgeServer
 
-	aggregator *aggregator.Service
+	coordinator *coordinator.Coordinator
 }
 
 func NewMasterServer(
-	aggregatorService *aggregator.Service,
+	coordinatorService *coordinator.Coordinator,
 ) *MasterServer {
 
 	return &MasterServer{
-		aggregator: aggregatorService,
+		coordinator: coordinatorService,
 	}
 }
 
@@ -27,7 +27,7 @@ func (s *MasterServer) SynchronizeGradients(
 	request *gradient.GradientSubmission,
 ) (*gradient.AggregatedGradientResponse, error) {
 
-	return s.aggregator.Aggregate(
+	return s.coordinator.SynchronizeGradients(
 		request,
 	)
 }

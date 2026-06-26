@@ -355,6 +355,12 @@ Implemented:
 ✓ Unit Tests
 
 ✓ Integration Tests
+
+✓ Real Gradient Aggregation
+
+✓ Barrier Synchronization
+
+✓ Aggregation Rounds
 ```
 
 Not Implemented:
@@ -371,10 +377,6 @@ Not Implemented:
 ✗ Worker Registration
 
 ✗ Heartbeats
-
-✗ Real Gradient Aggregation
-
-✗ Barrier Synchronization
 
 ✗ Orchestration
 
@@ -484,7 +486,16 @@ master/
 │   └── server.go
 │
 ├── aggregator/
-│   └── aggregate.go
+│   ├── aggregate.go
+│   ├── service.go
+│   └── state.go
+│
+├── coordinator/
+│   └── coordinator.go
+│
+├── jobs/
+│   ├── manager.go
+│   └── state.go
 │
 ├── internal/
 │   ├── config/
@@ -716,46 +727,473 @@ This establishes the Worker ↔ Master contract.
 
 ---
 
-# Phase 1 Future TODOs
+# Master Phase 2
 
+## Goal
 
-## Real Aggregation
+Master Phase 2 upgrades the Master Aggregator from Identity Aggregation to real distributed gradient synchronization.
 
-Current:
+Phase 2 is intentionally narrow.
+
+It implements:
+
+* Gradient storage for the current aggregation round
+* Barrier synchronization
+* Multi-worker gradient collection
+* Duplicate worker submission replacement
+* Gradient averaging
+* Aggregation round advancement
+* Round reset after all waiting workers receive the result
+
+It does not implement:
+
+* Worker discovery
+* Worker registration
+* Scheduling
+* Dataset sharding
+* Workspace distribution
+* Training orchestration
+* Fault tolerance
+* Retry logic
+* Timeouts
+* Checkpointing
+
+---
+
+## Phase 2 Architecture
+
+Phase 2 follows the frozen Master responsibility split:
 
 ```text
-G = G
+Worker
+    ↓
+Master gRPC Handler
+    ↓
+Coordinator
+    ↓
+Job Manager
+    ↓
+Aggregator
 ```
 
-Future:
+The responsibilities are separated as follows.
+
+### Job Manager
+
+Owns job metadata only.
+
+Responsibilities:
+
+* Current job
+* Expected worker count
+* Job status
+
+The Job Manager does not:
+
+* Store gradients
+* Track aggregation rounds
+* Average tensors
+* Synchronize workers
+* Manage barriers
+
+---
+
+### Coordinator
+
+Owns request workflow only.
+
+For gradient synchronization:
 
 ```text
-G = Average(All Worker Gradients)
+Receive request
+    ↓
+CurrentJob()
+    ↓
+Aggregator.Aggregate(request, expectedWorkers)
+```
+
+The Coordinator does not:
+
+* Store gradients
+* Average gradients
+* Track per-round state
+* Implement barrier logic
+
+---
+
+### Aggregator
+
+Owns all distributed synchronization state.
+
+Responsibilities:
+
+* Current aggregation round
+* Per-round gradient storage
+* Barrier synchronization
+* Duplicate worker replacement
+* Gradient averaging
+* Shared response construction
+* Round reset
+
+The Aggregator does not:
+
+* Create jobs
+* Own job metadata
+* Register workers
+* Schedule workers
+* Start or stop training
+
+---
+
+## Phase 2 Gradient Flow
+
+```text
+Runtime
+    ↓
+Worker Service
+    ↓
+Master gRPC Handler
+    ↓
+Coordinator
+    ↓
+Job Manager
+    ↓
+Aggregator
+    ↓
+Barrier Wait
+    ↓
+Average Gradients
+    ↓
+Return AggregatedGradientResponse
+    ↓
+Worker Service
+    ↓
+Runtime
+```
+
+During aggregation, every worker waits until all expected workers submit for the current round.
+
+Example with two workers:
+
+```text
+worker-a submits gradients
+    ↓
+waits
+
+worker-b submits gradients
+    ↓
+barrier opens
+    ↓
+average gradients
+    ↓
+worker-a and worker-b receive identical result
 ```
 
 ---
 
-## Barrier Synchronization
+## Duplicate Worker Submission
 
-Future Aggregator responsibilities:
+If the same worker submits more than once in the same round:
 
-* Wait for all workers
-* Coordinate aggregation rounds
-* Release workers simultaneously
+```text
+currentRound.Gradients[worker_id] = latestSubmission
+```
+
+The latest submission replaces the older one.
+
+The worker count does not increase.
 
 ---
 
-# Future Master Phases
+## Gradient Averaging
+
+For every matching gradient chunk:
+
+```text
+Average = (G1 + G2 + ... + Gn) / N
+```
+
+where:
+
+```text
+N = expected worker count
+```
+
+All waiting workers receive the exact same averaged gradient chunks.
+
+Supported runtime dtypes:
+
+* torch.float16
+* torch.float32
+* torch.float64
+* torch.bfloat16
+
+---
+
+## Aggregation Rounds
+
+The Aggregator starts at round 1.
+
+After a round completes:
+
+```text
+round 1
+    ↓
+all workers receive response
+    ↓
+clear round state
+    ↓
+round 2
+```
+
+The completed round number is returned in:
+
+```text
+AggregatedGradientResponse.aggregation_round
+```
+
+---
+
+## Phase 2 File Responsibilities
+
+### aggregator/state.go
+
+Defines per-round Aggregator state.
+
+Contains:
+
+* Round number
+* Worker gradient submissions
+* Completed response
+* Aggregation error
+* Waiting receiver count
+
+---
+
+### aggregator/service.go
+
+Defines the Aggregator service and synchronization primitives.
+
+Responsibilities:
+
+* Create Aggregator service
+* Own mutex and condition variable
+* Store gradients by worker ID
+* Count received workers
+* Check barrier status
+* Reset completed rounds
+
+---
+
+### aggregator/aggregate.go
+
+Core Phase 2 aggregation logic.
+
+Responsibilities:
+
+* Validate incoming gradient submissions
+* Store current-round gradients
+* Block workers at the barrier
+* Replace duplicate worker submissions
+* Average gradient bytes by dtype
+* Return identical aggregated responses
+* Advance/reset aggregation rounds
+
+---
+
+### coordinator/coordinator.go
+
+Workflow layer between gRPC and internal Master components.
+
+Responsibilities:
+
+* Start the current job through Job Manager
+* Read current job metadata
+* Pass expected worker count into Aggregator
+
+No aggregation logic belongs here.
+
+---
+
+### jobs/manager.go
+
+Owns job metadata lifecycle.
+
+Responsibilities:
+
+* Create a current job
+* Store expected worker count
+* Return current job metadata
+
+Does not store gradients or aggregation rounds.
+
+---
+
+### jobs/state.go
+
+Defines job metadata.
+
+Contains:
+
+* Job ID
+* Expected worker count
+* Job status
+
+---
+
+### grpc/handlers.go
+
+Receives external WorkerBridge gRPC requests.
+
+Responsibilities:
+
+* Accept SynchronizeGradients requests
+* Call Coordinator
+* Return AggregatedGradientResponse
+
+Contains no aggregation logic.
+
+---
+
+### grpc/server.go
+
+Creates and registers the Master gRPC server.
+
+Responsibilities:
+
+* Open listener
+* Create gRPC server
+* Register WorkerBridge service
+* Route requests through MasterServer
+
+---
+
+### cmd/master/main.go
+
+Master process entry point.
+
+Responsibilities:
+
+* Load configuration
+* Create Aggregator
+* Create Job Manager
+* Create Coordinator
+* Create gRPC server
+* Start service
+* Graceful shutdown
+
+---
+
+## Phase 2 Tests
+
+### aggregator_test.go
+
+Validates:
+
+* Single-worker aggregation
+* Barrier blocking
+* Multi-worker averaging
+* Duplicate worker replacement
+* Round advancement
+* Request validation
+
+---
+
+### handler_test.go
+
+Validates:
+
+```text
+Master gRPC Handler
+    ↓
+Coordinator
+    ↓
+Job Manager
+    ↓
+Aggregator
+```
+
+without opening a network listener.
+
+---
+
+### integration_test.go
+
+Validates:
+
+```text
+gRPC Client
+    ↓
+Master gRPC Server
+    ↓
+Coordinator
+    ↓
+Job Manager
+    ↓
+Aggregator
+    ↓
+gRPC Response
+```
+
+using a real local gRPC server.
+
+---
+
+## Phase 2 Validation
+
+Validated using:
+
+```bash
+env GOCACHE=/tmp/locdist-go-cache go test ./...
+```
+
+Expected result:
+
+```text
+ok github.com/Vikaspal8923/Locdist/master/tests
+```
+
+---
+
+## Phase 2 Result
+
+Master Phase 2 successfully validates:
+
+```text
+Worker
+    ↓
+Master Server
+    ↓
+Coordinator
+    ↓
+Job Manager
+    ↓
+Aggregator
+    ↓
+Barrier Synchronization
+    ↓
+Gradient Averaging
+    ↓
+Master Server
+    ↓
+Worker
+```
+
+This completes real distributed gradient synchronization inside the Master Aggregator.
+
+---
+
+# Master Phase Roadmap
 
 ## Master Phase 2
 
 Status:
 
 ```text
-NOT STARTED
+COMPLETE
 ```
 
-Expected Goal:
+Completed Goal:
 
 ```text
 Worker
@@ -765,7 +1203,7 @@ Master
 Worker
 ```
 
-Real Worker ↔ Master integration.
+Real Master-side gradient synchronization.
 
 ---
 
@@ -829,7 +1267,19 @@ Master V1 Architecture
 Master Phase 1
     ✓ COMPLETE
 
+Master Phase 2
+    ✓ COMPLETE
+
 Identity Aggregation
+    ✓ COMPLETE
+
+Real Gradient Aggregation
+    ✓ COMPLETE
+
+Barrier Synchronization
+    ✓ COMPLETE
+
+Aggregation Rounds
     ✓ COMPLETE
 
 gRPC Server

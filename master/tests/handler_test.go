@@ -5,8 +5,9 @@ import (
 	"testing"
 
 	"github.com/Vikaspal8923/Locdist/master/aggregator"
-	gradient "github.com/Vikaspal8923/Locdist/master/generated/gradient"
+	"github.com/Vikaspal8923/Locdist/master/coordinator"
 	mastergrpc "github.com/Vikaspal8923/Locdist/master/grpc"
+	"github.com/Vikaspal8923/Locdist/master/jobs"
 )
 
 func TestHandlerSynchronizeGradients(
@@ -15,22 +16,33 @@ func TestHandlerSynchronizeGradients(
 
 	aggregatorService := aggregator.New()
 
-	server := mastergrpc.NewMasterServer(
+	jobManager := jobs.New()
+
+	coordinatorService := coordinator.New(
 		aggregatorService,
+		jobManager,
 	)
 
-	request := &gradient.GradientSubmission{
-		RuntimeVersion: 1,
-		JobId:          "job-123",
-		WorkerId:       "worker-a",
-		Chunks: []*gradient.GradientChunk{
-			{},
-		},
+	if err := coordinatorService.StartTraining(
+		"job-123",
+		1,
+	); err != nil {
+		t.Fatalf(
+			"failed to start training: %v",
+			err,
+		)
 	}
+
+	server := mastergrpc.NewMasterServer(
+		coordinatorService,
+	)
 
 	response, err := server.SynchronizeGradients(
 		context.Background(),
-		request,
+		gradientSubmission(
+			"worker-a",
+			[]float32{1, 3},
+		),
 	)
 
 	if err != nil {
@@ -40,21 +52,5 @@ func TestHandlerSynchronizeGradients(
 		)
 	}
 
-	if response.RuntimeVersion != 1 {
-		t.Fatalf(
-			"unexpected runtime version",
-		)
-	}
-
-	if response.JobId != "job-123" {
-		t.Fatalf(
-			"unexpected job id",
-		)
-	}
-
-	if response.ParticipatingWorkers != 1 {
-		t.Fatalf(
-			"unexpected participating workers",
-		)
-	}
+	assertResponse(t, response, 1, 1, []float32{1, 3})
 }
