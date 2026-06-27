@@ -6,6 +6,7 @@ import (
 	"os/signal"
 	"syscall"
 
+	"github.com/Vikaspal8923/Locdist/worker/app"
 	"github.com/Vikaspal8923/Locdist/worker/discovery"
 	"github.com/Vikaspal8923/Locdist/worker/internal/config"
 	"github.com/Vikaspal8923/Locdist/worker/service"
@@ -21,9 +22,19 @@ func main() {
 		cfg,
 		discovery.NewAdvertiser(),
 	)
-	if err := agent.Start(); err != nil {
-		log.Fatalf("failed to start worker: %v", err)
+	controller := app.NewController(agent)
+
+	server, err := app.NewServer(cfg.AppPort, controller)
+	if err != nil {
+		log.Fatalf("failed to create Worker App: %v", err)
 	}
+
+	go func() {
+		log.Printf("LDGCC Worker App available at %s", server.Address())
+		if err := server.Start(); err != nil {
+			log.Fatalf("Worker App stopped: %v", err)
+		}
+	}()
 
 	shutdownSignal := make(chan os.Signal, 1)
 	signal.Notify(
@@ -33,9 +44,8 @@ func main() {
 	)
 	<-shutdownSignal
 
-	log.Println("shutdown signal received")
-	if err := agent.Stop(); err != nil {
-		log.Printf("failed to stop worker cleanly: %v", err)
+	_ = controller.Stop()
+	if err := server.Stop(); err != nil {
+		log.Printf("failed to stop Worker App cleanly: %v", err)
 	}
-	log.Println("worker service stopped")
 }

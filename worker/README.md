@@ -1474,6 +1474,113 @@ Tests successful status storage and failed-report behavior.
 
 ---
 
+# LDGCC Phase 4: Worker App and LAN Discovery
+
+## Goal
+
+Phase 4 gives the Worker laptop owner an explicit Start/Stop control and
+makes a running Worker visible to Master on the same LAN.
+
+```text
+Open LDGCC Worker App
+    ↓
+Click Start Worker
+    ↓
+Start Worker gRPC service
+    ↓
+Advertise with mDNS/DNS-SD
+    ↓
+Master discovers Worker
+```
+
+Stopping the Worker removes its advertisement and stops its gRPC service.
+
+## Worker Modes
+
+Unpaired:
+
+```text
+No worker_id
+    ↓
+Worker becomes discoverable
+    ↓
+Gradient synchronization remains unavailable
+```
+
+Paired:
+
+```text
+worker_id exists
+    ↓
+Phase 3 registration and IDLE reporting
+    ↓
+Worker becomes discoverable as paired
+```
+
+This allows first-run discovery without weakening the existing registration
+path.
+
+## Folder Responsibilities
+
+`app/`
+
+Contains the UI-independent Start/Stop controller and the local clickable
+Worker App surface.
+
+`discovery/`
+
+Owns `_ldgcc-worker._tcp.local` advertisement and its DNS-SD metadata.
+
+`service/`
+
+Coordinates Worker gRPC, discovery, Master registration, and shutdown as one
+lifecycle.
+
+`cmd/worker-app/`
+
+Starts the Worker App at `http://127.0.0.1:5050`. The app initially shows a
+stopped Worker and provides Start Worker and Stop Worker actions.
+
+`cmd/worker/`
+
+Retains headless startup for service installations and automated deployment.
+
+## Configuration
+
+Phase 4 adds:
+
+```json
+{
+  "worker_name": "Vikas-Laptop",
+  "app_port": "5050"
+}
+```
+
+`worker_name` is the human-readable LAN discovery name. It is not a trusted
+or permanent Worker identity.
+
+## Scope Boundary
+
+Included:
+
+* Start Worker
+* Stop Worker
+* Running and discoverable state
+* Paired and unpaired startup modes
+* mDNS/DNS-SD advertisement
+* Master discovery
+
+Deferred:
+
+* Native tray packaging and OS installer integration
+* Pairing request UI
+* Accept or reject
+* Pairing credentials
+* Automatic `worker_config.json` creation
+* Scheduling and training execution
+
+---
+
 ## Current Status
 
 ```text
@@ -1490,6 +1597,15 @@ Worker Registration
     ✓ COMPLETE
 
 Worker Status Foundation
+    ✓ COMPLETE
+
+LDGCC Phase 4
+    ✓ COMPLETE
+
+Worker App Start/Stop
+    ✓ COMPLETE
+
+LAN Discovery Advertisement
     ✓ COMPLETE
 
 MasterClient

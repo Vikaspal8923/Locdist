@@ -1,6 +1,8 @@
 {
   "worker_id": "worker-a",
+  "worker_name": "Vikas-Laptop",
   "grpc_port": "50051",
+  "app_port": "5050",
   "host": "127.0.0.1",
 
   "master_host": "127.0.0.1",
