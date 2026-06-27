@@ -231,6 +231,13 @@ func (m *Manager) Worker(workerID string) (State, bool) {
 	return worker, ok
 }
 
+func (m *Manager) Pairing(workerID string) (Pairing, bool) {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+	pairing, ok := m.pairings[workerID]
+	return pairing, ok
+}
+
 func (m *Manager) States() []State {
 	m.mu.RLock()
 	defer m.mu.RUnlock()

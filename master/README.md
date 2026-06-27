@@ -1697,6 +1697,40 @@ Completed Goal:
 
 ---
 
+# LDGCC Phase 8: Project Packaging and Worker Workspace Delivery
+
+Phase 8 turns the Phase 7 job plan into real, Worker-specific project
+workspaces. The Master packages the user's full project once per selected
+Worker, replaces `dataset/train.jsonl` with that Worker's shard at the same
+relative path, writes `job_config.json`, and sends the ZIP over authenticated
+gRPC.
+
+```text
+Prepare project and shards (Phase 7)
+    -> Build one project ZIP per Worker
+    -> Replace original dataset with assigned shard
+    -> Authenticate with saved pairing credentials
+    -> PrepareWorkspace gRPC
+    -> Worker validates and extracts workspaces/<job_id>
+```
+
+## Phase 8 Components
+
+* `packager/package.go`: copies project files, applies exclusions, substitutes
+  the shard, emits `job_config.json`, skips symlinks, and enforces a 64 MiB ZIP
+  limit.
+* `orchestrator/distribute.go`: maps shards to Workers, builds each package,
+  authenticates with the pairing token, and delivers it to the Worker.
+* `PrepareAndDistribute`: joins Phase 7 preparation and Phase 8 delivery for
+  the future VS Code extension command.
+* `protocol/gradient.proto`: defines the `PrepareWorkspace` request/response.
+
+Excluded local state includes `.git`, virtual environments, Python caches,
+`.ldgcc`, and `ldgcc_jobs`. Phase 8 prepares files only; dependency setup and
+training process execution belong to the next phase.
+
+---
+
 # Current Status
 
 ```text
@@ -1734,6 +1768,9 @@ LDGCC Phase 6
     ✓ COMPLETE
 
 LDGCC Phase 7
+    ✓ COMPLETE
+
+LDGCC Phase 8
     ✓ COMPLETE
 
 Job Spec Foundation

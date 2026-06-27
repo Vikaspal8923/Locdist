@@ -1828,6 +1828,23 @@ go test ./...
 
 ---
 
+# LDGCC Phase 8: Worker Workspace Receiver
+
+The Worker now accepts a project workspace only from its currently paired
+Master. It verifies `worker_id`, `master_id`, and the pairing token, then safely
+extracts the ZIP into `workspaces/<job_id>`.
+
+`workspace/manager.go` rejects absolute paths, parent-directory traversal,
+symlinks, oversized archives, duplicate job workspaces, and packages missing
+the configured entrypoint, dataset, or `job_config.json`. Successful workspaces
+also receive private `logs/` and `artifacts/` directories. The root is set by
+`workspace_root` in `worker_config.json`.
+
+This phase does not install dependencies or launch `train.py`; it creates the
+validated filesystem boundary that execution will use.
+
+---
+
 ## Future TODOs
 
 ### Master Phase 2

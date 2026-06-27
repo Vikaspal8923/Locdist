@@ -3,6 +3,7 @@
   "grpc_port": "50051",
   "app_port": "5050",
   "pairing_path": "pairing.json",
+  "workspace_root": "workspaces",
   "host": "127.0.0.1",
   "master_host": "",
   "master_port": ""

@@ -190,6 +190,36 @@ message WorkerOfflineResponse {
   bool acknowledged = 1;
 }
 
+// =====================================================
+// Workspace Distribution
+// =====================================================
+
+message PrepareWorkspaceRequest {
+
+  string job_id = 1;
+
+  string worker_id = 2;
+
+  string master_id = 3;
+
+  string pairing_token = 4;
+
+  string entrypoint = 5;
+
+  string dataset_path = 6;
+
+  bytes workspace_zip = 7;
+}
+
+message PrepareWorkspaceResponse {
+
+  string job_id = 1;
+
+  bool prepared = 2;
+
+  string workspace_path = 3;
+}
+
 message RegisterWorkerResponse {
 
   string worker_id = 1;
@@ -260,5 +290,11 @@ service WorkerBridge {
     WorkerOfflineRequest
   ) returns (
     WorkerOfflineResponse
+  );
+
+  rpc PrepareWorkspace(
+    PrepareWorkspaceRequest
+  ) returns (
+    PrepareWorkspaceResponse
   );
 }

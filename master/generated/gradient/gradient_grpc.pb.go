@@ -2,7 +2,7 @@
 // versions:
 // - protoc-gen-go-grpc v1.6.2
 // - protoc             v3.21.12
-// source: protocol/gradient.proto
+// source: gradient.proto
 
 package gradient
 
@@ -26,6 +26,7 @@ const (
 	WorkerBridge_UnpairWorker_FullMethodName         = "/locdist.v1.WorkerBridge/UnpairWorker"
 	WorkerBridge_Heartbeat_FullMethodName            = "/locdist.v1.WorkerBridge/Heartbeat"
 	WorkerBridge_GoingOffline_FullMethodName         = "/locdist.v1.WorkerBridge/GoingOffline"
+	WorkerBridge_PrepareWorkspace_FullMethodName     = "/locdist.v1.WorkerBridge/PrepareWorkspace"
 )
 
 // WorkerBridgeClient is the client API for WorkerBridge service.
@@ -39,6 +40,7 @@ type WorkerBridgeClient interface {
 	UnpairWorker(ctx context.Context, in *UnpairWorkerRequest, opts ...grpc.CallOption) (*UnpairWorkerResponse, error)
 	Heartbeat(ctx context.Context, in *WorkerHeartbeat, opts ...grpc.CallOption) (*WorkerHeartbeatResponse, error)
 	GoingOffline(ctx context.Context, in *WorkerOfflineRequest, opts ...grpc.CallOption) (*WorkerOfflineResponse, error)
+	PrepareWorkspace(ctx context.Context, in *PrepareWorkspaceRequest, opts ...grpc.CallOption) (*PrepareWorkspaceResponse, error)
 }
 
 type workerBridgeClient struct {
@@ -119,6 +121,16 @@ func (c *workerBridgeClient) GoingOffline(ctx context.Context, in *WorkerOffline
 	return out, nil
 }
 
+func (c *workerBridgeClient) PrepareWorkspace(ctx context.Context, in *PrepareWorkspaceRequest, opts ...grpc.CallOption) (*PrepareWorkspaceResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(PrepareWorkspaceResponse)
+	err := c.cc.Invoke(ctx, WorkerBridge_PrepareWorkspace_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 // WorkerBridgeServer is the server API for WorkerBridge service.
 // All implementations must embed UnimplementedWorkerBridgeServer
 // for forward compatibility.
@@ -130,6 +142,7 @@ type WorkerBridgeServer interface {
 	UnpairWorker(context.Context, *UnpairWorkerRequest) (*UnpairWorkerResponse, error)
 	Heartbeat(context.Context, *WorkerHeartbeat) (*WorkerHeartbeatResponse, error)
 	GoingOffline(context.Context, *WorkerOfflineRequest) (*WorkerOfflineResponse, error)
+	PrepareWorkspace(context.Context, *PrepareWorkspaceRequest) (*PrepareWorkspaceResponse, error)
 	mustEmbedUnimplementedWorkerBridgeServer()
 }
 
@@ -160,6 +173,9 @@ func (UnimplementedWorkerBridgeServer) Heartbeat(context.Context, *WorkerHeartbe
 }
 func (UnimplementedWorkerBridgeServer) GoingOffline(context.Context, *WorkerOfflineRequest) (*WorkerOfflineResponse, error) {
 	return nil, status.Error(codes.Unimplemented, "method GoingOffline not implemented")
+}
+func (UnimplementedWorkerBridgeServer) PrepareWorkspace(context.Context, *PrepareWorkspaceRequest) (*PrepareWorkspaceResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method PrepareWorkspace not implemented")
 }
 func (UnimplementedWorkerBridgeServer) mustEmbedUnimplementedWorkerBridgeServer() {}
 func (UnimplementedWorkerBridgeServer) testEmbeddedByValue()                      {}
@@ -308,6 +324,24 @@ func _WorkerBridge_GoingOffline_Handler(srv interface{}, ctx context.Context, de
 	return interceptor(ctx, in, info, handler)
 }
 
+func _WorkerBridge_PrepareWorkspace_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(PrepareWorkspaceRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(WorkerBridgeServer).PrepareWorkspace(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: WorkerBridge_PrepareWorkspace_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(WorkerBridgeServer).PrepareWorkspace(ctx, req.(*PrepareWorkspaceRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
 // WorkerBridge_ServiceDesc is the grpc.ServiceDesc for WorkerBridge service.
 // It's only intended for direct use with grpc.RegisterService,
 // and not to be introspected or modified (even as a copy)
@@ -343,7 +377,11 @@ var WorkerBridge_ServiceDesc = grpc.ServiceDesc{
 			MethodName: "GoingOffline",
 			Handler:    _WorkerBridge_GoingOffline_Handler,
 		},
+		{
+			MethodName: "PrepareWorkspace",
+			Handler:    _WorkerBridge_PrepareWorkspace_Handler,
+		},
 	},
 	Streams:  []grpc.StreamDesc{},
-	Metadata: "protocol/gradient.proto",
+	Metadata: "gradient.proto",
 }

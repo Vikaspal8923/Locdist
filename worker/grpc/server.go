@@ -8,6 +8,7 @@ import (
 	"github.com/Vikaspal8923/Locdist/worker/internal/config"
 	"github.com/Vikaspal8923/Locdist/worker/pairing"
 	"github.com/Vikaspal8923/Locdist/worker/runtimebridge"
+	"github.com/Vikaspal8923/Locdist/worker/workspace"
 	grpcserver "google.golang.org/grpc"
 )
 
@@ -31,12 +32,13 @@ func NewServer(
 		return nil, err
 	}
 
-	grpcSrv := grpcserver.NewServer()
+	grpcSrv := grpcserver.NewServer(grpcserver.MaxRecvMsgSize(workspace.MaxRPCBytes))
 
 	workerBridgeServer := NewWorkerBridgeServer(
 		runtimeBridge,
 		pairingManager,
 	)
+	workerBridgeServer.SetWorkspaceManager(workspace.New(cfg.WorkspaceRoot))
 
 	gradient.RegisterWorkerBridgeServer(
 		grpcSrv,

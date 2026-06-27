@@ -9,9 +9,10 @@ type Config struct {
 	WorkerID   string `json:"worker_id"`
 	WorkerName string `json:"worker_name"`
 
-	Port        string `json:"grpc_port"`
-	AppPort     string `json:"app_port"`
-	PairingPath string `json:"pairing_path"`
+	Port          string `json:"grpc_port"`
+	AppPort       string `json:"app_port"`
+	PairingPath   string `json:"pairing_path"`
+	WorkspaceRoot string `json:"workspace_root"`
 
 	Host       string `json:"host"`
 	MasterHost string `json:"master_host"`
@@ -20,11 +21,12 @@ type Config struct {
 
 func Default() Config {
 	return Config{
-		WorkerName:  "LDGCC Worker",
-		Port:        "50051",
-		AppPort:     "5050",
-		PairingPath: "pairing.json",
-		Host:        "127.0.0.1",
+		WorkerName:    "LDGCC Worker",
+		Port:          "50051",
+		AppPort:       "5050",
+		PairingPath:   "pairing.json",
+		WorkspaceRoot: "workspaces",
+		Host:          "127.0.0.1",
 
 		MasterHost: "127.0.0.1",
 		MasterPort: "60051",

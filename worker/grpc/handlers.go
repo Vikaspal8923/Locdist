@@ -7,6 +7,7 @@ import (
 	gradient "github.com/Vikaspal8923/Locdist/worker/generated/gradient"
 	"github.com/Vikaspal8923/Locdist/worker/pairing"
 	"github.com/Vikaspal8923/Locdist/worker/runtimebridge"
+	"github.com/Vikaspal8923/Locdist/worker/workspace"
 )
 
 type WorkerBridgeServer struct {
@@ -14,6 +15,7 @@ type WorkerBridgeServer struct {
 
 	runtimeBridge *runtimebridge.Service
 	pairing       *pairing.Manager
+	workspace     *workspace.Manager
 }
 
 func NewWorkerBridgeServer(
@@ -28,6 +30,25 @@ func NewWorkerBridgeServer(
 		runtimeBridge: runtimeBridge,
 		pairing:       manager,
 	}
+}
+
+func (s *WorkerBridgeServer) SetWorkspaceManager(manager *workspace.Manager) {
+	s.workspace = manager
+}
+
+func (s *WorkerBridgeServer) PrepareWorkspace(ctx context.Context, request *gradient.PrepareWorkspaceRequest) (*gradient.PrepareWorkspaceResponse, error) {
+	if s.pairing == nil || s.workspace == nil {
+		return nil, fmt.Errorf("workspace preparation is not available")
+	}
+	record, ok := s.pairing.Record()
+	if !ok || record.WorkerID != request.GetWorkerId() || record.MasterID != request.GetMasterId() || record.PairingToken != request.GetPairingToken() {
+		return nil, fmt.Errorf("Master pairing credentials are invalid")
+	}
+	path, err := s.workspace.Prepare(request.GetJobId(), request.GetEntrypoint(), request.GetDatasetPath(), request.GetWorkspaceZip())
+	if err != nil {
+		return nil, err
+	}
+	return &gradient.PrepareWorkspaceResponse{JobId: request.GetJobId(), Prepared: true, WorkspacePath: path}, nil
 }
 
 func (s *WorkerBridgeServer) SynchronizeGradients(
