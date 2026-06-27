@@ -2,6 +2,7 @@ package masterclient
 
 import (
 	"context"
+	"time"
 
 	gradient "github.com/Vikaspal8923/Locdist/worker/generated/gradient"
 	"github.com/Vikaspal8923/Locdist/worker/internal/config"
@@ -14,6 +15,8 @@ type Client struct {
 	conn   *grpcclient.ClientConn
 	client gradient.WorkerBridgeClient
 }
+
+const controlRPCTimeout = 5 * time.Second
 
 func New(
 	cfg config.Config,
@@ -42,6 +45,32 @@ func New(
 		conn:   conn,
 		client: client,
 	}, nil
+}
+
+func (c *Client) Register(
+	request *gradient.RegisterWorkerRequest,
+) (*gradient.RegisterWorkerResponse, error) {
+
+	ctx, cancel := context.WithTimeout(
+		context.Background(),
+		controlRPCTimeout,
+	)
+	defer cancel()
+
+	return c.client.RegisterWorker(ctx, request)
+}
+
+func (c *Client) UpdateStatus(
+	request *gradient.WorkerStatusUpdate,
+) (*gradient.WorkerStatusResponse, error) {
+
+	ctx, cancel := context.WithTimeout(
+		context.Background(),
+		controlRPCTimeout,
+	)
+	defer cancel()
+
+	return c.client.UpdateWorkerStatus(ctx, request)
 }
 
 func (c *Client) Synchronize(

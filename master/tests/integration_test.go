@@ -10,6 +10,7 @@ import (
 	gradient "github.com/Vikaspal8923/Locdist/master/generated/gradient"
 	mastergrpc "github.com/Vikaspal8923/Locdist/master/grpc"
 	"github.com/Vikaspal8923/Locdist/master/jobs"
+	"github.com/Vikaspal8923/Locdist/master/workers"
 
 	grpcclient "google.golang.org/grpc"
 	grpcserver "google.golang.org/grpc"
@@ -38,6 +39,7 @@ func TestMasterIntegration(
 	coordinatorService := coordinator.New(
 		aggregatorService,
 		jobManager,
+		workers.New(),
 	)
 
 	if err := coordinatorService.StartTraining(

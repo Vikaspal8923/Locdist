@@ -31,3 +31,19 @@ func (s *MasterServer) SynchronizeGradients(
 		request,
 	)
 }
+
+func (s *MasterServer) RegisterWorker(
+	ctx context.Context,
+	request *gradient.RegisterWorkerRequest,
+) (*gradient.RegisterWorkerResponse, error) {
+
+	return s.coordinator.RegisterWorker(request)
+}
+
+func (s *MasterServer) UpdateWorkerStatus(
+	ctx context.Context,
+	request *gradient.WorkerStatusUpdate,
+) (*gradient.WorkerStatusResponse, error) {
+
+	return s.coordinator.UpdateWorkerStatus(request)
+}

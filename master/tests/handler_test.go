@@ -8,6 +8,7 @@ import (
 	"github.com/Vikaspal8923/Locdist/master/coordinator"
 	mastergrpc "github.com/Vikaspal8923/Locdist/master/grpc"
 	"github.com/Vikaspal8923/Locdist/master/jobs"
+	"github.com/Vikaspal8923/Locdist/master/workers"
 )
 
 func TestHandlerSynchronizeGradients(
@@ -21,6 +22,7 @@ func TestHandlerSynchronizeGradients(
 	coordinatorService := coordinator.New(
 		aggregatorService,
 		jobManager,
+		workers.New(),
 	)
 
 	if err := coordinatorService.StartTraining(

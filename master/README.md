@@ -1183,6 +1183,96 @@ This completes real distributed gradient synchronization inside the Master Aggre
 
 ---
 
+# Master Phase 3
+
+## Goal
+
+Master Phase 3 adds the first Worker lifecycle foundation:
+
+```text
+Worker starts
+    ↓
+RegisterWorker
+    ↓
+Master stores Worker metadata
+    ↓
+UpdateWorkerStatus(IDLE)
+    ↓
+Master stores current status
+```
+
+Worker discovery, approval UI, heartbeats, scheduling, persistence, and
+training launch remain outside this phase.
+
+## Architecture
+
+```text
+Worker Service
+    ↓ RegisterWorker / UpdateWorkerStatus
+Master gRPC Handler
+    ↓
+Coordinator
+    ↓
+Worker Manager
+    ↓
+In-memory Worker State
+```
+
+The Worker Manager owns a concurrency-safe map keyed by `worker_id`.
+Registering an existing ID refreshes its host and gRPC port instead of
+creating a duplicate. Status updates are accepted only for registered
+workers.
+
+Supported statuses:
+
+```text
+IDLE
+PREPARING
+INSTALLING
+RUNNING
+COMPLETED
+FAILED
+```
+
+`UNKNOWN` is reserved as the protobuf zero value and is not accepted as a
+reported lifecycle status.
+
+## File Responsibilities
+
+`protocol/gradient.proto`
+
+Defines Worker status values, registration messages, status messages, and
+the two control RPCs.
+
+`workers/state.go`
+
+Defines the metadata and lifecycle state stored for one Worker.
+
+`workers/manager.go`
+
+Validates registrations and status updates, refreshes duplicate
+registrations, and provides concurrency-safe Worker lookup.
+
+`coordinator/coordinator.go`
+
+Coordinates registration and status requests between gRPC handlers and the
+Worker Manager.
+
+`grpc/handlers.go`
+
+Exposes `RegisterWorker` and `UpdateWorkerStatus`.
+
+`cmd/master/main.go`
+
+Creates the Worker Manager and injects it into the Coordinator.
+
+`tests/workers_test.go`
+
+Covers registration, status changes, duplicate replacement, and invalid
+status updates.
+
+---
+
 # Master Phase Roadmap
 
 ## Master Phase 2
@@ -1212,14 +1302,17 @@ Real Master-side gradient synchronization.
 Status:
 
 ```text
-NOT STARTED
+COMPLETE
 ```
 
-Expected Goal:
+Completed Goal:
 
 * Worker Registration
-* Heartbeats
-* Worker Lifecycle Management
+* Worker Status Foundation
+* Duplicate Registration Refresh
+* In-Memory Worker Registry
+
+Heartbeats and failure detection are deferred to a later phase.
 
 ---
 
@@ -1268,6 +1361,15 @@ Master Phase 1
     ✓ COMPLETE
 
 Master Phase 2
+    ✓ COMPLETE
+
+Master Phase 3
+    ✓ COMPLETE
+
+Worker Registration
+    ✓ COMPLETE
+
+Worker Status Foundation
     ✓ COMPLETE
 
 Identity Aggregation

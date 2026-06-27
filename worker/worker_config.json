@@ -1,5 +1,7 @@
 {
+  "worker_id": "worker-a",
   "grpc_port": "50051",
+  "host": "127.0.0.1",
 
   "master_host": "127.0.0.1",
   "master_port": "60051"

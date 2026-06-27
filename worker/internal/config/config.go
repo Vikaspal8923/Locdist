@@ -6,8 +6,11 @@ import (
 )
 
 type Config struct {
+	WorkerID string `json:"worker_id"`
+
 	Port string `json:"grpc_port"`
 
+	Host       string `json:"host"`
 	MasterHost string `json:"master_host"`
 	MasterPort string `json:"master_port"`
 }
@@ -15,6 +18,7 @@ type Config struct {
 func Default() Config {
 	return Config{
 		Port: "50051",
+		Host: "127.0.0.1",
 
 		MasterHost: "127.0.0.1",
 		MasterPort: "60051",

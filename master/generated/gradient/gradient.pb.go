@@ -21,6 +21,67 @@ const (
 	_ = protoimpl.EnforceVersion(protoimpl.MaxVersion - 20)
 )
 
+type WorkerStatus int32
+
+const (
+	WorkerStatus_WORKER_STATUS_UNKNOWN    WorkerStatus = 0
+	WorkerStatus_WORKER_STATUS_IDLE       WorkerStatus = 1
+	WorkerStatus_WORKER_STATUS_PREPARING  WorkerStatus = 2
+	WorkerStatus_WORKER_STATUS_INSTALLING WorkerStatus = 3
+	WorkerStatus_WORKER_STATUS_RUNNING    WorkerStatus = 4
+	WorkerStatus_WORKER_STATUS_COMPLETED  WorkerStatus = 5
+	WorkerStatus_WORKER_STATUS_FAILED     WorkerStatus = 6
+)
+
+// Enum value maps for WorkerStatus.
+var (
+	WorkerStatus_name = map[int32]string{
+		0: "WORKER_STATUS_UNKNOWN",
+		1: "WORKER_STATUS_IDLE",
+		2: "WORKER_STATUS_PREPARING",
+		3: "WORKER_STATUS_INSTALLING",
+		4: "WORKER_STATUS_RUNNING",
+		5: "WORKER_STATUS_COMPLETED",
+		6: "WORKER_STATUS_FAILED",
+	}
+	WorkerStatus_value = map[string]int32{
+		"WORKER_STATUS_UNKNOWN":    0,
+		"WORKER_STATUS_IDLE":       1,
+		"WORKER_STATUS_PREPARING":  2,
+		"WORKER_STATUS_INSTALLING": 3,
+		"WORKER_STATUS_RUNNING":    4,
+		"WORKER_STATUS_COMPLETED":  5,
+		"WORKER_STATUS_FAILED":     6,
+	}
+)
+
+func (x WorkerStatus) Enum() *WorkerStatus {
+	p := new(WorkerStatus)
+	*p = x
+	return p
+}
+
+func (x WorkerStatus) String() string {
+	return protoimpl.X.EnumStringOf(x.Descriptor(), protoreflect.EnumNumber(x))
+}
+
+func (WorkerStatus) Descriptor() protoreflect.EnumDescriptor {
+	return file_protocol_gradient_proto_enumTypes[0].Descriptor()
+}
+
+func (WorkerStatus) Type() protoreflect.EnumType {
+	return &file_protocol_gradient_proto_enumTypes[0]
+}
+
+func (x WorkerStatus) Number() protoreflect.EnumNumber {
+	return protoreflect.EnumNumber(x)
+}
+
+// Deprecated: Use WorkerStatus.Descriptor instead.
+func (WorkerStatus) EnumDescriptor() ([]byte, []int) {
+	return file_protocol_gradient_proto_rawDescGZIP(), []int{0}
+}
+
 type ParameterMetadata struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	Name          string                 `protobuf:"bytes,1,opt,name=name,proto3" json:"name,omitempty"`
@@ -301,6 +362,230 @@ func (x *AggregatedGradientResponse) GetChunks() []*GradientChunk {
 	return nil
 }
 
+type RegisterWorkerRequest struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	WorkerId      string                 `protobuf:"bytes,1,opt,name=worker_id,json=workerId,proto3" json:"worker_id,omitempty"`
+	Host          string                 `protobuf:"bytes,2,opt,name=host,proto3" json:"host,omitempty"`
+	GrpcPort      string                 `protobuf:"bytes,3,opt,name=grpc_port,json=grpcPort,proto3" json:"grpc_port,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *RegisterWorkerRequest) Reset() {
+	*x = RegisterWorkerRequest{}
+	mi := &file_protocol_gradient_proto_msgTypes[4]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *RegisterWorkerRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*RegisterWorkerRequest) ProtoMessage() {}
+
+func (x *RegisterWorkerRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_protocol_gradient_proto_msgTypes[4]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use RegisterWorkerRequest.ProtoReflect.Descriptor instead.
+func (*RegisterWorkerRequest) Descriptor() ([]byte, []int) {
+	return file_protocol_gradient_proto_rawDescGZIP(), []int{4}
+}
+
+func (x *RegisterWorkerRequest) GetWorkerId() string {
+	if x != nil {
+		return x.WorkerId
+	}
+	return ""
+}
+
+func (x *RegisterWorkerRequest) GetHost() string {
+	if x != nil {
+		return x.Host
+	}
+	return ""
+}
+
+func (x *RegisterWorkerRequest) GetGrpcPort() string {
+	if x != nil {
+		return x.GrpcPort
+	}
+	return ""
+}
+
+type RegisterWorkerResponse struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	WorkerId      string                 `protobuf:"bytes,1,opt,name=worker_id,json=workerId,proto3" json:"worker_id,omitempty"`
+	Registered    bool                   `protobuf:"varint,2,opt,name=registered,proto3" json:"registered,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *RegisterWorkerResponse) Reset() {
+	*x = RegisterWorkerResponse{}
+	mi := &file_protocol_gradient_proto_msgTypes[5]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *RegisterWorkerResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*RegisterWorkerResponse) ProtoMessage() {}
+
+func (x *RegisterWorkerResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_protocol_gradient_proto_msgTypes[5]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use RegisterWorkerResponse.ProtoReflect.Descriptor instead.
+func (*RegisterWorkerResponse) Descriptor() ([]byte, []int) {
+	return file_protocol_gradient_proto_rawDescGZIP(), []int{5}
+}
+
+func (x *RegisterWorkerResponse) GetWorkerId() string {
+	if x != nil {
+		return x.WorkerId
+	}
+	return ""
+}
+
+func (x *RegisterWorkerResponse) GetRegistered() bool {
+	if x != nil {
+		return x.Registered
+	}
+	return false
+}
+
+type WorkerStatusUpdate struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	WorkerId      string                 `protobuf:"bytes,1,opt,name=worker_id,json=workerId,proto3" json:"worker_id,omitempty"`
+	Status        WorkerStatus           `protobuf:"varint,2,opt,name=status,proto3,enum=locdist.v1.WorkerStatus" json:"status,omitempty"`
+	JobId         string                 `protobuf:"bytes,3,opt,name=job_id,json=jobId,proto3" json:"job_id,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *WorkerStatusUpdate) Reset() {
+	*x = WorkerStatusUpdate{}
+	mi := &file_protocol_gradient_proto_msgTypes[6]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *WorkerStatusUpdate) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*WorkerStatusUpdate) ProtoMessage() {}
+
+func (x *WorkerStatusUpdate) ProtoReflect() protoreflect.Message {
+	mi := &file_protocol_gradient_proto_msgTypes[6]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use WorkerStatusUpdate.ProtoReflect.Descriptor instead.
+func (*WorkerStatusUpdate) Descriptor() ([]byte, []int) {
+	return file_protocol_gradient_proto_rawDescGZIP(), []int{6}
+}
+
+func (x *WorkerStatusUpdate) GetWorkerId() string {
+	if x != nil {
+		return x.WorkerId
+	}
+	return ""
+}
+
+func (x *WorkerStatusUpdate) GetStatus() WorkerStatus {
+	if x != nil {
+		return x.Status
+	}
+	return WorkerStatus_WORKER_STATUS_UNKNOWN
+}
+
+func (x *WorkerStatusUpdate) GetJobId() string {
+	if x != nil {
+		return x.JobId
+	}
+	return ""
+}
+
+type WorkerStatusResponse struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	WorkerId      string                 `protobuf:"bytes,1,opt,name=worker_id,json=workerId,proto3" json:"worker_id,omitempty"`
+	Status        WorkerStatus           `protobuf:"varint,2,opt,name=status,proto3,enum=locdist.v1.WorkerStatus" json:"status,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *WorkerStatusResponse) Reset() {
+	*x = WorkerStatusResponse{}
+	mi := &file_protocol_gradient_proto_msgTypes[7]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *WorkerStatusResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*WorkerStatusResponse) ProtoMessage() {}
+
+func (x *WorkerStatusResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_protocol_gradient_proto_msgTypes[7]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use WorkerStatusResponse.ProtoReflect.Descriptor instead.
+func (*WorkerStatusResponse) Descriptor() ([]byte, []int) {
+	return file_protocol_gradient_proto_rawDescGZIP(), []int{7}
+}
+
+func (x *WorkerStatusResponse) GetWorkerId() string {
+	if x != nil {
+		return x.WorkerId
+	}
+	return ""
+}
+
+func (x *WorkerStatusResponse) GetStatus() WorkerStatus {
+	if x != nil {
+		return x.Status
+	}
+	return WorkerStatus_WORKER_STATUS_UNKNOWN
+}
+
 var File_protocol_gradient_proto protoreflect.FileDescriptor
 
 const file_protocol_gradient_proto_rawDesc = "" +
@@ -327,9 +612,35 @@ const file_protocol_gradient_proto_rawDesc = "" +
 	"\x06job_id\x18\x02 \x01(\tR\x05jobId\x123\n" +
 	"\x15participating_workers\x18\x03 \x01(\rR\x14participatingWorkers\x12+\n" +
 	"\x11aggregation_round\x18\x04 \x01(\x04R\x10aggregationRound\x121\n" +
-	"\x06chunks\x18\x05 \x03(\v2\x19.locdist.v1.GradientChunkR\x06chunks2n\n" +
+	"\x06chunks\x18\x05 \x03(\v2\x19.locdist.v1.GradientChunkR\x06chunks\"e\n" +
+	"\x15RegisterWorkerRequest\x12\x1b\n" +
+	"\tworker_id\x18\x01 \x01(\tR\bworkerId\x12\x12\n" +
+	"\x04host\x18\x02 \x01(\tR\x04host\x12\x1b\n" +
+	"\tgrpc_port\x18\x03 \x01(\tR\bgrpcPort\"U\n" +
+	"\x16RegisterWorkerResponse\x12\x1b\n" +
+	"\tworker_id\x18\x01 \x01(\tR\bworkerId\x12\x1e\n" +
+	"\n" +
+	"registered\x18\x02 \x01(\bR\n" +
+	"registered\"z\n" +
+	"\x12WorkerStatusUpdate\x12\x1b\n" +
+	"\tworker_id\x18\x01 \x01(\tR\bworkerId\x120\n" +
+	"\x06status\x18\x02 \x01(\x0e2\x18.locdist.v1.WorkerStatusR\x06status\x12\x15\n" +
+	"\x06job_id\x18\x03 \x01(\tR\x05jobId\"e\n" +
+	"\x14WorkerStatusResponse\x12\x1b\n" +
+	"\tworker_id\x18\x01 \x01(\tR\bworkerId\x120\n" +
+	"\x06status\x18\x02 \x01(\x0e2\x18.locdist.v1.WorkerStatusR\x06status*\xce\x01\n" +
+	"\fWorkerStatus\x12\x19\n" +
+	"\x15WORKER_STATUS_UNKNOWN\x10\x00\x12\x16\n" +
+	"\x12WORKER_STATUS_IDLE\x10\x01\x12\x1b\n" +
+	"\x17WORKER_STATUS_PREPARING\x10\x02\x12\x1c\n" +
+	"\x18WORKER_STATUS_INSTALLING\x10\x03\x12\x19\n" +
+	"\x15WORKER_STATUS_RUNNING\x10\x04\x12\x1b\n" +
+	"\x17WORKER_STATUS_COMPLETED\x10\x05\x12\x18\n" +
+	"\x14WORKER_STATUS_FAILED\x10\x062\x9f\x02\n" +
 	"\fWorkerBridge\x12^\n" +
-	"\x14SynchronizeGradients\x12\x1e.locdist.v1.GradientSubmission\x1a&.locdist.v1.AggregatedGradientResponseB\x14Z\x12generated/gradientb\x06proto3"
+	"\x14SynchronizeGradients\x12\x1e.locdist.v1.GradientSubmission\x1a&.locdist.v1.AggregatedGradientResponse\x12W\n" +
+	"\x0eRegisterWorker\x12!.locdist.v1.RegisterWorkerRequest\x1a\".locdist.v1.RegisterWorkerResponse\x12V\n" +
+	"\x12UpdateWorkerStatus\x12\x1e.locdist.v1.WorkerStatusUpdate\x1a .locdist.v1.WorkerStatusResponseB\x14Z\x12generated/gradientb\x06proto3"
 
 var (
 	file_protocol_gradient_proto_rawDescOnce sync.Once
@@ -343,24 +654,36 @@ func file_protocol_gradient_proto_rawDescGZIP() []byte {
 	return file_protocol_gradient_proto_rawDescData
 }
 
-var file_protocol_gradient_proto_msgTypes = make([]protoimpl.MessageInfo, 4)
+var file_protocol_gradient_proto_enumTypes = make([]protoimpl.EnumInfo, 1)
+var file_protocol_gradient_proto_msgTypes = make([]protoimpl.MessageInfo, 8)
 var file_protocol_gradient_proto_goTypes = []any{
-	(*ParameterMetadata)(nil),          // 0: locdist.v1.ParameterMetadata
-	(*GradientChunk)(nil),              // 1: locdist.v1.GradientChunk
-	(*GradientSubmission)(nil),         // 2: locdist.v1.GradientSubmission
-	(*AggregatedGradientResponse)(nil), // 3: locdist.v1.AggregatedGradientResponse
+	(WorkerStatus)(0),                  // 0: locdist.v1.WorkerStatus
+	(*ParameterMetadata)(nil),          // 1: locdist.v1.ParameterMetadata
+	(*GradientChunk)(nil),              // 2: locdist.v1.GradientChunk
+	(*GradientSubmission)(nil),         // 3: locdist.v1.GradientSubmission
+	(*AggregatedGradientResponse)(nil), // 4: locdist.v1.AggregatedGradientResponse
+	(*RegisterWorkerRequest)(nil),      // 5: locdist.v1.RegisterWorkerRequest
+	(*RegisterWorkerResponse)(nil),     // 6: locdist.v1.RegisterWorkerResponse
+	(*WorkerStatusUpdate)(nil),         // 7: locdist.v1.WorkerStatusUpdate
+	(*WorkerStatusResponse)(nil),       // 8: locdist.v1.WorkerStatusResponse
 }
 var file_protocol_gradient_proto_depIdxs = []int32{
-	0, // 0: locdist.v1.GradientChunk.metadata:type_name -> locdist.v1.ParameterMetadata
-	1, // 1: locdist.v1.GradientSubmission.chunks:type_name -> locdist.v1.GradientChunk
-	1, // 2: locdist.v1.AggregatedGradientResponse.chunks:type_name -> locdist.v1.GradientChunk
-	2, // 3: locdist.v1.WorkerBridge.SynchronizeGradients:input_type -> locdist.v1.GradientSubmission
-	3, // 4: locdist.v1.WorkerBridge.SynchronizeGradients:output_type -> locdist.v1.AggregatedGradientResponse
-	4, // [4:5] is the sub-list for method output_type
-	3, // [3:4] is the sub-list for method input_type
-	3, // [3:3] is the sub-list for extension type_name
-	3, // [3:3] is the sub-list for extension extendee
-	0, // [0:3] is the sub-list for field type_name
+	1, // 0: locdist.v1.GradientChunk.metadata:type_name -> locdist.v1.ParameterMetadata
+	2, // 1: locdist.v1.GradientSubmission.chunks:type_name -> locdist.v1.GradientChunk
+	2, // 2: locdist.v1.AggregatedGradientResponse.chunks:type_name -> locdist.v1.GradientChunk
+	0, // 3: locdist.v1.WorkerStatusUpdate.status:type_name -> locdist.v1.WorkerStatus
+	0, // 4: locdist.v1.WorkerStatusResponse.status:type_name -> locdist.v1.WorkerStatus
+	3, // 5: locdist.v1.WorkerBridge.SynchronizeGradients:input_type -> locdist.v1.GradientSubmission
+	5, // 6: locdist.v1.WorkerBridge.RegisterWorker:input_type -> locdist.v1.RegisterWorkerRequest
+	7, // 7: locdist.v1.WorkerBridge.UpdateWorkerStatus:input_type -> locdist.v1.WorkerStatusUpdate
+	4, // 8: locdist.v1.WorkerBridge.SynchronizeGradients:output_type -> locdist.v1.AggregatedGradientResponse
+	6, // 9: locdist.v1.WorkerBridge.RegisterWorker:output_type -> locdist.v1.RegisterWorkerResponse
+	8, // 10: locdist.v1.WorkerBridge.UpdateWorkerStatus:output_type -> locdist.v1.WorkerStatusResponse
+	8, // [8:11] is the sub-list for method output_type
+	5, // [5:8] is the sub-list for method input_type
+	5, // [5:5] is the sub-list for extension type_name
+	5, // [5:5] is the sub-list for extension extendee
+	0, // [0:5] is the sub-list for field type_name
 }
 
 func init() { file_protocol_gradient_proto_init() }
@@ -373,13 +696,14 @@ func file_protocol_gradient_proto_init() {
 		File: protoimpl.DescBuilder{
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_protocol_gradient_proto_rawDesc), len(file_protocol_gradient_proto_rawDesc)),
-			NumEnums:      0,
-			NumMessages:   4,
+			NumEnums:      1,
+			NumMessages:   8,
 			NumExtensions: 0,
 			NumServices:   1,
 		},
 		GoTypes:           file_protocol_gradient_proto_goTypes,
 		DependencyIndexes: file_protocol_gradient_proto_depIdxs,
+		EnumInfos:         file_protocol_gradient_proto_enumTypes,
 		MessageInfos:      file_protocol_gradient_proto_msgTypes,
 	}.Build()
 	File_protocol_gradient_proto = out.File

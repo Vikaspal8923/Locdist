@@ -20,6 +20,8 @@ const _ = grpc.SupportPackageIsVersion9
 
 const (
 	WorkerBridge_SynchronizeGradients_FullMethodName = "/locdist.v1.WorkerBridge/SynchronizeGradients"
+	WorkerBridge_RegisterWorker_FullMethodName       = "/locdist.v1.WorkerBridge/RegisterWorker"
+	WorkerBridge_UpdateWorkerStatus_FullMethodName   = "/locdist.v1.WorkerBridge/UpdateWorkerStatus"
 )
 
 // WorkerBridgeClient is the client API for WorkerBridge service.
@@ -27,6 +29,8 @@ const (
 // For semantics around ctx use and closing/ending streaming RPCs, please refer to https://pkg.go.dev/google.golang.org/grpc/?tab=doc#ClientConn.NewStream.
 type WorkerBridgeClient interface {
 	SynchronizeGradients(ctx context.Context, in *GradientSubmission, opts ...grpc.CallOption) (*AggregatedGradientResponse, error)
+	RegisterWorker(ctx context.Context, in *RegisterWorkerRequest, opts ...grpc.CallOption) (*RegisterWorkerResponse, error)
+	UpdateWorkerStatus(ctx context.Context, in *WorkerStatusUpdate, opts ...grpc.CallOption) (*WorkerStatusResponse, error)
 }
 
 type workerBridgeClient struct {
@@ -47,11 +51,33 @@ func (c *workerBridgeClient) SynchronizeGradients(ctx context.Context, in *Gradi
 	return out, nil
 }
 
+func (c *workerBridgeClient) RegisterWorker(ctx context.Context, in *RegisterWorkerRequest, opts ...grpc.CallOption) (*RegisterWorkerResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(RegisterWorkerResponse)
+	err := c.cc.Invoke(ctx, WorkerBridge_RegisterWorker_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *workerBridgeClient) UpdateWorkerStatus(ctx context.Context, in *WorkerStatusUpdate, opts ...grpc.CallOption) (*WorkerStatusResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(WorkerStatusResponse)
+	err := c.cc.Invoke(ctx, WorkerBridge_UpdateWorkerStatus_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 // WorkerBridgeServer is the server API for WorkerBridge service.
 // All implementations must embed UnimplementedWorkerBridgeServer
 // for forward compatibility.
 type WorkerBridgeServer interface {
 	SynchronizeGradients(context.Context, *GradientSubmission) (*AggregatedGradientResponse, error)
+	RegisterWorker(context.Context, *RegisterWorkerRequest) (*RegisterWorkerResponse, error)
+	UpdateWorkerStatus(context.Context, *WorkerStatusUpdate) (*WorkerStatusResponse, error)
 	mustEmbedUnimplementedWorkerBridgeServer()
 }
 
@@ -64,6 +90,12 @@ type UnimplementedWorkerBridgeServer struct{}
 
 func (UnimplementedWorkerBridgeServer) SynchronizeGradients(context.Context, *GradientSubmission) (*AggregatedGradientResponse, error) {
 	return nil, status.Error(codes.Unimplemented, "method SynchronizeGradients not implemented")
+}
+func (UnimplementedWorkerBridgeServer) RegisterWorker(context.Context, *RegisterWorkerRequest) (*RegisterWorkerResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method RegisterWorker not implemented")
+}
+func (UnimplementedWorkerBridgeServer) UpdateWorkerStatus(context.Context, *WorkerStatusUpdate) (*WorkerStatusResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method UpdateWorkerStatus not implemented")
 }
 func (UnimplementedWorkerBridgeServer) mustEmbedUnimplementedWorkerBridgeServer() {}
 func (UnimplementedWorkerBridgeServer) testEmbeddedByValue()                      {}
@@ -104,6 +136,42 @@ func _WorkerBridge_SynchronizeGradients_Handler(srv interface{}, ctx context.Con
 	return interceptor(ctx, in, info, handler)
 }
 
+func _WorkerBridge_RegisterWorker_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(RegisterWorkerRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(WorkerBridgeServer).RegisterWorker(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: WorkerBridge_RegisterWorker_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(WorkerBridgeServer).RegisterWorker(ctx, req.(*RegisterWorkerRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _WorkerBridge_UpdateWorkerStatus_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(WorkerStatusUpdate)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(WorkerBridgeServer).UpdateWorkerStatus(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: WorkerBridge_UpdateWorkerStatus_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(WorkerBridgeServer).UpdateWorkerStatus(ctx, req.(*WorkerStatusUpdate))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
 // WorkerBridge_ServiceDesc is the grpc.ServiceDesc for WorkerBridge service.
 // It's only intended for direct use with grpc.RegisterService,
 // and not to be introspected or modified (even as a copy)
@@ -114,6 +182,14 @@ var WorkerBridge_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "SynchronizeGradients",
 			Handler:    _WorkerBridge_SynchronizeGradients_Handler,
+		},
+		{
+			MethodName: "RegisterWorker",
+			Handler:    _WorkerBridge_RegisterWorker_Handler,
+		},
+		{
+			MethodName: "UpdateWorkerStatus",
+			Handler:    _WorkerBridge_UpdateWorkerStatus_Handler,
 		},
 	},
 	Streams:  []grpc.StreamDesc{},

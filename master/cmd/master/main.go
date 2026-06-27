@@ -11,6 +11,7 @@ import (
 	"github.com/Vikaspal8923/Locdist/master/grpc"
 	"github.com/Vikaspal8923/Locdist/master/internal/config"
 	"github.com/Vikaspal8923/Locdist/master/jobs"
+	"github.com/Vikaspal8923/Locdist/master/workers"
 )
 
 func main() {
@@ -29,9 +30,12 @@ func main() {
 
 	jobManager := jobs.New()
 
+	workerManager := workers.New()
+
 	coordinatorService := coordinator.New(
 		aggregatorService,
 		jobManager,
+		workerManager,
 	)
 
 	server, err := grpc.NewServer(

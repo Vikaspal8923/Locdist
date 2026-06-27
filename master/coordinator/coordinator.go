@@ -6,22 +6,56 @@ import (
 	"github.com/Vikaspal8923/Locdist/master/aggregator"
 	gradient "github.com/Vikaspal8923/Locdist/master/generated/gradient"
 	"github.com/Vikaspal8923/Locdist/master/jobs"
+	"github.com/Vikaspal8923/Locdist/master/workers"
 )
 
 type Coordinator struct {
-	aggregator *aggregator.Service
-	jobManager *jobs.Manager
+	aggregator    *aggregator.Service
+	jobManager    *jobs.Manager
+	workerManager *workers.Manager
 }
 
 func New(
 	aggregatorService *aggregator.Service,
 	jobManager *jobs.Manager,
+	workerManager *workers.Manager,
 ) *Coordinator {
 
 	return &Coordinator{
-		aggregator: aggregatorService,
-		jobManager: jobManager,
+		aggregator:    aggregatorService,
+		jobManager:    jobManager,
+		workerManager: workerManager,
 	}
+}
+
+func (c *Coordinator) RegisterWorker(
+	request *gradient.RegisterWorkerRequest,
+) (*gradient.RegisterWorkerResponse, error) {
+
+	worker, err := c.workerManager.Register(request)
+	if err != nil {
+		return nil, err
+	}
+
+	return &gradient.RegisterWorkerResponse{
+		WorkerId:   worker.WorkerID,
+		Registered: true,
+	}, nil
+}
+
+func (c *Coordinator) UpdateWorkerStatus(
+	request *gradient.WorkerStatusUpdate,
+) (*gradient.WorkerStatusResponse, error) {
+
+	worker, err := c.workerManager.UpdateStatus(request)
+	if err != nil {
+		return nil, err
+	}
+
+	return &gradient.WorkerStatusResponse{
+		WorkerId: worker.WorkerID,
+		Status:   worker.Status,
+	}, nil
 }
 
 func (c *Coordinator) StartTraining(

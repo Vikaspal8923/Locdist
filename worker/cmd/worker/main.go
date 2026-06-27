@@ -6,10 +6,12 @@ import (
 	"os/signal"
 	"syscall"
 
+	gradient "github.com/Vikaspal8923/Locdist/worker/generated/gradient"
 	"github.com/Vikaspal8923/Locdist/worker/grpc"
 	"github.com/Vikaspal8923/Locdist/worker/internal/config"
 	"github.com/Vikaspal8923/Locdist/worker/masterclient"
 	"github.com/Vikaspal8923/Locdist/worker/runtimebridge"
+	"github.com/Vikaspal8923/Locdist/worker/status"
 )
 
 func main() {
@@ -34,6 +36,46 @@ func main() {
 		)
 	}
 	defer masterClient.Close()
+
+	registration, err := masterClient.Register(
+		&gradient.RegisterWorkerRequest{
+			WorkerId: cfg.WorkerID,
+			Host:     cfg.Host,
+			GrpcPort: cfg.Port,
+		},
+	)
+	if err != nil {
+		log.Fatalf(
+			"failed to register worker with master: %v",
+			err,
+		)
+	}
+
+	if !registration.GetRegistered() {
+		log.Fatalf(
+			"master rejected worker registration",
+		)
+	}
+
+	statusManager := status.New(
+		cfg.WorkerID,
+		masterClient,
+	)
+
+	if err := statusManager.Set(
+		gradient.WorkerStatus_WORKER_STATUS_IDLE,
+		"",
+	); err != nil {
+		log.Fatalf(
+			"failed to report initial worker status: %v",
+			err,
+		)
+	}
+
+	log.Printf(
+		"worker %s registered with master and is IDLE",
+		cfg.WorkerID,
+	)
 
 	runtimeBridge := runtimebridge.New(
 		masterClient,

@@ -69,6 +69,59 @@ message AggregatedGradientResponse {
   repeated GradientChunk chunks = 5;
 }
 
+// =====================================================
+// Worker Registration and Status
+// =====================================================
+
+enum WorkerStatus {
+
+  WORKER_STATUS_UNKNOWN = 0;
+
+  WORKER_STATUS_IDLE = 1;
+
+  WORKER_STATUS_PREPARING = 2;
+
+  WORKER_STATUS_INSTALLING = 3;
+
+  WORKER_STATUS_RUNNING = 4;
+
+  WORKER_STATUS_COMPLETED = 5;
+
+  WORKER_STATUS_FAILED = 6;
+}
+
+message RegisterWorkerRequest {
+
+  string worker_id = 1;
+
+  string host = 2;
+
+  string grpc_port = 3;
+}
+
+message RegisterWorkerResponse {
+
+  string worker_id = 1;
+
+  bool registered = 2;
+}
+
+message WorkerStatusUpdate {
+
+  string worker_id = 1;
+
+  WorkerStatus status = 2;
+
+  string job_id = 3;
+}
+
+message WorkerStatusResponse {
+
+  string worker_id = 1;
+
+  WorkerStatus status = 2;
+}
+
 
 // =====================================================
 // RPC Service
@@ -80,5 +133,17 @@ service WorkerBridge {
     GradientSubmission
   ) returns (
     AggregatedGradientResponse
+  );
+
+  rpc RegisterWorker(
+    RegisterWorkerRequest
+  ) returns (
+    RegisterWorkerResponse
+  );
+
+  rpc UpdateWorkerStatus(
+    WorkerStatusUpdate
+  ) returns (
+    WorkerStatusResponse
   );
 }

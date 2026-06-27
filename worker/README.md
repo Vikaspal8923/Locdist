@@ -1391,6 +1391,89 @@ This establishes the first complete end-to-end LDGCC execution path.
 
 ---
 
+# Worker Phase 3
+
+Worker Phase 3 adds config-based identity, Master registration, and Worker
+status reporting.
+
+## Startup Flow
+
+```text
+Worker reads worker_config.json
+    ↓
+Worker connects to Master
+    ↓
+RegisterWorker(worker_id, host, grpc_port)
+    ↓
+UpdateWorkerStatus(IDLE)
+    ↓
+Worker starts its Runtime-facing gRPC server
+```
+
+The Worker does not discover itself or receive an invitation in this phase.
+Its stable `worker_id` is supplied in `worker_config.json`. A later discovery
+and approval phase may create or update that configuration.
+
+## Configuration
+
+```json
+{
+  "worker_id": "worker-a",
+  "grpc_port": "50051",
+  "host": "127.0.0.1",
+  "master_host": "127.0.0.1",
+  "master_port": "60051"
+}
+```
+
+## Status Model
+
+The Worker status manager reports and stores:
+
+```text
+IDLE
+PREPARING
+INSTALLING
+RUNNING
+COMPLETED
+FAILED
+```
+
+Local status changes are committed only after Master acknowledges the
+update.
+
+## File Responsibilities
+
+`internal/config/config.go`
+
+Loads `worker_id`, the advertised Worker host and gRPC port, and the Master
+address.
+
+`masterclient/client.go`
+
+Provides registration and status RPCs with bounded control-call timeouts,
+alongside gradient synchronization.
+
+`status/manager.go`
+
+Owns the Worker's current status and reports transitions to Master.
+
+`cmd/worker/main.go`
+
+Registers the Worker, reports initial `IDLE`, and then starts the
+Runtime-facing service.
+
+`tests/masterclient_test.go`
+
+Tests registration, status, and gradient calls over a real local gRPC
+connection.
+
+`tests/status_test.go`
+
+Tests successful status storage and failed-report behavior.
+
+---
+
 ## Current Status
 
 ```text
@@ -1398,6 +1481,15 @@ Worker Phase 1
     ✓ COMPLETE
 
 Worker Phase 2
+    ✓ COMPLETE
+
+Worker Phase 3
+    ✓ COMPLETE
+
+Worker Registration
+    ✓ COMPLETE
+
+Worker Status Foundation
     ✓ COMPLETE
 
 MasterClient
