@@ -1,11 +1,14 @@
 package runtimebridge
 
 import (
+	"sync"
+
 	gradient "github.com/Vikaspal8923/Locdist/worker/generated/gradient"
 	internalerrors "github.com/Vikaspal8923/Locdist/worker/internal/errors"
 )
 
 type Service struct {
+	mu           sync.RWMutex
 	synchronizer Synchronizer
 }
 
@@ -38,7 +41,17 @@ func (s *Service) Synchronize(
 		return nil, internalerrors.ErrMissingChunks
 	}
 
-	return s.synchronizer.Synchronize(
+	s.mu.RLock()
+	synchronizer := s.synchronizer
+	s.mu.RUnlock()
+
+	return synchronizer.Synchronize(
 		request,
 	)
+}
+
+func (s *Service) SetSynchronizer(synchronizer Synchronizer) {
+	s.mu.Lock()
+	s.synchronizer = synchronizer
+	s.mu.Unlock()
 }

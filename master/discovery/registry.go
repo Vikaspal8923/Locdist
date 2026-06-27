@@ -36,6 +36,14 @@ func (r *Registry) Workers() []Worker {
 	return workers
 }
 
+func (r *Registry) Worker(instance string) (Worker, bool) {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+
+	worker, ok := r.workers[instance]
+	return worker, ok
+}
+
 func (r *Registry) Prune(before time.Time) []Worker {
 	r.mu.Lock()
 	defer r.mu.Unlock()

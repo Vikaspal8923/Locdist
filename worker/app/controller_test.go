@@ -3,6 +3,10 @@ package app
 import (
 	"fmt"
 	"testing"
+
+	gradient "github.com/Vikaspal8923/Locdist/worker/generated/gradient"
+	"github.com/Vikaspal8923/Locdist/worker/pairing"
+	"github.com/Vikaspal8923/Locdist/worker/service"
 )
 
 type fakeLifecycle struct {
@@ -24,8 +28,20 @@ func (f *fakeLifecycle) Stop() error {
 	return nil
 }
 
-func (f *fakeLifecycle) State() (bool, bool) {
-	return f.running, f.paired
+func (f *fakeLifecycle) AcceptPairing() error { return nil }
+func (f *fakeLifecycle) RejectPairing() error { return nil }
+func (f *fakeLifecycle) ResetPairing() error  { return nil }
+func (f *fakeLifecycle) State() (bool, service.ConnectionState) {
+	if f.paired {
+		return f.running, service.ConnectionPairedOnline
+	}
+	return f.running, service.ConnectionUnpaired
+}
+func (f *fakeLifecycle) PendingPairing() (*gradient.PairWorkerRequest, bool) {
+	return nil, false
+}
+func (f *fakeLifecycle) PairingRecord() (*pairing.Record, bool) {
+	return nil, false
 }
 
 func TestControllerStartsAndStopsWorker(t *testing.T) {

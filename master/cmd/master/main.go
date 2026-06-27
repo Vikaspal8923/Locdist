@@ -9,11 +9,13 @@ import (
 	"time"
 
 	"github.com/Vikaspal8923/Locdist/master/aggregator"
+	masterapp "github.com/Vikaspal8923/Locdist/master/app"
 	"github.com/Vikaspal8923/Locdist/master/coordinator"
 	"github.com/Vikaspal8923/Locdist/master/discovery"
 	"github.com/Vikaspal8923/Locdist/master/grpc"
 	"github.com/Vikaspal8923/Locdist/master/internal/config"
 	"github.com/Vikaspal8923/Locdist/master/jobs"
+	"github.com/Vikaspal8923/Locdist/master/pairing"
 	"github.com/Vikaspal8923/Locdist/master/workers"
 )
 
@@ -33,7 +35,12 @@ func main() {
 
 	jobManager := jobs.New()
 
-	workerManager := workers.New()
+	workerManager, err := workers.NewPersistent(
+		workers.NewFilePairingStore(cfg.PairingPath),
+	)
+	if err != nil {
+		log.Fatalf("failed to load Master pairings: %v", err)
+	}
 
 	discoveredWorkers := discovery.NewRegistry()
 	discoveryService := discovery.NewService(
@@ -47,6 +54,23 @@ func main() {
 	)
 	defer stopDiscovery()
 	go discoveryService.Run(discoveryContext)
+
+	pairingService := pairing.New(
+		cfg,
+		discoveredWorkers,
+		workerManager,
+	)
+	appController := masterapp.NewController(
+		discoveredWorkers,
+		pairingService,
+	)
+	appServer, err := masterapp.NewServer(
+		cfg.AppPort,
+		appController,
+	)
+	if err != nil {
+		log.Fatalf("failed to create Master App: %v", err)
+	}
 
 	coordinatorService := coordinator.New(
 		aggregatorService,
@@ -80,6 +104,13 @@ func main() {
 		}
 	}()
 
+	go func() {
+		log.Printf("LDGCC Master App available at %s", appServer.Address())
+		if err := appServer.Start(); err != nil {
+			log.Fatalf("Master App stopped: %v", err)
+		}
+	}()
+
 	shutdownSignal := make(
 		chan os.Signal,
 		1,
@@ -98,6 +129,9 @@ func main() {
 	)
 
 	stopDiscovery()
+	if err := appServer.Stop(); err != nil {
+		log.Printf("failed to stop Master App cleanly: %v", err)
+	}
 	server.Stop()
 
 	log.Println(

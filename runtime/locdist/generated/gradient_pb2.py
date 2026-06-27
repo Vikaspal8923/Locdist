@@ -24,13 +24,18 @@ _sym_db = _symbol_database.Default()
 
 
 
-DESCRIPTOR = _descriptor_pool.Default().AddSerializedFile(b'\n\x0egradient.proto\x12\nlocdist.v1\"N\n\x11ParameterMetadata\x12\x0c\n\x04name\x18\x01 \x01(\t\x12\r\n\x05shape\x18\x02 \x03(\x03\x12\r\n\x05numel\x18\x03 \x01(\x03\x12\r\n\x05\x64type\x18\x04 \x01(\t\"s\n\rGradientChunk\x12/\n\x08metadata\x18\x01 \x01(\x0b\x32\x1d.locdist.v1.ParameterMetadata\x12\x10\n\x08has_grad\x18\x02 \x01(\x08\x12\x0c\n\x04\x64\x61ta\x18\x03 \x01(\x0c\x12\x11\n\tbyte_size\x18\x04 \x01(\x04\"{\n\x12GradientSubmission\x12\x17\n\x0fruntime_version\x18\x01 \x01(\r\x12\x0e\n\x06job_id\x18\x02 \x01(\t\x12\x11\n\tworker_id\x18\x03 \x01(\t\x12)\n\x06\x63hunks\x18\x04 \x03(\x0b\x32\x19.locdist.v1.GradientChunk\"\xaa\x01\n\x1a\x41ggregatedGradientResponse\x12\x17\n\x0fruntime_version\x18\x01 \x01(\r\x12\x0e\n\x06job_id\x18\x02 \x01(\t\x12\x1d\n\x15participating_workers\x18\x03 \x01(\r\x12\x19\n\x11\x61ggregation_round\x18\x04 \x01(\x04\x12)\n\x06\x63hunks\x18\x05 \x03(\x0b\x32\x19.locdist.v1.GradientChunk2n\n\x0cWorkerBridge\x12^\n\x14SynchronizeGradients\x12\x1e.locdist.v1.GradientSubmission\x1a&.locdist.v1.AggregatedGradientResponseb\x06proto3')
+DESCRIPTOR = _descriptor_pool.Default().AddSerializedFile(b'\n\x0egradient.proto\x12\nlocdist.v1\"N\n\x11ParameterMetadata\x12\x0c\n\x04name\x18\x01 \x01(\t\x12\r\n\x05shape\x18\x02 \x03(\x03\x12\r\n\x05numel\x18\x03 \x01(\x03\x12\r\n\x05\x64type\x18\x04 \x01(\t\"s\n\rGradientChunk\x12/\n\x08metadata\x18\x01 \x01(\x0b\x32\x1d.locdist.v1.ParameterMetadata\x12\x10\n\x08has_grad\x18\x02 \x01(\x08\x12\x0c\n\x04\x64\x61ta\x18\x03 \x01(\x0c\x12\x11\n\tbyte_size\x18\x04 \x01(\x04\"{\n\x12GradientSubmission\x12\x17\n\x0fruntime_version\x18\x01 \x01(\r\x12\x0e\n\x06job_id\x18\x02 \x01(\t\x12\x11\n\tworker_id\x18\x03 \x01(\t\x12)\n\x06\x63hunks\x18\x04 \x03(\x0b\x32\x19.locdist.v1.GradientChunk\"\xaa\x01\n\x1a\x41ggregatedGradientResponse\x12\x17\n\x0fruntime_version\x18\x01 \x01(\r\x12\x0e\n\x06job_id\x18\x02 \x01(\t\x12\x1d\n\x15participating_workers\x18\x03 \x01(\r\x12\x19\n\x11\x61ggregation_round\x18\x04 \x01(\x04\x12)\n\x06\x63hunks\x18\x05 \x03(\x0b\x32\x19.locdist.v1.GradientChunk\"u\n\x15RegisterWorkerRequest\x12\x11\n\tworker_id\x18\x01 \x01(\t\x12\x0c\n\x04host\x18\x02 \x01(\t\x12\x11\n\tgrpc_port\x18\x03 \x01(\t\x12\x11\n\tmaster_id\x18\x04 \x01(\t\x12\x15\n\rpairing_token\x18\x05 \x01(\t\"\xa8\x01\n\x11PairWorkerRequest\x12\x12\n\nrequest_id\x18\x01 \x01(\t\x12\x11\n\tmaster_id\x18\x02 \x01(\t\x12\x13\n\x0bmaster_name\x18\x03 \x01(\t\x12\x13\n\x0bmaster_host\x18\x04 \x01(\t\x12\x18\n\x10master_grpc_port\x18\x05 \x01(\t\x12\x11\n\tworker_id\x18\x06 \x01(\t\x12\x15\n\rpairing_token\x18\x07 \x01(\t\"h\n\x12PairWorkerResponse\x12\x12\n\nrequest_id\x18\x01 \x01(\t\x12-\n\x08\x64\x65\x63ision\x18\x02 \x01(\x0e\x32\x1b.locdist.v1.PairingDecision\x12\x0f\n\x07message\x18\x03 \x01(\t\"R\n\x13UnpairWorkerRequest\x12\x11\n\tworker_id\x18\x01 \x01(\t\x12\x11\n\tmaster_id\x18\x02 \x01(\t\x12\x15\n\rpairing_token\x18\x03 \x01(\t\"(\n\x14UnpairWorkerResponse\x12\x10\n\x08unpaired\x18\x01 \x01(\x08\"?\n\x16RegisterWorkerResponse\x12\x11\n\tworker_id\x18\x01 \x01(\t\x12\x12\n\nregistered\x18\x02 \x01(\x08\"a\n\x12WorkerStatusUpdate\x12\x11\n\tworker_id\x18\x01 \x01(\t\x12(\n\x06status\x18\x02 \x01(\x0e\x32\x18.locdist.v1.WorkerStatus\x12\x0e\n\x06job_id\x18\x03 \x01(\t\"S\n\x14WorkerStatusResponse\x12\x11\n\tworker_id\x18\x01 \x01(\t\x12(\n\x06status\x18\x02 \x01(\x0e\x32\x18.locdist.v1.WorkerStatus*\xce\x01\n\x0cWorkerStatus\x12\x19\n\x15WORKER_STATUS_UNKNOWN\x10\x00\x12\x16\n\x12WORKER_STATUS_IDLE\x10\x01\x12\x1b\n\x17WORKER_STATUS_PREPARING\x10\x02\x12\x1c\n\x18WORKER_STATUS_INSTALLING\x10\x03\x12\x19\n\x15WORKER_STATUS_RUNNING\x10\x04\x12\x1b\n\x17WORKER_STATUS_COMPLETED\x10\x05\x12\x18\n\x14WORKER_STATUS_FAILED\x10\x06*m\n\x0fPairingDecision\x12\x1c\n\x18PAIRING_DECISION_UNKNOWN\x10\x00\x12\x1d\n\x19PAIRING_DECISION_ACCEPTED\x10\x01\x12\x1d\n\x19PAIRING_DECISION_REJECTED\x10\x02\x32\xbf\x03\n\x0cWorkerBridge\x12^\n\x14SynchronizeGradients\x12\x1e.locdist.v1.GradientSubmission\x1a&.locdist.v1.AggregatedGradientResponse\x12W\n\x0eRegisterWorker\x12!.locdist.v1.RegisterWorkerRequest\x1a\".locdist.v1.RegisterWorkerResponse\x12V\n\x12UpdateWorkerStatus\x12\x1e.locdist.v1.WorkerStatusUpdate\x1a .locdist.v1.WorkerStatusResponse\x12K\n\nPairWorker\x12\x1d.locdist.v1.PairWorkerRequest\x1a\x1e.locdist.v1.PairWorkerResponse\x12Q\n\x0cUnpairWorker\x12\x1f.locdist.v1.UnpairWorkerRequest\x1a .locdist.v1.UnpairWorkerResponseB\x14Z\x12generated/gradientb\x06proto3')
 
 _globals = globals()
 _builder.BuildMessageAndEnumDescriptors(DESCRIPTOR, _globals)
 _builder.BuildTopDescriptorsAndMessages(DESCRIPTOR, 'gradient_pb2', _globals)
 if not _descriptor._USE_C_DESCRIPTORS:
-  DESCRIPTOR._loaded_options = None
+  _globals['DESCRIPTOR']._loaded_options = None
+  _globals['DESCRIPTOR']._serialized_options = b'Z\022generated/gradient'
+  _globals['_WORKERSTATUS']._serialized_start=1297
+  _globals['_WORKERSTATUS']._serialized_end=1503
+  _globals['_PAIRINGDECISION']._serialized_start=1505
+  _globals['_PAIRINGDECISION']._serialized_end=1614
   _globals['_PARAMETERMETADATA']._serialized_start=30
   _globals['_PARAMETERMETADATA']._serialized_end=108
   _globals['_GRADIENTCHUNK']._serialized_start=110
@@ -39,6 +44,22 @@ if not _descriptor._USE_C_DESCRIPTORS:
   _globals['_GRADIENTSUBMISSION']._serialized_end=350
   _globals['_AGGREGATEDGRADIENTRESPONSE']._serialized_start=353
   _globals['_AGGREGATEDGRADIENTRESPONSE']._serialized_end=523
-  _globals['_WORKERBRIDGE']._serialized_start=525
-  _globals['_WORKERBRIDGE']._serialized_end=635
+  _globals['_REGISTERWORKERREQUEST']._serialized_start=525
+  _globals['_REGISTERWORKERREQUEST']._serialized_end=642
+  _globals['_PAIRWORKERREQUEST']._serialized_start=645
+  _globals['_PAIRWORKERREQUEST']._serialized_end=813
+  _globals['_PAIRWORKERRESPONSE']._serialized_start=815
+  _globals['_PAIRWORKERRESPONSE']._serialized_end=919
+  _globals['_UNPAIRWORKERREQUEST']._serialized_start=921
+  _globals['_UNPAIRWORKERREQUEST']._serialized_end=1003
+  _globals['_UNPAIRWORKERRESPONSE']._serialized_start=1005
+  _globals['_UNPAIRWORKERRESPONSE']._serialized_end=1045
+  _globals['_REGISTERWORKERRESPONSE']._serialized_start=1047
+  _globals['_REGISTERWORKERRESPONSE']._serialized_end=1110
+  _globals['_WORKERSTATUSUPDATE']._serialized_start=1112
+  _globals['_WORKERSTATUSUPDATE']._serialized_end=1209
+  _globals['_WORKERSTATUSRESPONSE']._serialized_start=1211
+  _globals['_WORKERSTATUSRESPONSE']._serialized_end=1294
+  _globals['_WORKERBRIDGE']._serialized_start=1617
+  _globals['_WORKERBRIDGE']._serialized_end=2064
 # @@protoc_insertion_point(module_scope)

@@ -6,6 +6,7 @@ import (
 
 	gradient "github.com/Vikaspal8923/Locdist/worker/generated/gradient"
 	"github.com/Vikaspal8923/Locdist/worker/internal/config"
+	"github.com/Vikaspal8923/Locdist/worker/pairing"
 	"github.com/Vikaspal8923/Locdist/worker/runtimebridge"
 	grpcserver "google.golang.org/grpc"
 )
@@ -19,6 +20,7 @@ type Server struct {
 func NewServer(
 	cfg config.Config,
 	runtimeBridge *runtimebridge.Service,
+	pairingManager *pairing.Manager,
 ) (*Server, error) {
 
 	listener, err := net.Listen(
@@ -33,6 +35,7 @@ func NewServer(
 
 	workerBridgeServer := NewWorkerBridgeServer(
 		runtimeBridge,
+		pairingManager,
 	)
 
 	gradient.RegisterWorkerBridgeServer(

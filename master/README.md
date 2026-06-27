@@ -1347,6 +1347,87 @@ Deferred:
 
 ---
 
+# LDGCC Phase 5: Worker Pairing and Connection Management
+
+## Goal
+
+Phase 5 connects temporary Phase 4 discovery to trusted Phase 3
+registration:
+
+```text
+Master discovers unpaired Worker
+    ↓
+Master owner clicks Connect
+    ↓
+Worker owner accepts or rejects
+    ↓
+Master reserves worker_id and credential
+    ↓
+Worker stores one pairing record
+    ↓
+Worker performs authenticated registration
+    ↓
+Worker reports IDLE
+```
+
+## V1 Topology Rule
+
+```text
+One Master → multiple Workers
+One Worker → one Master at a time
+```
+
+A paired Worker rejects requests from every other Master. Changing Master
+requires Reset Previous Connection on the Worker.
+
+## Master Components
+
+`app/`
+
+Provides the local Master control surface at `127.0.0.1:6060`, lists
+discovered Workers, and starts pairing requests.
+
+`pairing/service.go`
+
+Generates random request IDs, Worker IDs, and 256-bit pairing credentials;
+reserves credentials before contacting Worker; and waits for the owner's
+decision.
+
+`workers/store.go`
+
+Atomically persists Master-side pairing credentials with owner-only file
+permissions so Workers can reconnect after a Master restart.
+
+`workers/manager.go`
+
+Authenticates registration and unpair requests against the saved pairing
+credential.
+
+## Connection Reset
+
+When an online Worker resets its previous connection:
+
+```text
+Worker sends authenticated UnpairWorker
+    ↓
+Master revokes credential and registered state
+    ↓
+Worker deletes its local pairing
+```
+
+If the old Master is offline, Worker still removes its local pairing and can
+join another Master. The deleted credential is no longer available to the
+Worker.
+
+## Security Boundary
+
+Phase 5 provides random pairing credentials, credential-authenticated
+registration/unpairing, atomic files, and `0600` credential-file
+permissions. TLS, certificate pinning, OS credential-vault storage, and
+signed installers remain production hardening outside this phase.
+
+---
+
 # Master Phase Roadmap
 
 ## Master Phase 2
@@ -1411,14 +1492,16 @@ Completed Goal:
 Status:
 
 ```text
-NOT STARTED
+COMPLETE
 ```
 
-Expected Goal:
+Completed Goal:
 
 * Pairing and Approval
 * Permanent Worker Identity
 * Automatic Worker Configuration
+* One-Master Enforcement
+* Pairing Persistence and Revocation
 
 ---
 
@@ -1450,6 +1533,15 @@ LDGCC Phase 4
     ✓ COMPLETE
 
 LAN Worker Discovery
+    ✓ COMPLETE
+
+LDGCC Phase 5
+    ✓ COMPLETE
+
+Worker Pairing and Approval
+    ✓ COMPLETE
+
+Authenticated Registration
     ✓ COMPLETE
 
 Identity Aggregation

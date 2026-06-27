@@ -1581,6 +1581,122 @@ Deferred:
 
 ---
 
+# LDGCC Phase 5: Pairing and Connection Management
+
+## Goal
+
+Phase 5 removes the need to manually add `worker_id` or Master connection
+values to `worker_config.json`.
+
+```text
+Worker advertises as unpaired
+    ↓
+Master sends PairWorker
+    ↓
+Worker App shows Master identity
+    ↓
+Owner selects Accept or Reject
+```
+
+On acceptance:
+
+```text
+Save pairing.json
+    ↓
+Connect to saved Master
+    ↓
+Register with pairing credential
+    ↓
+Report IDLE
+    ↓
+PAIRED_ONLINE
+```
+
+## Connection States
+
+Connection state is separate from training state:
+
+```text
+UNPAIRED
+PAIRING_PENDING
+PAIRED_ONLINE
+PAIRED_OFFLINE
+```
+
+The Worker App can start when its saved Master is offline. It remains
+`PAIRED_OFFLINE`; it does not silently delete or replace the pairing.
+
+## One-Master Rule
+
+LDGCC V1 supports exactly one saved Master per Worker. A second Master is
+rejected until the owner uses Reset Previous Connection.
+
+## Reset Previous Connection
+
+Reset:
+
+* Revokes the credential on an online Master
+* Closes the old Master client
+* Deletes the local pairing file
+* Returns Worker to `UNPAIRED`
+* Refreshes its LAN advertisement
+
+Training-state enforcement will block reset during active execution once
+the Executor phase introduces running jobs.
+
+## Folder Responsibilities
+
+`pairing/manager.go`
+
+Owns pending requests, Accept/Reject decisions, one-Master enforcement, and
+the current pairing record.
+
+`pairing/store.go`
+
+Atomically writes and deletes `pairing.json` with `0600` permissions.
+
+`service/agent.go`
+
+Coordinates connection states, approval, authenticated registration,
+offline startup, advertisement refresh, and reset.
+
+`app/`
+
+Displays pending Master identity, Accept/Reject actions, current connection
+state, and Reset Previous Connection.
+
+## Configuration Ownership
+
+`worker_config.json` contains installation settings:
+
+```text
+worker_name
+Worker gRPC port
+Worker App port
+host
+pairing file location
+```
+
+Accepted pairing creates `pairing.json` containing:
+
+```text
+worker_id
+master_id and name
+Master host and gRPC port
+pairing credential
+```
+
+The Master supplies these values; Worker writes them locally.
+
+## Security Boundary
+
+Pairing credentials are randomly generated and registration/reset are
+credential-authenticated. Credential files are atomic and owner-readable
+only. TLS, certificate pinning, and OS credential-vault integration remain
+production hardening work.
+
+---
+
 ## Current Status
 
 ```text
@@ -1606,6 +1722,18 @@ Worker App Start/Stop
     ✓ COMPLETE
 
 LAN Discovery Advertisement
+    ✓ COMPLETE
+
+LDGCC Phase 5
+    ✓ COMPLETE
+
+Pairing Accept/Reject
+    ✓ COMPLETE
+
+One Master per Worker
+    ✓ ENFORCED
+
+Reset Previous Connection
     ✓ COMPLETE
 
 MasterClient

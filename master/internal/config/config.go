@@ -6,12 +6,22 @@ import (
 )
 
 type Config struct {
-	Port string `json:"grpc_port"`
+	MasterID    string `json:"master_id"`
+	MasterName  string `json:"master_name"`
+	Host        string `json:"host"`
+	Port        string `json:"grpc_port"`
+	AppPort     string `json:"app_port"`
+	PairingPath string `json:"pairing_path"`
 }
 
 func Default() Config {
 	return Config{
-		Port: "60051",
+		MasterID:    "master-a",
+		MasterName:  "LDGCC Master",
+		Host:        "127.0.0.1",
+		Port:        "60051",
+		AppPort:     "6060",
+		PairingPath: "master_pairings.json",
 	}
 }
 

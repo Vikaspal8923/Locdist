@@ -97,6 +97,63 @@ message RegisterWorkerRequest {
   string host = 2;
 
   string grpc_port = 3;
+
+  string master_id = 4;
+
+  string pairing_token = 5;
+}
+
+// =====================================================
+// Worker Pairing
+// =====================================================
+
+enum PairingDecision {
+
+  PAIRING_DECISION_UNKNOWN = 0;
+
+  PAIRING_DECISION_ACCEPTED = 1;
+
+  PAIRING_DECISION_REJECTED = 2;
+}
+
+message PairWorkerRequest {
+
+  string request_id = 1;
+
+  string master_id = 2;
+
+  string master_name = 3;
+
+  string master_host = 4;
+
+  string master_grpc_port = 5;
+
+  string worker_id = 6;
+
+  string pairing_token = 7;
+}
+
+message PairWorkerResponse {
+
+  string request_id = 1;
+
+  PairingDecision decision = 2;
+
+  string message = 3;
+}
+
+message UnpairWorkerRequest {
+
+  string worker_id = 1;
+
+  string master_id = 2;
+
+  string pairing_token = 3;
+}
+
+message UnpairWorkerResponse {
+
+  bool unpaired = 1;
 }
 
 message RegisterWorkerResponse {
@@ -145,5 +202,17 @@ service WorkerBridge {
     WorkerStatusUpdate
   ) returns (
     WorkerStatusResponse
+  );
+
+  rpc PairWorker(
+    PairWorkerRequest
+  ) returns (
+    PairWorkerResponse
+  );
+
+  rpc UnpairWorker(
+    UnpairWorkerRequest
+  ) returns (
+    UnpairWorkerResponse
   );
 }

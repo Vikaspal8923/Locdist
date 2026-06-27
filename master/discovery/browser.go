@@ -41,10 +41,20 @@ func (b *MDNSBrowser) Scan(ctx context.Context) ([]Worker, error) {
 
 	var workers []Worker
 	for entry := range entries {
+		if !isWorkerEntry(entry) {
+			continue
+		}
 		workers = append(workers, workerFromEntry(entry))
 	}
 
 	return workers, <-queryDone
+}
+
+func isWorkerEntry(entry *mdns.ServiceEntry) bool {
+	return strings.HasSuffix(
+		entry.Name,
+		"."+ServiceName+".local.",
+	)
 }
 
 func workerFromEntry(entry *mdns.ServiceEntry) Worker {

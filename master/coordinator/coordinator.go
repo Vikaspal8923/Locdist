@@ -58,6 +58,15 @@ func (c *Coordinator) UpdateWorkerStatus(
 	}, nil
 }
 
+func (c *Coordinator) UnpairWorker(
+	request *gradient.UnpairWorkerRequest,
+) (*gradient.UnpairWorkerResponse, error) {
+	if err := c.workerManager.RevokeAuthenticated(request); err != nil {
+		return nil, err
+	}
+	return &gradient.UnpairWorkerResponse{Unpaired: true}, nil
+}
+
 func (c *Coordinator) StartTraining(
 	jobID string,
 	expectedWorkers int,

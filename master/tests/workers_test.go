@@ -14,6 +14,7 @@ import (
 
 func TestWorkerRegistrationAndStatus(t *testing.T) {
 	manager := workers.New()
+	reservePairing(t, manager, "worker-a")
 	server := mastergrpc.NewMasterServer(
 		coordinator.New(
 			aggregator.New(),
@@ -25,9 +26,11 @@ func TestWorkerRegistrationAndStatus(t *testing.T) {
 	registration, err := server.RegisterWorker(
 		context.Background(),
 		&gradient.RegisterWorkerRequest{
-			WorkerId: "worker-a",
-			Host:     "192.168.1.20",
-			GrpcPort: "50051",
+			WorkerId:     "worker-a",
+			Host:         "192.168.1.20",
+			GrpcPort:     "50051",
+			MasterId:     "master-a",
+			PairingToken: "token-a",
 		},
 	)
 	if err != nil {
@@ -63,13 +66,16 @@ func TestWorkerRegistrationAndStatus(t *testing.T) {
 
 func TestDuplicateRegistrationReplacesMetadata(t *testing.T) {
 	manager := workers.New()
+	reservePairing(t, manager, "worker-a")
 
 	for _, host := range []string{"192.168.1.20", "192.168.1.21"} {
 		_, err := manager.Register(
 			&gradient.RegisterWorkerRequest{
-				WorkerId: "worker-a",
-				Host:     host,
-				GrpcPort: "50051",
+				WorkerId:     "worker-a",
+				Host:         host,
+				GrpcPort:     "50051",
+				MasterId:     "master-a",
+				PairingToken: "token-a",
 			},
 		)
 		if err != nil {
@@ -88,6 +94,7 @@ func TestDuplicateRegistrationReplacesMetadata(t *testing.T) {
 
 func TestWorkerStatusValidation(t *testing.T) {
 	manager := workers.New()
+	reservePairing(t, manager, "worker-a")
 
 	if _, err := manager.UpdateStatus(
 		&gradient.WorkerStatusUpdate{
@@ -100,9 +107,11 @@ func TestWorkerStatusValidation(t *testing.T) {
 
 	_, err := manager.Register(
 		&gradient.RegisterWorkerRequest{
-			WorkerId: "worker-a",
-			Host:     "127.0.0.1",
-			GrpcPort: "50051",
+			WorkerId:     "worker-a",
+			Host:         "127.0.0.1",
+			GrpcPort:     "50051",
+			MasterId:     "master-a",
+			PairingToken: "token-a",
 		},
 	)
 	if err != nil {
@@ -116,5 +125,20 @@ func TestWorkerStatusValidation(t *testing.T) {
 		},
 	); err == nil {
 		t.Fatal("expected unknown status to fail")
+	}
+}
+
+func reservePairing(
+	t *testing.T,
+	manager *workers.Manager,
+	workerID string,
+) {
+	t.Helper()
+	if err := manager.ReservePairing(
+		workerID,
+		"master-a",
+		"token-a",
+	); err != nil {
+		t.Fatalf("reserve pairing: %v", err)
 	}
 }

@@ -56,6 +56,18 @@ func NewServer(port string, controller *Controller) (*Server, error) {
 			writeJSON(writer, http.StatusOK, controller.State())
 		},
 	)
+	mux.HandleFunc(
+		"POST /api/pairing/accept",
+		actionHandler(controller.AcceptPairing, controller),
+	)
+	mux.HandleFunc(
+		"POST /api/pairing/reject",
+		actionHandler(controller.RejectPairing, controller),
+	)
+	mux.HandleFunc(
+		"POST /api/pairing/reset",
+		actionHandler(controller.ResetPairing, controller),
+	)
 
 	return &Server{
 		httpServer: &http.Server{
@@ -64,6 +76,23 @@ func NewServer(port string, controller *Controller) (*Server, error) {
 		},
 		listener: listener,
 	}, nil
+}
+
+func actionHandler(
+	action func() error,
+	controller *Controller,
+) http.HandlerFunc {
+	return func(writer http.ResponseWriter, request *http.Request) {
+		if err := action(); err != nil {
+			writeJSON(
+				writer,
+				http.StatusConflict,
+				controller.State(),
+			)
+			return
+		}
+		writeJSON(writer, http.StatusOK, controller.State())
+	}
 }
 
 func (s *Server) Start() error {
@@ -121,9 +150,15 @@ const appHTML = `<!doctype html>
     .indicator.running { background: #16825d; box-shadow: 0 0 0 4px #dff4ec; }
     .label { font-size: 16px; font-weight: 650; }
     .detail { margin-top: 4px; color: #64707d; font-size: 13px; }
+    .request { display: none; margin-top: 18px; padding: 16px; border: 1px solid #d8dde3; border-radius: 6px; background: #f8fafb; }
+    .request.visible { display: block; }
+    .request strong { display: block; font-size: 14px; }
+    .request-actions { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
     .error { min-height: 20px; margin: 18px 0 0; color: #b42318; font-size: 13px; }
     button { width: 100%; min-height: 44px; margin-top: 18px; border: 0; border-radius: 6px; background: #1565c0; color: #fff; font: inherit; font-weight: 700; cursor: pointer; }
     button.stop { background: #b42318; }
+    button.secondary { background: #fff; color: #344054; border: 1px solid #cfd5dc; }
+    button.danger { background: #fff; color: #b42318; border: 1px solid #e5aaa5; }
     button:disabled { cursor: wait; opacity: .62; }
   </style>
 </head>
@@ -138,8 +173,16 @@ const appHTML = `<!doctype html>
           <div id="detail" class="detail">Not discoverable</div>
         </div>
       </div>
+      <div id="request" class="request">
+        <strong id="request-title"></strong>
+        <div class="request-actions">
+          <button id="reject" class="secondary" type="button">Reject</button>
+          <button id="accept" type="button">Accept</button>
+        </div>
+      </div>
       <p id="error" class="error"></p>
       <button id="action" type="button">Start Worker</button>
+      <button id="reset" class="danger" type="button" hidden>Reset Previous Connection</button>
     </section>
   </main>
   <script>
@@ -148,19 +191,30 @@ const appHTML = `<!doctype html>
     const label = document.querySelector("#label");
     const detail = document.querySelector("#detail");
     const error = document.querySelector("#error");
-    let state = { running: false, paired: false };
+    const request = document.querySelector("#request");
+    const requestTitle = document.querySelector("#request-title");
+    const accept = document.querySelector("#accept");
+    const reject = document.querySelector("#reject");
+    const reset = document.querySelector("#reset");
+    let state = { running: false, connection: "UNPAIRED" };
 
     function render(next) {
       state = next;
       indicator.classList.toggle("running", state.running);
       label.textContent = state.running ? "Worker running" : "Stopped";
       detail.textContent = state.running
-        ? (state.paired ? "Paired and discoverable" : "Discoverable on LAN")
+        ? state.connection.replaceAll("_", " ").toLowerCase()
         : "Not discoverable";
       error.textContent = state.error || "";
       action.textContent = state.running ? "Stop Worker" : "Start Worker";
       action.classList.toggle("stop", state.running);
       action.disabled = false;
+      const pending = Boolean(state.pending_pairing);
+      request.classList.toggle("visible", pending);
+      requestTitle.textContent = pending
+        ? state.pending_pairing.master_name + " wants to connect"
+        : "";
+      reset.hidden = !state.paired_master || pending;
     }
 
     async function refresh() {
@@ -178,6 +232,23 @@ const appHTML = `<!doctype html>
         error.textContent = requestError.message;
         action.disabled = false;
       }
+    });
+
+    async function pairingAction(endpoint) {
+      accept.disabled = true;
+      reject.disabled = true;
+      const response = await fetch(endpoint, { method: "POST" });
+      render(await response.json());
+      accept.disabled = false;
+      reject.disabled = false;
+    }
+
+    accept.addEventListener("click", () => pairingAction("/api/pairing/accept"));
+    reject.addEventListener("click", () => pairingAction("/api/pairing/reject"));
+    reset.addEventListener("click", async () => {
+      if (!confirm("Remove the saved Master connection?")) return;
+      const response = await fetch("/api/pairing/reset", { method: "POST" });
+      render(await response.json());
     });
 
     refresh();

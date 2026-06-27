@@ -73,6 +73,18 @@ func (c *Client) UpdateStatus(
 	return c.client.UpdateWorkerStatus(ctx, request)
 }
 
+func (c *Client) Unpair(
+	request *gradient.UnpairWorkerRequest,
+) (*gradient.UnpairWorkerResponse, error) {
+	ctx, cancel := context.WithTimeout(
+		context.Background(),
+		controlRPCTimeout,
+	)
+	defer cancel()
+
+	return c.client.UnpairWorker(ctx, request)
+}
+
 func (c *Client) Synchronize(
 	request *gradient.GradientSubmission,
 ) (*gradient.AggregatedGradientResponse, error) {

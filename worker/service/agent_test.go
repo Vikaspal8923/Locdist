@@ -1,10 +1,12 @@
 package service
 
 import (
+	"path/filepath"
 	"testing"
 
 	"github.com/Vikaspal8923/Locdist/worker/discovery"
 	"github.com/Vikaspal8923/Locdist/worker/internal/config"
+	"github.com/Vikaspal8923/Locdist/worker/pairing"
 )
 
 type fakeAdvertiser struct {
@@ -25,6 +27,14 @@ func (f *fakeAdvertiser) Stop() error {
 
 func TestUnpairedAgentBecomesDiscoverable(t *testing.T) {
 	advertiser := &fakeAdvertiser{}
+	pairingManager, err := pairing.NewManager(
+		pairing.NewFileStore(
+			filepath.Join(t.TempDir(), "pairing.json"),
+		),
+	)
+	if err != nil {
+		t.Fatalf("create pairing manager: %v", err)
+	}
 	agent := New(
 		config.Config{
 			WorkerName: "Vikas-Laptop",
@@ -32,6 +42,7 @@ func TestUnpairedAgentBecomesDiscoverable(t *testing.T) {
 			Port:       "0",
 		},
 		advertiser,
+		pairingManager,
 	)
 
 	if err := agent.Start(); err != nil {
@@ -39,12 +50,12 @@ func TestUnpairedAgentBecomesDiscoverable(t *testing.T) {
 	}
 	defer agent.Stop()
 
-	running, paired := agent.State()
+	running, connection := agent.State()
 	if !running {
 		t.Fatal("expected Worker to be running")
 	}
-	if paired {
-		t.Fatal("expected Worker to remain unpaired")
+	if connection != ConnectionUnpaired {
+		t.Fatalf("expected unpaired Worker, got %s", connection)
 	}
 	if !advertiser.started {
 		t.Fatal("expected discovery advertisement to start")

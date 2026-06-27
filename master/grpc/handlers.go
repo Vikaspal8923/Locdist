@@ -47,3 +47,10 @@ func (s *MasterServer) UpdateWorkerStatus(
 
 	return s.coordinator.UpdateWorkerStatus(request)
 }
+
+func (s *MasterServer) UnpairWorker(
+	ctx context.Context,
+	request *gradient.UnpairWorkerRequest,
+) (*gradient.UnpairWorkerResponse, error) {
+	return s.coordinator.UnpairWorker(request)
+}

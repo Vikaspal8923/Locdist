@@ -3,9 +3,7 @@
 import grpc
 import warnings
 
-from locdist.generated import (
-    gradient_pb2 as gradient__pb2
-)
+from . import gradient_pb2 as gradient__pb2
 
 GRPC_GENERATED_VERSION = '1.81.1'
 GRPC_VERSION = grpc.__version__
@@ -45,6 +43,26 @@ class WorkerBridgeStub:
                 request_serializer=gradient__pb2.GradientSubmission.SerializeToString,
                 response_deserializer=gradient__pb2.AggregatedGradientResponse.FromString,
                 _registered_method=True)
+        self.RegisterWorker = channel.unary_unary(
+                '/locdist.v1.WorkerBridge/RegisterWorker',
+                request_serializer=gradient__pb2.RegisterWorkerRequest.SerializeToString,
+                response_deserializer=gradient__pb2.RegisterWorkerResponse.FromString,
+                _registered_method=True)
+        self.UpdateWorkerStatus = channel.unary_unary(
+                '/locdist.v1.WorkerBridge/UpdateWorkerStatus',
+                request_serializer=gradient__pb2.WorkerStatusUpdate.SerializeToString,
+                response_deserializer=gradient__pb2.WorkerStatusResponse.FromString,
+                _registered_method=True)
+        self.PairWorker = channel.unary_unary(
+                '/locdist.v1.WorkerBridge/PairWorker',
+                request_serializer=gradient__pb2.PairWorkerRequest.SerializeToString,
+                response_deserializer=gradient__pb2.PairWorkerResponse.FromString,
+                _registered_method=True)
+        self.UnpairWorker = channel.unary_unary(
+                '/locdist.v1.WorkerBridge/UnpairWorker',
+                request_serializer=gradient__pb2.UnpairWorkerRequest.SerializeToString,
+                response_deserializer=gradient__pb2.UnpairWorkerResponse.FromString,
+                _registered_method=True)
 
 
 class WorkerBridgeServicer:
@@ -60,6 +78,30 @@ class WorkerBridgeServicer:
         context.set_details('Method not implemented!')
         raise NotImplementedError('Method not implemented!')
 
+    def RegisterWorker(self, request, context):
+        """Missing associated documentation comment in .proto file."""
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
+    def UpdateWorkerStatus(self, request, context):
+        """Missing associated documentation comment in .proto file."""
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
+    def PairWorker(self, request, context):
+        """Missing associated documentation comment in .proto file."""
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
+    def UnpairWorker(self, request, context):
+        """Missing associated documentation comment in .proto file."""
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
 
 def add_WorkerBridgeServicer_to_server(servicer, server):
     rpc_method_handlers = {
@@ -67,6 +109,26 @@ def add_WorkerBridgeServicer_to_server(servicer, server):
                     servicer.SynchronizeGradients,
                     request_deserializer=gradient__pb2.GradientSubmission.FromString,
                     response_serializer=gradient__pb2.AggregatedGradientResponse.SerializeToString,
+            ),
+            'RegisterWorker': grpc.unary_unary_rpc_method_handler(
+                    servicer.RegisterWorker,
+                    request_deserializer=gradient__pb2.RegisterWorkerRequest.FromString,
+                    response_serializer=gradient__pb2.RegisterWorkerResponse.SerializeToString,
+            ),
+            'UpdateWorkerStatus': grpc.unary_unary_rpc_method_handler(
+                    servicer.UpdateWorkerStatus,
+                    request_deserializer=gradient__pb2.WorkerStatusUpdate.FromString,
+                    response_serializer=gradient__pb2.WorkerStatusResponse.SerializeToString,
+            ),
+            'PairWorker': grpc.unary_unary_rpc_method_handler(
+                    servicer.PairWorker,
+                    request_deserializer=gradient__pb2.PairWorkerRequest.FromString,
+                    response_serializer=gradient__pb2.PairWorkerResponse.SerializeToString,
+            ),
+            'UnpairWorker': grpc.unary_unary_rpc_method_handler(
+                    servicer.UnpairWorker,
+                    request_deserializer=gradient__pb2.UnpairWorkerRequest.FromString,
+                    response_serializer=gradient__pb2.UnpairWorkerResponse.SerializeToString,
             ),
     }
     generic_handler = grpc.method_handlers_generic_handler(
@@ -100,6 +162,114 @@ class WorkerBridge:
             '/locdist.v1.WorkerBridge/SynchronizeGradients',
             gradient__pb2.GradientSubmission.SerializeToString,
             gradient__pb2.AggregatedGradientResponse.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
+
+    @staticmethod
+    def RegisterWorker(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(
+            request,
+            target,
+            '/locdist.v1.WorkerBridge/RegisterWorker',
+            gradient__pb2.RegisterWorkerRequest.SerializeToString,
+            gradient__pb2.RegisterWorkerResponse.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
+
+    @staticmethod
+    def UpdateWorkerStatus(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(
+            request,
+            target,
+            '/locdist.v1.WorkerBridge/UpdateWorkerStatus',
+            gradient__pb2.WorkerStatusUpdate.SerializeToString,
+            gradient__pb2.WorkerStatusResponse.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
+
+    @staticmethod
+    def PairWorker(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(
+            request,
+            target,
+            '/locdist.v1.WorkerBridge/PairWorker',
+            gradient__pb2.PairWorkerRequest.SerializeToString,
+            gradient__pb2.PairWorkerResponse.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
+
+    @staticmethod
+    def UnpairWorker(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(
+            request,
+            target,
+            '/locdist.v1.WorkerBridge/UnpairWorker',
+            gradient__pb2.UnpairWorkerRequest.SerializeToString,
+            gradient__pb2.UnpairWorkerResponse.FromString,
             options,
             channel_credentials,
             insecure,

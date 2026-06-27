@@ -22,6 +22,8 @@ const (
 	WorkerBridge_SynchronizeGradients_FullMethodName = "/locdist.v1.WorkerBridge/SynchronizeGradients"
 	WorkerBridge_RegisterWorker_FullMethodName       = "/locdist.v1.WorkerBridge/RegisterWorker"
 	WorkerBridge_UpdateWorkerStatus_FullMethodName   = "/locdist.v1.WorkerBridge/UpdateWorkerStatus"
+	WorkerBridge_PairWorker_FullMethodName           = "/locdist.v1.WorkerBridge/PairWorker"
+	WorkerBridge_UnpairWorker_FullMethodName         = "/locdist.v1.WorkerBridge/UnpairWorker"
 )
 
 // WorkerBridgeClient is the client API for WorkerBridge service.
@@ -31,6 +33,8 @@ type WorkerBridgeClient interface {
 	SynchronizeGradients(ctx context.Context, in *GradientSubmission, opts ...grpc.CallOption) (*AggregatedGradientResponse, error)
 	RegisterWorker(ctx context.Context, in *RegisterWorkerRequest, opts ...grpc.CallOption) (*RegisterWorkerResponse, error)
 	UpdateWorkerStatus(ctx context.Context, in *WorkerStatusUpdate, opts ...grpc.CallOption) (*WorkerStatusResponse, error)
+	PairWorker(ctx context.Context, in *PairWorkerRequest, opts ...grpc.CallOption) (*PairWorkerResponse, error)
+	UnpairWorker(ctx context.Context, in *UnpairWorkerRequest, opts ...grpc.CallOption) (*UnpairWorkerResponse, error)
 }
 
 type workerBridgeClient struct {
@@ -71,6 +75,26 @@ func (c *workerBridgeClient) UpdateWorkerStatus(ctx context.Context, in *WorkerS
 	return out, nil
 }
 
+func (c *workerBridgeClient) PairWorker(ctx context.Context, in *PairWorkerRequest, opts ...grpc.CallOption) (*PairWorkerResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(PairWorkerResponse)
+	err := c.cc.Invoke(ctx, WorkerBridge_PairWorker_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *workerBridgeClient) UnpairWorker(ctx context.Context, in *UnpairWorkerRequest, opts ...grpc.CallOption) (*UnpairWorkerResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(UnpairWorkerResponse)
+	err := c.cc.Invoke(ctx, WorkerBridge_UnpairWorker_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 // WorkerBridgeServer is the server API for WorkerBridge service.
 // All implementations must embed UnimplementedWorkerBridgeServer
 // for forward compatibility.
@@ -78,6 +102,8 @@ type WorkerBridgeServer interface {
 	SynchronizeGradients(context.Context, *GradientSubmission) (*AggregatedGradientResponse, error)
 	RegisterWorker(context.Context, *RegisterWorkerRequest) (*RegisterWorkerResponse, error)
 	UpdateWorkerStatus(context.Context, *WorkerStatusUpdate) (*WorkerStatusResponse, error)
+	PairWorker(context.Context, *PairWorkerRequest) (*PairWorkerResponse, error)
+	UnpairWorker(context.Context, *UnpairWorkerRequest) (*UnpairWorkerResponse, error)
 	mustEmbedUnimplementedWorkerBridgeServer()
 }
 
@@ -96,6 +122,12 @@ func (UnimplementedWorkerBridgeServer) RegisterWorker(context.Context, *Register
 }
 func (UnimplementedWorkerBridgeServer) UpdateWorkerStatus(context.Context, *WorkerStatusUpdate) (*WorkerStatusResponse, error) {
 	return nil, status.Error(codes.Unimplemented, "method UpdateWorkerStatus not implemented")
+}
+func (UnimplementedWorkerBridgeServer) PairWorker(context.Context, *PairWorkerRequest) (*PairWorkerResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method PairWorker not implemented")
+}
+func (UnimplementedWorkerBridgeServer) UnpairWorker(context.Context, *UnpairWorkerRequest) (*UnpairWorkerResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method UnpairWorker not implemented")
 }
 func (UnimplementedWorkerBridgeServer) mustEmbedUnimplementedWorkerBridgeServer() {}
 func (UnimplementedWorkerBridgeServer) testEmbeddedByValue()                      {}
@@ -172,6 +204,42 @@ func _WorkerBridge_UpdateWorkerStatus_Handler(srv interface{}, ctx context.Conte
 	return interceptor(ctx, in, info, handler)
 }
 
+func _WorkerBridge_PairWorker_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(PairWorkerRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(WorkerBridgeServer).PairWorker(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: WorkerBridge_PairWorker_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(WorkerBridgeServer).PairWorker(ctx, req.(*PairWorkerRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _WorkerBridge_UnpairWorker_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(UnpairWorkerRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(WorkerBridgeServer).UnpairWorker(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: WorkerBridge_UnpairWorker_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(WorkerBridgeServer).UnpairWorker(ctx, req.(*UnpairWorkerRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
 // WorkerBridge_ServiceDesc is the grpc.ServiceDesc for WorkerBridge service.
 // It's only intended for direct use with grpc.RegisterService,
 // and not to be introspected or modified (even as a copy)
@@ -190,6 +258,14 @@ var WorkerBridge_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "UpdateWorkerStatus",
 			Handler:    _WorkerBridge_UpdateWorkerStatus_Handler,
+		},
+		{
+			MethodName: "PairWorker",
+			Handler:    _WorkerBridge_PairWorker_Handler,
+		},
+		{
+			MethodName: "UnpairWorker",
+			Handler:    _WorkerBridge_UnpairWorker_Handler,
 		},
 	},
 	Streams:  []grpc.StreamDesc{},

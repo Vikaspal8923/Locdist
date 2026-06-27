@@ -1,3 +1,8 @@
 {
-  "grpc_port": "60051"
+  "master_id": "master-a",
+  "master_name": "Vikas-Master",
+  "host": "127.0.0.1",
+  "grpc_port": "60051",
+  "app_port": "6060",
+  "pairing_path": "master_pairings.json"
 }
