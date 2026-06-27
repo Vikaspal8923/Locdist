@@ -366,21 +366,17 @@ Implemented:
 Not Implemented:
 
 ```text
-✗ Discovery
-
-✗ Scheduler
-
-✗ Sharder
-
-✗ Worker Manager
-
-✗ Worker Registration
-
-✗ Heartbeats
-
 ✗ Orchestration
 
+✗ Workspace Distribution
+
+✗ Worker Environment Setup
+
+✗ Worker Execution
+
 ✗ Artifact Collection
+
+✗ VS Code Extension UI
 ```
 
 ---
@@ -1481,6 +1477,113 @@ Runs the periodic availability sweeper.
 
 ---
 
+# LDGCC Phase 7: Job Spec and Dataset Sharding Foundation
+
+## Goal
+
+Phase 7 teaches the Master how to prepare a user project for a distributed
+training job before any Worker execution exists.
+
+```text
+VS Code project folder
+    ↓
+ldgcc.yaml
+    ↓
+Master selects ONLINE Workers
+    ↓
+Master validates dataset/train.jsonl
+    ↓
+Master creates one shard per selected Worker
+    ↓
+Prepared job metadata is stored in memory
+```
+
+## Frozen V1 Project Spec
+
+`ldgcc.yaml`
+
+```yaml
+job:
+  name: movie-review-training
+
+entrypoint: train.py
+
+dataset:
+  train: dataset/train.jsonl
+
+workers:
+  count: 3
+```
+
+`job.name` is optional. `entrypoint`, `dataset.train`, and
+`workers.count` are required.
+
+## Dataset Rule
+
+V1 supports line-based JSONL sharding only.
+
+```text
+dataset/train.jsonl
+```
+
+Each non-empty line must be one JSON object. The Master splits lines across
+the selected Workers and writes each shard back under the same relative
+path.
+
+```text
+master/jobs/<job_id>/shards/
+    worker-a/dataset/train.jsonl
+    worker-b/dataset/train.jsonl
+    worker-c/dataset/train.jsonl
+```
+
+Worker code will still read:
+
+```text
+dataset/train.jsonl
+```
+
+but each Worker will receive different file contents in a later workspace
+distribution phase.
+
+## Phase 7 Components
+
+`project/`
+
+Loads and validates `ldgcc.yaml`.
+
+`scheduler/`
+
+Selects exactly `workers.count` Workers from registered Workers with
+`ONLINE` availability.
+
+`sharder/`
+
+Validates JSONL, computes even shard ranges, and writes per-Worker shard
+files.
+
+`orchestrator/`
+
+Combines project spec loading, Worker selection, dataset sharding, and job
+metadata preparation.
+
+`jobs/`
+
+Stores prepared job metadata, selected Workers, and shard assignments.
+
+## Not In Phase 7
+
+```text
+Project zip packaging
+Workspace upload to Worker
+Dependency installation
+Training process execution
+VS Code extension UI
+Output collection
+```
+
+---
+
 # Master Phase Roadmap
 
 ## Master Phase 2
@@ -1575,6 +1678,25 @@ Completed Goal:
 
 ---
 
+## Master Phase 7
+
+Status:
+
+```text
+COMPLETE
+```
+
+Completed Goal:
+
+* `ldgcc.yaml` Project Spec
+* Required Worker Count
+* ONLINE Worker Selection
+* JSONL Dataset Validation
+* Per-Worker Dataset Shards
+* Prepared Job Metadata
+
+---
+
 # Current Status
 
 ```text
@@ -1609,6 +1731,15 @@ LDGCC Phase 5
     ✓ COMPLETE
 
 LDGCC Phase 6
+    ✓ COMPLETE
+
+LDGCC Phase 7
+    ✓ COMPLETE
+
+Job Spec Foundation
+    ✓ COMPLETE
+
+Dataset Sharding Foundation
     ✓ COMPLETE
 
 Worker Heartbeats

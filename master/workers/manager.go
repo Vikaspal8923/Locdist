@@ -231,6 +231,17 @@ func (m *Manager) Worker(workerID string) (State, bool) {
 	return worker, ok
 }
 
+func (m *Manager) States() []State {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+
+	states := make([]State, 0, len(m.workers))
+	for _, worker := range m.workers {
+		states = append(states, worker)
+	}
+	return states
+}
+
 func (m *Manager) Count() int {
 	m.mu.RLock()
 	defer m.mu.RUnlock()
