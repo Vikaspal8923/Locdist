@@ -156,6 +156,40 @@ message UnpairWorkerResponse {
   bool unpaired = 1;
 }
 
+message WorkerHeartbeat {
+
+  string worker_id = 1;
+
+  string master_id = 2;
+
+  string pairing_token = 3;
+
+  WorkerStatus status = 4;
+
+  string job_id = 5;
+}
+
+message WorkerHeartbeatResponse {
+
+  bool accepted = 1;
+
+  int64 server_unix_time = 2;
+}
+
+message WorkerOfflineRequest {
+
+  string worker_id = 1;
+
+  string master_id = 2;
+
+  string pairing_token = 3;
+}
+
+message WorkerOfflineResponse {
+
+  bool acknowledged = 1;
+}
+
 message RegisterWorkerResponse {
 
   string worker_id = 1;
@@ -214,5 +248,17 @@ service WorkerBridge {
     UnpairWorkerRequest
   ) returns (
     UnpairWorkerResponse
+  );
+
+  rpc Heartbeat(
+    WorkerHeartbeat
+  ) returns (
+    WorkerHeartbeatResponse
+  );
+
+  rpc GoingOffline(
+    WorkerOfflineRequest
+  ) returns (
+    WorkerOfflineResponse
   );
 }

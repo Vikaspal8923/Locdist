@@ -1428,6 +1428,59 @@ signed installers remain production hardening outside this phase.
 
 ---
 
+# LDGCC Phase 6: Worker Heartbeats and Availability
+
+## Goal
+
+Phase 6 makes paired Workers continuously prove they are still reachable.
+
+```text
+Worker registers
+    ↓
+Worker sends authenticated Heartbeat
+    ↓
+Master updates last_seen and availability
+    ↓
+Master sweeper marks stale/offline when heartbeats stop
+```
+
+## Availability States
+
+```text
+ONLINE
+STALE
+OFFLINE
+```
+
+`ONLINE` means the Master recently received a valid registration or
+heartbeat. `STALE` means heartbeats are late. `OFFLINE` means the Worker
+explicitly stopped or missed the offline timeout.
+
+## Master Components
+
+`workers/state.go`
+
+Adds Worker availability and `last_seen` tracking.
+
+`workers/manager.go`
+
+Authenticates `Heartbeat` and `GoingOffline`, updates Worker status/job
+metadata, and runs the availability sweep.
+
+`coordinator/coordinator.go`
+
+Exposes heartbeat and offline actions to the gRPC layer.
+
+`grpc/handlers.go`
+
+Implements the new protocol RPC handlers.
+
+`cmd/master/main.go`
+
+Runs the periodic availability sweeper.
+
+---
+
 # Master Phase Roadmap
 
 ## Master Phase 2
@@ -1505,6 +1558,23 @@ Completed Goal:
 
 ---
 
+## Master Phase 6
+
+Status:
+
+```text
+COMPLETE
+```
+
+Completed Goal:
+
+* Authenticated Worker Heartbeats
+* Worker Availability Tracking
+* Stale and Offline Detection
+* Explicit GoingOffline Handling
+
+---
+
 # Current Status
 
 ```text
@@ -1536,6 +1606,15 @@ LAN Worker Discovery
     ✓ COMPLETE
 
 LDGCC Phase 5
+    ✓ COMPLETE
+
+LDGCC Phase 6
+    ✓ COMPLETE
+
+Worker Heartbeats
+    ✓ COMPLETE
+
+Availability Detection
     ✓ COMPLETE
 
 Worker Pairing and Approval

@@ -743,6 +743,238 @@ func (x *UnpairWorkerResponse) GetUnpaired() bool {
 	return false
 }
 
+type WorkerHeartbeat struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	WorkerId      string                 `protobuf:"bytes,1,opt,name=worker_id,json=workerId,proto3" json:"worker_id,omitempty"`
+	MasterId      string                 `protobuf:"bytes,2,opt,name=master_id,json=masterId,proto3" json:"master_id,omitempty"`
+	PairingToken  string                 `protobuf:"bytes,3,opt,name=pairing_token,json=pairingToken,proto3" json:"pairing_token,omitempty"`
+	Status        WorkerStatus           `protobuf:"varint,4,opt,name=status,proto3,enum=locdist.v1.WorkerStatus" json:"status,omitempty"`
+	JobId         string                 `protobuf:"bytes,5,opt,name=job_id,json=jobId,proto3" json:"job_id,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *WorkerHeartbeat) Reset() {
+	*x = WorkerHeartbeat{}
+	mi := &file_protocol_gradient_proto_msgTypes[9]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *WorkerHeartbeat) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*WorkerHeartbeat) ProtoMessage() {}
+
+func (x *WorkerHeartbeat) ProtoReflect() protoreflect.Message {
+	mi := &file_protocol_gradient_proto_msgTypes[9]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use WorkerHeartbeat.ProtoReflect.Descriptor instead.
+func (*WorkerHeartbeat) Descriptor() ([]byte, []int) {
+	return file_protocol_gradient_proto_rawDescGZIP(), []int{9}
+}
+
+func (x *WorkerHeartbeat) GetWorkerId() string {
+	if x != nil {
+		return x.WorkerId
+	}
+	return ""
+}
+
+func (x *WorkerHeartbeat) GetMasterId() string {
+	if x != nil {
+		return x.MasterId
+	}
+	return ""
+}
+
+func (x *WorkerHeartbeat) GetPairingToken() string {
+	if x != nil {
+		return x.PairingToken
+	}
+	return ""
+}
+
+func (x *WorkerHeartbeat) GetStatus() WorkerStatus {
+	if x != nil {
+		return x.Status
+	}
+	return WorkerStatus_WORKER_STATUS_UNKNOWN
+}
+
+func (x *WorkerHeartbeat) GetJobId() string {
+	if x != nil {
+		return x.JobId
+	}
+	return ""
+}
+
+type WorkerHeartbeatResponse struct {
+	state          protoimpl.MessageState `protogen:"open.v1"`
+	Accepted       bool                   `protobuf:"varint,1,opt,name=accepted,proto3" json:"accepted,omitempty"`
+	ServerUnixTime int64                  `protobuf:"varint,2,opt,name=server_unix_time,json=serverUnixTime,proto3" json:"server_unix_time,omitempty"`
+	unknownFields  protoimpl.UnknownFields
+	sizeCache      protoimpl.SizeCache
+}
+
+func (x *WorkerHeartbeatResponse) Reset() {
+	*x = WorkerHeartbeatResponse{}
+	mi := &file_protocol_gradient_proto_msgTypes[10]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *WorkerHeartbeatResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*WorkerHeartbeatResponse) ProtoMessage() {}
+
+func (x *WorkerHeartbeatResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_protocol_gradient_proto_msgTypes[10]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use WorkerHeartbeatResponse.ProtoReflect.Descriptor instead.
+func (*WorkerHeartbeatResponse) Descriptor() ([]byte, []int) {
+	return file_protocol_gradient_proto_rawDescGZIP(), []int{10}
+}
+
+func (x *WorkerHeartbeatResponse) GetAccepted() bool {
+	if x != nil {
+		return x.Accepted
+	}
+	return false
+}
+
+func (x *WorkerHeartbeatResponse) GetServerUnixTime() int64 {
+	if x != nil {
+		return x.ServerUnixTime
+	}
+	return 0
+}
+
+type WorkerOfflineRequest struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	WorkerId      string                 `protobuf:"bytes,1,opt,name=worker_id,json=workerId,proto3" json:"worker_id,omitempty"`
+	MasterId      string                 `protobuf:"bytes,2,opt,name=master_id,json=masterId,proto3" json:"master_id,omitempty"`
+	PairingToken  string                 `protobuf:"bytes,3,opt,name=pairing_token,json=pairingToken,proto3" json:"pairing_token,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *WorkerOfflineRequest) Reset() {
+	*x = WorkerOfflineRequest{}
+	mi := &file_protocol_gradient_proto_msgTypes[11]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *WorkerOfflineRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*WorkerOfflineRequest) ProtoMessage() {}
+
+func (x *WorkerOfflineRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_protocol_gradient_proto_msgTypes[11]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use WorkerOfflineRequest.ProtoReflect.Descriptor instead.
+func (*WorkerOfflineRequest) Descriptor() ([]byte, []int) {
+	return file_protocol_gradient_proto_rawDescGZIP(), []int{11}
+}
+
+func (x *WorkerOfflineRequest) GetWorkerId() string {
+	if x != nil {
+		return x.WorkerId
+	}
+	return ""
+}
+
+func (x *WorkerOfflineRequest) GetMasterId() string {
+	if x != nil {
+		return x.MasterId
+	}
+	return ""
+}
+
+func (x *WorkerOfflineRequest) GetPairingToken() string {
+	if x != nil {
+		return x.PairingToken
+	}
+	return ""
+}
+
+type WorkerOfflineResponse struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Acknowledged  bool                   `protobuf:"varint,1,opt,name=acknowledged,proto3" json:"acknowledged,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *WorkerOfflineResponse) Reset() {
+	*x = WorkerOfflineResponse{}
+	mi := &file_protocol_gradient_proto_msgTypes[12]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *WorkerOfflineResponse) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*WorkerOfflineResponse) ProtoMessage() {}
+
+func (x *WorkerOfflineResponse) ProtoReflect() protoreflect.Message {
+	mi := &file_protocol_gradient_proto_msgTypes[12]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use WorkerOfflineResponse.ProtoReflect.Descriptor instead.
+func (*WorkerOfflineResponse) Descriptor() ([]byte, []int) {
+	return file_protocol_gradient_proto_rawDescGZIP(), []int{12}
+}
+
+func (x *WorkerOfflineResponse) GetAcknowledged() bool {
+	if x != nil {
+		return x.Acknowledged
+	}
+	return false
+}
+
 type RegisterWorkerResponse struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	WorkerId      string                 `protobuf:"bytes,1,opt,name=worker_id,json=workerId,proto3" json:"worker_id,omitempty"`
@@ -753,7 +985,7 @@ type RegisterWorkerResponse struct {
 
 func (x *RegisterWorkerResponse) Reset() {
 	*x = RegisterWorkerResponse{}
-	mi := &file_protocol_gradient_proto_msgTypes[9]
+	mi := &file_protocol_gradient_proto_msgTypes[13]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -765,7 +997,7 @@ func (x *RegisterWorkerResponse) String() string {
 func (*RegisterWorkerResponse) ProtoMessage() {}
 
 func (x *RegisterWorkerResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_protocol_gradient_proto_msgTypes[9]
+	mi := &file_protocol_gradient_proto_msgTypes[13]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -778,7 +1010,7 @@ func (x *RegisterWorkerResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use RegisterWorkerResponse.ProtoReflect.Descriptor instead.
 func (*RegisterWorkerResponse) Descriptor() ([]byte, []int) {
-	return file_protocol_gradient_proto_rawDescGZIP(), []int{9}
+	return file_protocol_gradient_proto_rawDescGZIP(), []int{13}
 }
 
 func (x *RegisterWorkerResponse) GetWorkerId() string {
@@ -806,7 +1038,7 @@ type WorkerStatusUpdate struct {
 
 func (x *WorkerStatusUpdate) Reset() {
 	*x = WorkerStatusUpdate{}
-	mi := &file_protocol_gradient_proto_msgTypes[10]
+	mi := &file_protocol_gradient_proto_msgTypes[14]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -818,7 +1050,7 @@ func (x *WorkerStatusUpdate) String() string {
 func (*WorkerStatusUpdate) ProtoMessage() {}
 
 func (x *WorkerStatusUpdate) ProtoReflect() protoreflect.Message {
-	mi := &file_protocol_gradient_proto_msgTypes[10]
+	mi := &file_protocol_gradient_proto_msgTypes[14]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -831,7 +1063,7 @@ func (x *WorkerStatusUpdate) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use WorkerStatusUpdate.ProtoReflect.Descriptor instead.
 func (*WorkerStatusUpdate) Descriptor() ([]byte, []int) {
-	return file_protocol_gradient_proto_rawDescGZIP(), []int{10}
+	return file_protocol_gradient_proto_rawDescGZIP(), []int{14}
 }
 
 func (x *WorkerStatusUpdate) GetWorkerId() string {
@@ -865,7 +1097,7 @@ type WorkerStatusResponse struct {
 
 func (x *WorkerStatusResponse) Reset() {
 	*x = WorkerStatusResponse{}
-	mi := &file_protocol_gradient_proto_msgTypes[11]
+	mi := &file_protocol_gradient_proto_msgTypes[15]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -877,7 +1109,7 @@ func (x *WorkerStatusResponse) String() string {
 func (*WorkerStatusResponse) ProtoMessage() {}
 
 func (x *WorkerStatusResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_protocol_gradient_proto_msgTypes[11]
+	mi := &file_protocol_gradient_proto_msgTypes[15]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -890,7 +1122,7 @@ func (x *WorkerStatusResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use WorkerStatusResponse.ProtoReflect.Descriptor instead.
 func (*WorkerStatusResponse) Descriptor() ([]byte, []int) {
-	return file_protocol_gradient_proto_rawDescGZIP(), []int{11}
+	return file_protocol_gradient_proto_rawDescGZIP(), []int{15}
 }
 
 func (x *WorkerStatusResponse) GetWorkerId() string {
@@ -961,7 +1193,22 @@ const file_protocol_gradient_proto_rawDesc = "" +
 	"\tmaster_id\x18\x02 \x01(\tR\bmasterId\x12#\n" +
 	"\rpairing_token\x18\x03 \x01(\tR\fpairingToken\"2\n" +
 	"\x14UnpairWorkerResponse\x12\x1a\n" +
-	"\bunpaired\x18\x01 \x01(\bR\bunpaired\"U\n" +
+	"\bunpaired\x18\x01 \x01(\bR\bunpaired\"\xb9\x01\n" +
+	"\x0fWorkerHeartbeat\x12\x1b\n" +
+	"\tworker_id\x18\x01 \x01(\tR\bworkerId\x12\x1b\n" +
+	"\tmaster_id\x18\x02 \x01(\tR\bmasterId\x12#\n" +
+	"\rpairing_token\x18\x03 \x01(\tR\fpairingToken\x120\n" +
+	"\x06status\x18\x04 \x01(\x0e2\x18.locdist.v1.WorkerStatusR\x06status\x12\x15\n" +
+	"\x06job_id\x18\x05 \x01(\tR\x05jobId\"_\n" +
+	"\x17WorkerHeartbeatResponse\x12\x1a\n" +
+	"\baccepted\x18\x01 \x01(\bR\baccepted\x12(\n" +
+	"\x10server_unix_time\x18\x02 \x01(\x03R\x0eserverUnixTime\"u\n" +
+	"\x14WorkerOfflineRequest\x12\x1b\n" +
+	"\tworker_id\x18\x01 \x01(\tR\bworkerId\x12\x1b\n" +
+	"\tmaster_id\x18\x02 \x01(\tR\bmasterId\x12#\n" +
+	"\rpairing_token\x18\x03 \x01(\tR\fpairingToken\";\n" +
+	"\x15WorkerOfflineResponse\x12\"\n" +
+	"\facknowledged\x18\x01 \x01(\bR\facknowledged\"U\n" +
 	"\x16RegisterWorkerResponse\x12\x1b\n" +
 	"\tworker_id\x18\x01 \x01(\tR\bworkerId\x12\x1e\n" +
 	"\n" +
@@ -985,14 +1232,16 @@ const file_protocol_gradient_proto_rawDesc = "" +
 	"\x0fPairingDecision\x12\x1c\n" +
 	"\x18PAIRING_DECISION_UNKNOWN\x10\x00\x12\x1d\n" +
 	"\x19PAIRING_DECISION_ACCEPTED\x10\x01\x12\x1d\n" +
-	"\x19PAIRING_DECISION_REJECTED\x10\x022\xbf\x03\n" +
+	"\x19PAIRING_DECISION_REJECTED\x10\x022\xe3\x04\n" +
 	"\fWorkerBridge\x12^\n" +
 	"\x14SynchronizeGradients\x12\x1e.locdist.v1.GradientSubmission\x1a&.locdist.v1.AggregatedGradientResponse\x12W\n" +
 	"\x0eRegisterWorker\x12!.locdist.v1.RegisterWorkerRequest\x1a\".locdist.v1.RegisterWorkerResponse\x12V\n" +
 	"\x12UpdateWorkerStatus\x12\x1e.locdist.v1.WorkerStatusUpdate\x1a .locdist.v1.WorkerStatusResponse\x12K\n" +
 	"\n" +
 	"PairWorker\x12\x1d.locdist.v1.PairWorkerRequest\x1a\x1e.locdist.v1.PairWorkerResponse\x12Q\n" +
-	"\fUnpairWorker\x12\x1f.locdist.v1.UnpairWorkerRequest\x1a .locdist.v1.UnpairWorkerResponseB\x14Z\x12generated/gradientb\x06proto3"
+	"\fUnpairWorker\x12\x1f.locdist.v1.UnpairWorkerRequest\x1a .locdist.v1.UnpairWorkerResponse\x12M\n" +
+	"\tHeartbeat\x12\x1b.locdist.v1.WorkerHeartbeat\x1a#.locdist.v1.WorkerHeartbeatResponse\x12S\n" +
+	"\fGoingOffline\x12 .locdist.v1.WorkerOfflineRequest\x1a!.locdist.v1.WorkerOfflineResponseB\x14Z\x12generated/gradientb\x06proto3"
 
 var (
 	file_protocol_gradient_proto_rawDescOnce sync.Once
@@ -1007,7 +1256,7 @@ func file_protocol_gradient_proto_rawDescGZIP() []byte {
 }
 
 var file_protocol_gradient_proto_enumTypes = make([]protoimpl.EnumInfo, 2)
-var file_protocol_gradient_proto_msgTypes = make([]protoimpl.MessageInfo, 12)
+var file_protocol_gradient_proto_msgTypes = make([]protoimpl.MessageInfo, 16)
 var file_protocol_gradient_proto_goTypes = []any{
 	(WorkerStatus)(0),                  // 0: locdist.v1.WorkerStatus
 	(PairingDecision)(0),               // 1: locdist.v1.PairingDecision
@@ -1020,32 +1269,41 @@ var file_protocol_gradient_proto_goTypes = []any{
 	(*PairWorkerResponse)(nil),         // 8: locdist.v1.PairWorkerResponse
 	(*UnpairWorkerRequest)(nil),        // 9: locdist.v1.UnpairWorkerRequest
 	(*UnpairWorkerResponse)(nil),       // 10: locdist.v1.UnpairWorkerResponse
-	(*RegisterWorkerResponse)(nil),     // 11: locdist.v1.RegisterWorkerResponse
-	(*WorkerStatusUpdate)(nil),         // 12: locdist.v1.WorkerStatusUpdate
-	(*WorkerStatusResponse)(nil),       // 13: locdist.v1.WorkerStatusResponse
+	(*WorkerHeartbeat)(nil),            // 11: locdist.v1.WorkerHeartbeat
+	(*WorkerHeartbeatResponse)(nil),    // 12: locdist.v1.WorkerHeartbeatResponse
+	(*WorkerOfflineRequest)(nil),       // 13: locdist.v1.WorkerOfflineRequest
+	(*WorkerOfflineResponse)(nil),      // 14: locdist.v1.WorkerOfflineResponse
+	(*RegisterWorkerResponse)(nil),     // 15: locdist.v1.RegisterWorkerResponse
+	(*WorkerStatusUpdate)(nil),         // 16: locdist.v1.WorkerStatusUpdate
+	(*WorkerStatusResponse)(nil),       // 17: locdist.v1.WorkerStatusResponse
 }
 var file_protocol_gradient_proto_depIdxs = []int32{
 	2,  // 0: locdist.v1.GradientChunk.metadata:type_name -> locdist.v1.ParameterMetadata
 	3,  // 1: locdist.v1.GradientSubmission.chunks:type_name -> locdist.v1.GradientChunk
 	3,  // 2: locdist.v1.AggregatedGradientResponse.chunks:type_name -> locdist.v1.GradientChunk
 	1,  // 3: locdist.v1.PairWorkerResponse.decision:type_name -> locdist.v1.PairingDecision
-	0,  // 4: locdist.v1.WorkerStatusUpdate.status:type_name -> locdist.v1.WorkerStatus
-	0,  // 5: locdist.v1.WorkerStatusResponse.status:type_name -> locdist.v1.WorkerStatus
-	4,  // 6: locdist.v1.WorkerBridge.SynchronizeGradients:input_type -> locdist.v1.GradientSubmission
-	6,  // 7: locdist.v1.WorkerBridge.RegisterWorker:input_type -> locdist.v1.RegisterWorkerRequest
-	12, // 8: locdist.v1.WorkerBridge.UpdateWorkerStatus:input_type -> locdist.v1.WorkerStatusUpdate
-	7,  // 9: locdist.v1.WorkerBridge.PairWorker:input_type -> locdist.v1.PairWorkerRequest
-	9,  // 10: locdist.v1.WorkerBridge.UnpairWorker:input_type -> locdist.v1.UnpairWorkerRequest
-	5,  // 11: locdist.v1.WorkerBridge.SynchronizeGradients:output_type -> locdist.v1.AggregatedGradientResponse
-	11, // 12: locdist.v1.WorkerBridge.RegisterWorker:output_type -> locdist.v1.RegisterWorkerResponse
-	13, // 13: locdist.v1.WorkerBridge.UpdateWorkerStatus:output_type -> locdist.v1.WorkerStatusResponse
-	8,  // 14: locdist.v1.WorkerBridge.PairWorker:output_type -> locdist.v1.PairWorkerResponse
-	10, // 15: locdist.v1.WorkerBridge.UnpairWorker:output_type -> locdist.v1.UnpairWorkerResponse
-	11, // [11:16] is the sub-list for method output_type
-	6,  // [6:11] is the sub-list for method input_type
-	6,  // [6:6] is the sub-list for extension type_name
-	6,  // [6:6] is the sub-list for extension extendee
-	0,  // [0:6] is the sub-list for field type_name
+	0,  // 4: locdist.v1.WorkerHeartbeat.status:type_name -> locdist.v1.WorkerStatus
+	0,  // 5: locdist.v1.WorkerStatusUpdate.status:type_name -> locdist.v1.WorkerStatus
+	0,  // 6: locdist.v1.WorkerStatusResponse.status:type_name -> locdist.v1.WorkerStatus
+	4,  // 7: locdist.v1.WorkerBridge.SynchronizeGradients:input_type -> locdist.v1.GradientSubmission
+	6,  // 8: locdist.v1.WorkerBridge.RegisterWorker:input_type -> locdist.v1.RegisterWorkerRequest
+	16, // 9: locdist.v1.WorkerBridge.UpdateWorkerStatus:input_type -> locdist.v1.WorkerStatusUpdate
+	7,  // 10: locdist.v1.WorkerBridge.PairWorker:input_type -> locdist.v1.PairWorkerRequest
+	9,  // 11: locdist.v1.WorkerBridge.UnpairWorker:input_type -> locdist.v1.UnpairWorkerRequest
+	11, // 12: locdist.v1.WorkerBridge.Heartbeat:input_type -> locdist.v1.WorkerHeartbeat
+	13, // 13: locdist.v1.WorkerBridge.GoingOffline:input_type -> locdist.v1.WorkerOfflineRequest
+	5,  // 14: locdist.v1.WorkerBridge.SynchronizeGradients:output_type -> locdist.v1.AggregatedGradientResponse
+	15, // 15: locdist.v1.WorkerBridge.RegisterWorker:output_type -> locdist.v1.RegisterWorkerResponse
+	17, // 16: locdist.v1.WorkerBridge.UpdateWorkerStatus:output_type -> locdist.v1.WorkerStatusResponse
+	8,  // 17: locdist.v1.WorkerBridge.PairWorker:output_type -> locdist.v1.PairWorkerResponse
+	10, // 18: locdist.v1.WorkerBridge.UnpairWorker:output_type -> locdist.v1.UnpairWorkerResponse
+	12, // 19: locdist.v1.WorkerBridge.Heartbeat:output_type -> locdist.v1.WorkerHeartbeatResponse
+	14, // 20: locdist.v1.WorkerBridge.GoingOffline:output_type -> locdist.v1.WorkerOfflineResponse
+	14, // [14:21] is the sub-list for method output_type
+	7,  // [7:14] is the sub-list for method input_type
+	7,  // [7:7] is the sub-list for extension type_name
+	7,  // [7:7] is the sub-list for extension extendee
+	0,  // [0:7] is the sub-list for field type_name
 }
 
 func init() { file_protocol_gradient_proto_init() }
@@ -1059,7 +1317,7 @@ func file_protocol_gradient_proto_init() {
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_protocol_gradient_proto_rawDesc), len(file_protocol_gradient_proto_rawDesc)),
 			NumEnums:      2,
-			NumMessages:   12,
+			NumMessages:   16,
 			NumExtensions: 0,
 			NumServices:   1,
 		},

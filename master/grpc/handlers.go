@@ -54,3 +54,17 @@ func (s *MasterServer) UnpairWorker(
 ) (*gradient.UnpairWorkerResponse, error) {
 	return s.coordinator.UnpairWorker(request)
 }
+
+func (s *MasterServer) Heartbeat(
+	ctx context.Context,
+	request *gradient.WorkerHeartbeat,
+) (*gradient.WorkerHeartbeatResponse, error) {
+	return s.coordinator.Heartbeat(request)
+}
+
+func (s *MasterServer) GoingOffline(
+	ctx context.Context,
+	request *gradient.WorkerOfflineRequest,
+) (*gradient.WorkerOfflineResponse, error) {
+	return s.coordinator.GoingOffline(request)
+}

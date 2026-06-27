@@ -1697,6 +1697,59 @@ production hardening work.
 
 ---
 
+# LDGCC Phase 6: Heartbeats and Reconnect
+
+## Goal
+
+Phase 6 keeps a paired Worker visible to its saved Master after initial
+registration.
+
+```text
+Worker App starts
+    ↓
+Worker loads pairing.json if present
+    ↓
+Worker registers with saved Master
+    ↓
+Worker sends authenticated heartbeat every few seconds
+    ↓
+Master keeps Worker ONLINE
+```
+
+If the saved Master is temporarily unavailable:
+
+```text
+Heartbeat or reconnect fails
+    ↓
+Worker closes Master client
+    ↓
+Worker stays PAIRED_OFFLINE
+    ↓
+Next heartbeat tick tries saved Master again
+```
+
+No re-pairing is needed for normal reconnect. The owner only uses Reset
+Previous Connection when they intentionally want this Worker to join a
+different Master.
+
+## Worker Components
+
+`service/agent.go`
+
+Starts the heartbeat loop, reconnects with the saved pairing record, sends
+`GoingOffline` on stop, and moves between `PAIRED_ONLINE` and
+`PAIRED_OFFLINE`.
+
+`masterclient/client.go`
+
+Adds Master RPC calls for `Heartbeat` and `GoingOffline`.
+
+`pairing.json`
+
+Remains the source of truth for reconnect credentials.
+
+---
+
 ## Current Status
 
 ```text
@@ -1725,6 +1778,18 @@ LAN Discovery Advertisement
     ✓ COMPLETE
 
 LDGCC Phase 5
+    ✓ COMPLETE
+
+LDGCC Phase 6
+    ✓ COMPLETE
+
+Worker Heartbeat Loop
+    ✓ COMPLETE
+
+Paired Reconnect
+    ✓ COMPLETE
+
+Explicit Offline Signal
     ✓ COMPLETE
 
 Pairing Accept/Reject

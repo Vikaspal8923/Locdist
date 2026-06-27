@@ -63,6 +63,16 @@ class WorkerBridgeStub:
                 request_serializer=gradient__pb2.UnpairWorkerRequest.SerializeToString,
                 response_deserializer=gradient__pb2.UnpairWorkerResponse.FromString,
                 _registered_method=True)
+        self.Heartbeat = channel.unary_unary(
+                '/locdist.v1.WorkerBridge/Heartbeat',
+                request_serializer=gradient__pb2.WorkerHeartbeat.SerializeToString,
+                response_deserializer=gradient__pb2.WorkerHeartbeatResponse.FromString,
+                _registered_method=True)
+        self.GoingOffline = channel.unary_unary(
+                '/locdist.v1.WorkerBridge/GoingOffline',
+                request_serializer=gradient__pb2.WorkerOfflineRequest.SerializeToString,
+                response_deserializer=gradient__pb2.WorkerOfflineResponse.FromString,
+                _registered_method=True)
 
 
 class WorkerBridgeServicer:
@@ -102,6 +112,18 @@ class WorkerBridgeServicer:
         context.set_details('Method not implemented!')
         raise NotImplementedError('Method not implemented!')
 
+    def Heartbeat(self, request, context):
+        """Missing associated documentation comment in .proto file."""
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
+    def GoingOffline(self, request, context):
+        """Missing associated documentation comment in .proto file."""
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
 
 def add_WorkerBridgeServicer_to_server(servicer, server):
     rpc_method_handlers = {
@@ -129,6 +151,16 @@ def add_WorkerBridgeServicer_to_server(servicer, server):
                     servicer.UnpairWorker,
                     request_deserializer=gradient__pb2.UnpairWorkerRequest.FromString,
                     response_serializer=gradient__pb2.UnpairWorkerResponse.SerializeToString,
+            ),
+            'Heartbeat': grpc.unary_unary_rpc_method_handler(
+                    servicer.Heartbeat,
+                    request_deserializer=gradient__pb2.WorkerHeartbeat.FromString,
+                    response_serializer=gradient__pb2.WorkerHeartbeatResponse.SerializeToString,
+            ),
+            'GoingOffline': grpc.unary_unary_rpc_method_handler(
+                    servicer.GoingOffline,
+                    request_deserializer=gradient__pb2.WorkerOfflineRequest.FromString,
+                    response_serializer=gradient__pb2.WorkerOfflineResponse.SerializeToString,
             ),
     }
     generic_handler = grpc.method_handlers_generic_handler(
@@ -270,6 +302,60 @@ class WorkerBridge:
             '/locdist.v1.WorkerBridge/UnpairWorker',
             gradient__pb2.UnpairWorkerRequest.SerializeToString,
             gradient__pb2.UnpairWorkerResponse.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
+
+    @staticmethod
+    def Heartbeat(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(
+            request,
+            target,
+            '/locdist.v1.WorkerBridge/Heartbeat',
+            gradient__pb2.WorkerHeartbeat.SerializeToString,
+            gradient__pb2.WorkerHeartbeatResponse.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
+
+    @staticmethod
+    def GoingOffline(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(
+            request,
+            target,
+            '/locdist.v1.WorkerBridge/GoingOffline',
+            gradient__pb2.WorkerOfflineRequest.SerializeToString,
+            gradient__pb2.WorkerOfflineResponse.FromString,
             options,
             channel_credentials,
             insecure,

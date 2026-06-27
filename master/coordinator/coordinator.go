@@ -2,6 +2,7 @@ package coordinator
 
 import (
 	"fmt"
+	"time"
 
 	"github.com/Vikaspal8923/Locdist/master/aggregator"
 	gradient "github.com/Vikaspal8923/Locdist/master/generated/gradient"
@@ -13,6 +14,27 @@ type Coordinator struct {
 	aggregator    *aggregator.Service
 	jobManager    *jobs.Manager
 	workerManager *workers.Manager
+}
+
+func (c *Coordinator) Heartbeat(
+	request *gradient.WorkerHeartbeat,
+) (*gradient.WorkerHeartbeatResponse, error) {
+	if _, err := c.workerManager.Heartbeat(request); err != nil {
+		return nil, err
+	}
+	return &gradient.WorkerHeartbeatResponse{
+		Accepted:       true,
+		ServerUnixTime: time.Now().Unix(),
+	}, nil
+}
+
+func (c *Coordinator) GoingOffline(
+	request *gradient.WorkerOfflineRequest,
+) (*gradient.WorkerOfflineResponse, error) {
+	if err := c.workerManager.GoingOffline(request); err != nil {
+		return nil, err
+	}
+	return &gradient.WorkerOfflineResponse{Acknowledged: true}, nil
 }
 
 func New(

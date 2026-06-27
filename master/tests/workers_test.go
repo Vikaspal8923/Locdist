@@ -3,6 +3,7 @@ package tests
 import (
 	"context"
 	"testing"
+	"time"
 
 	"github.com/Vikaspal8923/Locdist/master/aggregator"
 	"github.com/Vikaspal8923/Locdist/master/coordinator"
@@ -125,6 +126,75 @@ func TestWorkerStatusValidation(t *testing.T) {
 		},
 	); err == nil {
 		t.Fatal("expected unknown status to fail")
+	}
+}
+
+func TestWorkerHeartbeatAvailabilityLifecycle(t *testing.T) {
+	manager := workers.New()
+	reservePairing(t, manager, "worker-a")
+
+	_, err := manager.Register(
+		&gradient.RegisterWorkerRequest{
+			WorkerId:     "worker-a",
+			Host:         "127.0.0.1",
+			GrpcPort:     "50051",
+			MasterId:     "master-a",
+			PairingToken: "token-a",
+		},
+	)
+	if err != nil {
+		t.Fatalf("register worker: %v", err)
+	}
+
+	worker, _ := manager.Worker("worker-a")
+	if worker.Availability != workers.AvailabilityOnline {
+		t.Fatalf("expected online after registration, got %q", worker.Availability)
+	}
+
+	manager.Sweep(time.Now().Add(7*time.Second), 6*time.Second, 12*time.Second)
+	worker, _ = manager.Worker("worker-a")
+	if worker.Availability != workers.AvailabilityStale {
+		t.Fatalf("expected stale worker, got %q", worker.Availability)
+	}
+
+	manager.Sweep(time.Now().Add(13*time.Second), 6*time.Second, 12*time.Second)
+	worker, _ = manager.Worker("worker-a")
+	if worker.Availability != workers.AvailabilityOffline {
+		t.Fatalf("expected offline worker, got %q", worker.Availability)
+	}
+
+	_, err = manager.Heartbeat(
+		&gradient.WorkerHeartbeat{
+			WorkerId:     "worker-a",
+			MasterId:     "master-a",
+			PairingToken: "token-a",
+			Status:       gradient.WorkerStatus_WORKER_STATUS_RUNNING,
+			JobId:        "job-123",
+		},
+	)
+	if err != nil {
+		t.Fatalf("heartbeat: %v", err)
+	}
+	worker, _ = manager.Worker("worker-a")
+	if worker.Availability != workers.AvailabilityOnline {
+		t.Fatalf("expected online after heartbeat, got %q", worker.Availability)
+	}
+	if worker.JobID != "job-123" {
+		t.Fatalf("expected heartbeat job, got %q", worker.JobID)
+	}
+
+	if err := manager.GoingOffline(
+		&gradient.WorkerOfflineRequest{
+			WorkerId:     "worker-a",
+			MasterId:     "master-a",
+			PairingToken: "token-a",
+		},
+	); err != nil {
+		t.Fatalf("going offline: %v", err)
+	}
+	worker, _ = manager.Worker("worker-a")
+	if worker.Availability != workers.AvailabilityOffline {
+		t.Fatalf("expected explicit offline, got %q", worker.Availability)
 	}
 }
 

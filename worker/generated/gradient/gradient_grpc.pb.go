@@ -24,6 +24,8 @@ const (
 	WorkerBridge_UpdateWorkerStatus_FullMethodName   = "/locdist.v1.WorkerBridge/UpdateWorkerStatus"
 	WorkerBridge_PairWorker_FullMethodName           = "/locdist.v1.WorkerBridge/PairWorker"
 	WorkerBridge_UnpairWorker_FullMethodName         = "/locdist.v1.WorkerBridge/UnpairWorker"
+	WorkerBridge_Heartbeat_FullMethodName            = "/locdist.v1.WorkerBridge/Heartbeat"
+	WorkerBridge_GoingOffline_FullMethodName         = "/locdist.v1.WorkerBridge/GoingOffline"
 )
 
 // WorkerBridgeClient is the client API for WorkerBridge service.
@@ -35,6 +37,8 @@ type WorkerBridgeClient interface {
 	UpdateWorkerStatus(ctx context.Context, in *WorkerStatusUpdate, opts ...grpc.CallOption) (*WorkerStatusResponse, error)
 	PairWorker(ctx context.Context, in *PairWorkerRequest, opts ...grpc.CallOption) (*PairWorkerResponse, error)
 	UnpairWorker(ctx context.Context, in *UnpairWorkerRequest, opts ...grpc.CallOption) (*UnpairWorkerResponse, error)
+	Heartbeat(ctx context.Context, in *WorkerHeartbeat, opts ...grpc.CallOption) (*WorkerHeartbeatResponse, error)
+	GoingOffline(ctx context.Context, in *WorkerOfflineRequest, opts ...grpc.CallOption) (*WorkerOfflineResponse, error)
 }
 
 type workerBridgeClient struct {
@@ -95,6 +99,26 @@ func (c *workerBridgeClient) UnpairWorker(ctx context.Context, in *UnpairWorkerR
 	return out, nil
 }
 
+func (c *workerBridgeClient) Heartbeat(ctx context.Context, in *WorkerHeartbeat, opts ...grpc.CallOption) (*WorkerHeartbeatResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(WorkerHeartbeatResponse)
+	err := c.cc.Invoke(ctx, WorkerBridge_Heartbeat_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *workerBridgeClient) GoingOffline(ctx context.Context, in *WorkerOfflineRequest, opts ...grpc.CallOption) (*WorkerOfflineResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(WorkerOfflineResponse)
+	err := c.cc.Invoke(ctx, WorkerBridge_GoingOffline_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 // WorkerBridgeServer is the server API for WorkerBridge service.
 // All implementations must embed UnimplementedWorkerBridgeServer
 // for forward compatibility.
@@ -104,6 +128,8 @@ type WorkerBridgeServer interface {
 	UpdateWorkerStatus(context.Context, *WorkerStatusUpdate) (*WorkerStatusResponse, error)
 	PairWorker(context.Context, *PairWorkerRequest) (*PairWorkerResponse, error)
 	UnpairWorker(context.Context, *UnpairWorkerRequest) (*UnpairWorkerResponse, error)
+	Heartbeat(context.Context, *WorkerHeartbeat) (*WorkerHeartbeatResponse, error)
+	GoingOffline(context.Context, *WorkerOfflineRequest) (*WorkerOfflineResponse, error)
 	mustEmbedUnimplementedWorkerBridgeServer()
 }
 
@@ -128,6 +154,12 @@ func (UnimplementedWorkerBridgeServer) PairWorker(context.Context, *PairWorkerRe
 }
 func (UnimplementedWorkerBridgeServer) UnpairWorker(context.Context, *UnpairWorkerRequest) (*UnpairWorkerResponse, error) {
 	return nil, status.Error(codes.Unimplemented, "method UnpairWorker not implemented")
+}
+func (UnimplementedWorkerBridgeServer) Heartbeat(context.Context, *WorkerHeartbeat) (*WorkerHeartbeatResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method Heartbeat not implemented")
+}
+func (UnimplementedWorkerBridgeServer) GoingOffline(context.Context, *WorkerOfflineRequest) (*WorkerOfflineResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method GoingOffline not implemented")
 }
 func (UnimplementedWorkerBridgeServer) mustEmbedUnimplementedWorkerBridgeServer() {}
 func (UnimplementedWorkerBridgeServer) testEmbeddedByValue()                      {}
@@ -240,6 +272,42 @@ func _WorkerBridge_UnpairWorker_Handler(srv interface{}, ctx context.Context, de
 	return interceptor(ctx, in, info, handler)
 }
 
+func _WorkerBridge_Heartbeat_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(WorkerHeartbeat)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(WorkerBridgeServer).Heartbeat(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: WorkerBridge_Heartbeat_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(WorkerBridgeServer).Heartbeat(ctx, req.(*WorkerHeartbeat))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _WorkerBridge_GoingOffline_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(WorkerOfflineRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(WorkerBridgeServer).GoingOffline(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: WorkerBridge_GoingOffline_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(WorkerBridgeServer).GoingOffline(ctx, req.(*WorkerOfflineRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
 // WorkerBridge_ServiceDesc is the grpc.ServiceDesc for WorkerBridge service.
 // It's only intended for direct use with grpc.RegisterService,
 // and not to be introspected or modified (even as a copy)
@@ -266,6 +334,14 @@ var WorkerBridge_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "UnpairWorker",
 			Handler:    _WorkerBridge_UnpairWorker_Handler,
+		},
+		{
+			MethodName: "Heartbeat",
+			Handler:    _WorkerBridge_Heartbeat_Handler,
+		},
+		{
+			MethodName: "GoingOffline",
+			Handler:    _WorkerBridge_GoingOffline_Handler,
 		},
 	},
 	Streams:  []grpc.StreamDesc{},

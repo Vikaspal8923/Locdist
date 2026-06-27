@@ -3,6 +3,7 @@ package workers
 import (
 	"fmt"
 	"sync"
+	"time"
 
 	gradient "github.com/Vikaspal8923/Locdist/master/generated/gradient"
 )
@@ -119,10 +120,80 @@ func (m *Manager) Register(
 	worker.WorkerID = request.GetWorkerId()
 	worker.Host = request.GetHost()
 	worker.GRPCPort = request.GetGrpcPort()
+	worker.Availability = AvailabilityOnline
+	worker.LastSeen = time.Now()
 
 	m.workers[worker.WorkerID] = worker
 
 	return worker, nil
+}
+
+func (m *Manager) Heartbeat(
+	request *gradient.WorkerHeartbeat,
+) (State, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+
+	if !m.authenticated(
+		request.GetWorkerId(),
+		request.GetMasterId(),
+		request.GetPairingToken(),
+	) {
+		return State{}, fmt.Errorf("worker pairing credentials are invalid")
+	}
+
+	worker, ok := m.workers[request.GetWorkerId()]
+	if !ok {
+		return State{}, fmt.Errorf("worker must register before heartbeat")
+	}
+	worker.Status = request.GetStatus()
+	worker.JobID = request.GetJobId()
+	worker.Availability = AvailabilityOnline
+	worker.LastSeen = time.Now()
+	m.workers[worker.WorkerID] = worker
+	return worker, nil
+}
+
+func (m *Manager) GoingOffline(
+	request *gradient.WorkerOfflineRequest,
+) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+
+	if !m.authenticated(
+		request.GetWorkerId(),
+		request.GetMasterId(),
+		request.GetPairingToken(),
+	) {
+		return fmt.Errorf("worker pairing credentials are invalid")
+	}
+	worker, ok := m.workers[request.GetWorkerId()]
+	if !ok {
+		return fmt.Errorf("worker is not registered")
+	}
+	worker.Availability = AvailabilityOffline
+	m.workers[worker.WorkerID] = worker
+	return nil
+}
+
+func (m *Manager) Sweep(
+	now time.Time,
+	staleAfter time.Duration,
+	offlineAfter time.Duration,
+) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+
+	for workerID, worker := range m.workers {
+		age := now.Sub(worker.LastSeen)
+		switch {
+		case age >= offlineAfter:
+			worker.Availability = AvailabilityOffline
+		case age >= staleAfter:
+			worker.Availability = AvailabilityStale
+		}
+		m.workers[workerID] = worker
+	}
 }
 
 func (m *Manager) UpdateStatus(
@@ -179,4 +250,15 @@ func validStatus(status gradient.WorkerStatus) bool {
 	default:
 		return false
 	}
+}
+
+func (m *Manager) authenticated(
+	workerID string,
+	masterID string,
+	token string,
+) bool {
+	pairing, ok := m.pairings[workerID]
+	return ok &&
+		pairing.MasterID == masterID &&
+		pairing.Token == token
 }

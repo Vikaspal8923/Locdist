@@ -1,9 +1,11 @@
 package service
 
 import (
+	"context"
 	"fmt"
 	"log"
 	"sync"
+	"time"
 
 	"github.com/Vikaspal8923/Locdist/worker/discovery"
 	gradient "github.com/Vikaspal8923/Locdist/worker/generated/gradient"
@@ -34,6 +36,7 @@ type Agent struct {
 	client        *masterclient.Client
 	running       bool
 	connection    ConnectionState
+	heartbeatStop context.CancelFunc
 }
 
 func New(
@@ -97,6 +100,7 @@ func (a *Agent) Start() error {
 		a.stopLocked()
 		return err
 	}
+	a.startHeartbeat()
 
 	log.Printf(
 		"worker %q is discoverable on the LAN (%s)",
@@ -247,6 +251,20 @@ func (a *Agent) stopLocked() error {
 		return nil
 	}
 
+	if a.heartbeatStop != nil {
+		a.heartbeatStop()
+		a.heartbeatStop = nil
+	}
+	if record, paired := a.pairing.Record(); paired && a.client != nil {
+		_, _ = a.client.GoingOffline(
+			&gradient.WorkerOfflineRequest{
+				WorkerId:     record.WorkerID,
+				MasterId:     record.MasterID,
+				PairingToken: record.PairingToken,
+			},
+		)
+	}
+
 	discoveryErr := a.advertiser.Stop()
 	a.server.Stop()
 	a.closeClient()
@@ -260,6 +278,64 @@ func (a *Agent) stopLocked() error {
 		a.connection = ConnectionUnpaired
 	}
 	return discoveryErr
+}
+
+func (a *Agent) startHeartbeat() {
+	ctx, cancel := context.WithCancel(context.Background())
+	a.heartbeatStop = cancel
+
+	go func() {
+		ticker := time.NewTicker(3 * time.Second)
+		defer ticker.Stop()
+
+		for {
+			select {
+			case <-ctx.Done():
+				return
+			case <-ticker.C:
+				a.sendHeartbeat()
+			}
+		}
+	}()
+}
+
+func (a *Agent) sendHeartbeat() {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+
+	if !a.running {
+		return
+	}
+	record, paired := a.pairing.Record()
+	if !paired {
+		return
+	}
+
+	if a.client == nil {
+		if err := a.connect(record); err != nil {
+			a.connection = ConnectionPairedOffline
+			return
+		}
+	}
+
+	_, err := a.client.Heartbeat(
+		&gradient.WorkerHeartbeat{
+			WorkerId:     record.WorkerID,
+			MasterId:     record.MasterID,
+			PairingToken: record.PairingToken,
+			Status: gradient.
+				WorkerStatus_WORKER_STATUS_IDLE,
+		},
+	)
+	if err != nil {
+		a.closeClient()
+		a.runtimeBridge.SetSynchronizer(
+			runtimebridge.UnavailableSynchronizer{},
+		)
+		a.connection = ConnectionPairedOffline
+		return
+	}
+	a.connection = ConnectionPairedOnline
 }
 
 func (a *Agent) closeClient() {

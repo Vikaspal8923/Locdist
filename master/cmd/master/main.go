@@ -55,6 +55,23 @@ func main() {
 	defer stopDiscovery()
 	go discoveryService.Run(discoveryContext)
 
+	go func() {
+		ticker := time.NewTicker(3 * time.Second)
+		defer ticker.Stop()
+		for {
+			select {
+			case <-discoveryContext.Done():
+				return
+			case now := <-ticker.C:
+				workerManager.Sweep(
+					now,
+					6*time.Second,
+					12*time.Second,
+				)
+			}
+		}
+	}()
+
 	pairingService := pairing.New(
 		cfg,
 		discoveredWorkers,

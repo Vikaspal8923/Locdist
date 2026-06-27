@@ -85,6 +85,28 @@ func (c *Client) Unpair(
 	return c.client.UnpairWorker(ctx, request)
 }
 
+func (c *Client) Heartbeat(
+	request *gradient.WorkerHeartbeat,
+) (*gradient.WorkerHeartbeatResponse, error) {
+	ctx, cancel := context.WithTimeout(
+		context.Background(),
+		controlRPCTimeout,
+	)
+	defer cancel()
+	return c.client.Heartbeat(ctx, request)
+}
+
+func (c *Client) GoingOffline(
+	request *gradient.WorkerOfflineRequest,
+) (*gradient.WorkerOfflineResponse, error) {
+	ctx, cancel := context.WithTimeout(
+		context.Background(),
+		controlRPCTimeout,
+	)
+	defer cancel()
+	return c.client.GoingOffline(ctx, request)
+}
+
 func (c *Client) Synchronize(
 	request *gradient.GradientSubmission,
 ) (*gradient.AggregatedGradientResponse, error) {
