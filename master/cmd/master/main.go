@@ -1,13 +1,16 @@
 package main
 
 import (
+	"context"
 	"log"
 	"os"
 	"os/signal"
 	"syscall"
+	"time"
 
 	"github.com/Vikaspal8923/Locdist/master/aggregator"
 	"github.com/Vikaspal8923/Locdist/master/coordinator"
+	"github.com/Vikaspal8923/Locdist/master/discovery"
 	"github.com/Vikaspal8923/Locdist/master/grpc"
 	"github.com/Vikaspal8923/Locdist/master/internal/config"
 	"github.com/Vikaspal8923/Locdist/master/jobs"
@@ -31,6 +34,19 @@ func main() {
 	jobManager := jobs.New()
 
 	workerManager := workers.New()
+
+	discoveredWorkers := discovery.NewRegistry()
+	discoveryService := discovery.NewService(
+		discovery.NewBrowser(2*time.Second),
+		discoveredWorkers,
+		3*time.Second,
+		10*time.Second,
+	)
+	discoveryContext, stopDiscovery := context.WithCancel(
+		context.Background(),
+	)
+	defer stopDiscovery()
+	go discoveryService.Run(discoveryContext)
 
 	coordinatorService := coordinator.New(
 		aggregatorService,
@@ -81,6 +97,7 @@ func main() {
 		"shutdown signal received",
 	)
 
+	stopDiscovery()
 	server.Stop()
 
 	log.Println(

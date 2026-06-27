@@ -1273,6 +1273,80 @@ status updates.
 
 ---
 
+# LDGCC Phase 4: LAN Discovery
+
+## Goal
+
+Phase 4 lets Master find running LDGCC Worker Apps on the same LAN without
+knowing their addresses in advance.
+
+```text
+Worker owner clicks Start Worker
+    ↓
+Worker advertises _ldgcc-worker._tcp.local
+    ↓
+Master scans with mDNS/DNS-SD
+    ↓
+Master stores a temporary discovery record
+```
+
+Discovery records are deliberately separate from registered Worker state.
+An mDNS result provides a network location, not a trusted identity.
+
+## Advertised Metadata
+
+```text
+worker name
+host/address
+Worker gRPC port
+protocol version
+pairing status
+```
+
+## Master Components
+
+`discovery/browser.go`
+
+Scans `_ldgcc-worker._tcp.local` and converts DNS-SD records into LDGCC
+discovery records.
+
+`discovery/registry.go`
+
+Maintains a concurrency-safe temporary registry, refreshes repeated
+sightings, and expires Workers that stop advertising.
+
+`discovery/service.go`
+
+Runs periodic scans and records Worker arrival and disappearance.
+
+`discovery/state.go`
+
+Defines temporary discovery metadata.
+
+`cmd/master/main.go`
+
+Starts and stops discovery with the Master process.
+
+## Scope Boundary
+
+Included:
+
+* Same-LAN Worker discovery
+* Temporary presence tracking
+* Protocol and pairing-state metadata
+* Discovery expiry
+
+Deferred:
+
+* Pairing request
+* Accept or reject
+* Authentication
+* Permanent identity assignment
+* Automatic Worker configuration
+* Heartbeats and scheduling
+
+---
+
 # Master Phase Roadmap
 
 ## Master Phase 2
@@ -1321,14 +1395,14 @@ Heartbeats and failure detection are deferred to a later phase.
 Status:
 
 ```text
-NOT STARTED
+COMPLETE
 ```
 
-Expected Goal:
+Completed Goal:
 
-* Scheduling
-* Dataset Sharding
-* Training Planning
+* mDNS/DNS-SD Worker Discovery
+* Temporary Discovered-Worker Registry
+* Worker Presence Expiry
 
 ---
 
@@ -1342,9 +1416,9 @@ NOT STARTED
 
 Expected Goal:
 
-* Workspace Distribution
-* Artifact Collection
-* Full Training Orchestration
+* Pairing and Approval
+* Permanent Worker Identity
+* Automatic Worker Configuration
 
 ---
 
@@ -1370,6 +1444,12 @@ Worker Registration
     ✓ COMPLETE
 
 Worker Status Foundation
+    ✓ COMPLETE
+
+LDGCC Phase 4
+    ✓ COMPLETE
+
+LAN Worker Discovery
     ✓ COMPLETE
 
 Identity Aggregation
