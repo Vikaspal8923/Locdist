@@ -1467,6 +1467,8 @@ type JobCommandResponse struct {
 	Status        JobRunStatus           `protobuf:"varint,3,opt,name=status,proto3,enum=locdist.v1.JobRunStatus" json:"status,omitempty"`
 	ErrorMessage  string                 `protobuf:"bytes,4,opt,name=error_message,json=errorMessage,proto3" json:"error_message,omitempty"`
 	LogPath       string                 `protobuf:"bytes,5,opt,name=log_path,json=logPath,proto3" json:"log_path,omitempty"`
+	ExitCode      int32                  `protobuf:"varint,6,opt,name=exit_code,json=exitCode,proto3" json:"exit_code,omitempty"`
+	LogTail       []byte                 `protobuf:"bytes,7,opt,name=log_tail,json=logTail,proto3" json:"log_tail,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -1534,6 +1536,20 @@ func (x *JobCommandResponse) GetLogPath() string {
 		return x.LogPath
 	}
 	return ""
+}
+
+func (x *JobCommandResponse) GetExitCode() int32 {
+	if x != nil {
+		return x.ExitCode
+	}
+	return 0
+}
+
+func (x *JobCommandResponse) GetLogTail() []byte {
+	if x != nil {
+		return x.LogTail
+	}
+	return nil
 }
 
 type RegisterWorkerResponse struct {
@@ -1800,13 +1816,15 @@ const file_gradient_proto_rawDesc = "" +
 	"\x06job_id\x18\x01 \x01(\tR\x05jobId\x12\x1b\n" +
 	"\tworker_id\x18\x02 \x01(\tR\bworkerId\x12\x1b\n" +
 	"\tmaster_id\x18\x03 \x01(\tR\bmasterId\x12#\n" +
-	"\rpairing_token\x18\x04 \x01(\tR\fpairingToken\"\xba\x01\n" +
+	"\rpairing_token\x18\x04 \x01(\tR\fpairingToken\"\xf2\x01\n" +
 	"\x12JobCommandResponse\x12\x15\n" +
 	"\x06job_id\x18\x01 \x01(\tR\x05jobId\x12\x1b\n" +
 	"\tworker_id\x18\x02 \x01(\tR\bworkerId\x120\n" +
 	"\x06status\x18\x03 \x01(\x0e2\x18.locdist.v1.JobRunStatusR\x06status\x12#\n" +
 	"\rerror_message\x18\x04 \x01(\tR\ferrorMessage\x12\x19\n" +
-	"\blog_path\x18\x05 \x01(\tR\alogPath\"U\n" +
+	"\blog_path\x18\x05 \x01(\tR\alogPath\x12\x1b\n" +
+	"\texit_code\x18\x06 \x01(\x05R\bexitCode\x12\x19\n" +
+	"\blog_tail\x18\a \x01(\fR\alogTail\"U\n" +
 	"\x16RegisterWorkerResponse\x12\x1b\n" +
 	"\tworker_id\x18\x01 \x01(\tR\bworkerId\x12\x1e\n" +
 	"\n" +
@@ -1843,7 +1861,7 @@ const file_gradient_proto_rawDesc = "" +
 	"\x16JOB_RUN_STATUS_RUNNING\x10\x02\x12\x1c\n" +
 	"\x18JOB_RUN_STATUS_COMPLETED\x10\x03\x12\x19\n" +
 	"\x15JOB_RUN_STATUS_FAILED\x10\x04\x12\x1c\n" +
-	"\x18JOB_RUN_STATUS_CANCELLED\x10\x052\xe9\a\n" +
+	"\x18JOB_RUN_STATUS_CANCELLED\x10\x052\x85\t\n" +
 	"\fWorkerBridge\x12^\n" +
 	"\x14SynchronizeGradients\x12\x1e.locdist.v1.GradientSubmission\x1a&.locdist.v1.AggregatedGradientResponse\x12W\n" +
 	"\x0eRegisterWorker\x12!.locdist.v1.RegisterWorkerRequest\x1a\".locdist.v1.RegisterWorkerResponse\x12V\n" +
@@ -1858,7 +1876,10 @@ const file_gradient_proto_rawDesc = "" +
 	"\x06ArmJob\x12\x1d.locdist.v1.JobCommandRequest\x1a\x1e.locdist.v1.JobCommandResponse\x12K\n" +
 	"\n" +
 	"ReleaseJob\x12\x1d.locdist.v1.JobCommandRequest\x1a\x1e.locdist.v1.JobCommandResponse\x12H\n" +
-	"\aStopJob\x12\x1d.locdist.v1.JobCommandRequest\x1a\x1e.locdist.v1.JobCommandResponseB\x14Z\x12generated/gradientb\x06proto3"
+	"\aStopJob\x12\x1d.locdist.v1.JobCommandRequest\x1a\x1e.locdist.v1.JobCommandResponse\x12M\n" +
+	"\fGetJobStatus\x12\x1d.locdist.v1.JobCommandRequest\x1a\x1e.locdist.v1.JobCommandResponse\x12K\n" +
+	"\n" +
+	"CleanupJob\x12\x1d.locdist.v1.JobCommandRequest\x1a\x1e.locdist.v1.JobCommandResponseB\x14Z\x12generated/gradientb\x06proto3"
 
 var (
 	file_gradient_proto_rawDescOnce sync.Once
@@ -1924,20 +1945,24 @@ var file_gradient_proto_depIdxs = []int32{
 	21, // 18: locdist.v1.WorkerBridge.ArmJob:input_type -> locdist.v1.JobCommandRequest
 	21, // 19: locdist.v1.WorkerBridge.ReleaseJob:input_type -> locdist.v1.JobCommandRequest
 	21, // 20: locdist.v1.WorkerBridge.StopJob:input_type -> locdist.v1.JobCommandRequest
-	7,  // 21: locdist.v1.WorkerBridge.SynchronizeGradients:output_type -> locdist.v1.AggregatedGradientResponse
-	23, // 22: locdist.v1.WorkerBridge.RegisterWorker:output_type -> locdist.v1.RegisterWorkerResponse
-	25, // 23: locdist.v1.WorkerBridge.UpdateWorkerStatus:output_type -> locdist.v1.WorkerStatusResponse
-	10, // 24: locdist.v1.WorkerBridge.PairWorker:output_type -> locdist.v1.PairWorkerResponse
-	12, // 25: locdist.v1.WorkerBridge.UnpairWorker:output_type -> locdist.v1.UnpairWorkerResponse
-	14, // 26: locdist.v1.WorkerBridge.Heartbeat:output_type -> locdist.v1.WorkerHeartbeatResponse
-	16, // 27: locdist.v1.WorkerBridge.GoingOffline:output_type -> locdist.v1.WorkerOfflineResponse
-	18, // 28: locdist.v1.WorkerBridge.PrepareWorkspace:output_type -> locdist.v1.PrepareWorkspaceResponse
-	20, // 29: locdist.v1.WorkerBridge.SetupJob:output_type -> locdist.v1.SetupJobResponse
-	22, // 30: locdist.v1.WorkerBridge.ArmJob:output_type -> locdist.v1.JobCommandResponse
-	22, // 31: locdist.v1.WorkerBridge.ReleaseJob:output_type -> locdist.v1.JobCommandResponse
-	22, // 32: locdist.v1.WorkerBridge.StopJob:output_type -> locdist.v1.JobCommandResponse
-	21, // [21:33] is the sub-list for method output_type
-	9,  // [9:21] is the sub-list for method input_type
+	21, // 21: locdist.v1.WorkerBridge.GetJobStatus:input_type -> locdist.v1.JobCommandRequest
+	21, // 22: locdist.v1.WorkerBridge.CleanupJob:input_type -> locdist.v1.JobCommandRequest
+	7,  // 23: locdist.v1.WorkerBridge.SynchronizeGradients:output_type -> locdist.v1.AggregatedGradientResponse
+	23, // 24: locdist.v1.WorkerBridge.RegisterWorker:output_type -> locdist.v1.RegisterWorkerResponse
+	25, // 25: locdist.v1.WorkerBridge.UpdateWorkerStatus:output_type -> locdist.v1.WorkerStatusResponse
+	10, // 26: locdist.v1.WorkerBridge.PairWorker:output_type -> locdist.v1.PairWorkerResponse
+	12, // 27: locdist.v1.WorkerBridge.UnpairWorker:output_type -> locdist.v1.UnpairWorkerResponse
+	14, // 28: locdist.v1.WorkerBridge.Heartbeat:output_type -> locdist.v1.WorkerHeartbeatResponse
+	16, // 29: locdist.v1.WorkerBridge.GoingOffline:output_type -> locdist.v1.WorkerOfflineResponse
+	18, // 30: locdist.v1.WorkerBridge.PrepareWorkspace:output_type -> locdist.v1.PrepareWorkspaceResponse
+	20, // 31: locdist.v1.WorkerBridge.SetupJob:output_type -> locdist.v1.SetupJobResponse
+	22, // 32: locdist.v1.WorkerBridge.ArmJob:output_type -> locdist.v1.JobCommandResponse
+	22, // 33: locdist.v1.WorkerBridge.ReleaseJob:output_type -> locdist.v1.JobCommandResponse
+	22, // 34: locdist.v1.WorkerBridge.StopJob:output_type -> locdist.v1.JobCommandResponse
+	22, // 35: locdist.v1.WorkerBridge.GetJobStatus:output_type -> locdist.v1.JobCommandResponse
+	22, // 36: locdist.v1.WorkerBridge.CleanupJob:output_type -> locdist.v1.JobCommandResponse
+	23, // [23:37] is the sub-list for method output_type
+	9,  // [9:23] is the sub-list for method input_type
 	9,  // [9:9] is the sub-list for extension type_name
 	9,  // [9:9] is the sub-list for extension extendee
 	0,  // [0:9] is the sub-list for field type_name

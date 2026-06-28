@@ -2,6 +2,7 @@ package orchestrator
 
 import (
 	"fmt"
+	"os"
 	"path/filepath"
 	"time"
 
@@ -31,6 +32,16 @@ func NewPreparer(
 }
 
 func (p *Preparer) Prepare(projectRoot string) (*jobs.JobState, error) {
+	if p.jobManager.HasActiveJob() {
+		return nil, fmt.Errorf("a job is already active")
+	}
+	cleanRoot := filepath.Clean(p.jobsRoot)
+	if cleanRoot == "." || cleanRoot == string(filepath.Separator) || cleanRoot == filepath.Clean(projectRoot) {
+		return nil, fmt.Errorf("jobs root is unsafe")
+	}
+	if err := os.RemoveAll(cleanRoot); err != nil {
+		return nil, fmt.Errorf("clear previous Master job data: %w", err)
+	}
 	spec, err := project.LoadSpec(projectRoot)
 	if err != nil {
 		return nil, err

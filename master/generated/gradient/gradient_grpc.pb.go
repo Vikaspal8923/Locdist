@@ -31,6 +31,8 @@ const (
 	WorkerBridge_ArmJob_FullMethodName               = "/locdist.v1.WorkerBridge/ArmJob"
 	WorkerBridge_ReleaseJob_FullMethodName           = "/locdist.v1.WorkerBridge/ReleaseJob"
 	WorkerBridge_StopJob_FullMethodName              = "/locdist.v1.WorkerBridge/StopJob"
+	WorkerBridge_GetJobStatus_FullMethodName         = "/locdist.v1.WorkerBridge/GetJobStatus"
+	WorkerBridge_CleanupJob_FullMethodName           = "/locdist.v1.WorkerBridge/CleanupJob"
 )
 
 // WorkerBridgeClient is the client API for WorkerBridge service.
@@ -49,6 +51,8 @@ type WorkerBridgeClient interface {
 	ArmJob(ctx context.Context, in *JobCommandRequest, opts ...grpc.CallOption) (*JobCommandResponse, error)
 	ReleaseJob(ctx context.Context, in *JobCommandRequest, opts ...grpc.CallOption) (*JobCommandResponse, error)
 	StopJob(ctx context.Context, in *JobCommandRequest, opts ...grpc.CallOption) (*JobCommandResponse, error)
+	GetJobStatus(ctx context.Context, in *JobCommandRequest, opts ...grpc.CallOption) (*JobCommandResponse, error)
+	CleanupJob(ctx context.Context, in *JobCommandRequest, opts ...grpc.CallOption) (*JobCommandResponse, error)
 }
 
 type workerBridgeClient struct {
@@ -179,6 +183,26 @@ func (c *workerBridgeClient) StopJob(ctx context.Context, in *JobCommandRequest,
 	return out, nil
 }
 
+func (c *workerBridgeClient) GetJobStatus(ctx context.Context, in *JobCommandRequest, opts ...grpc.CallOption) (*JobCommandResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(JobCommandResponse)
+	err := c.cc.Invoke(ctx, WorkerBridge_GetJobStatus_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *workerBridgeClient) CleanupJob(ctx context.Context, in *JobCommandRequest, opts ...grpc.CallOption) (*JobCommandResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(JobCommandResponse)
+	err := c.cc.Invoke(ctx, WorkerBridge_CleanupJob_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 // WorkerBridgeServer is the server API for WorkerBridge service.
 // All implementations must embed UnimplementedWorkerBridgeServer
 // for forward compatibility.
@@ -195,6 +219,8 @@ type WorkerBridgeServer interface {
 	ArmJob(context.Context, *JobCommandRequest) (*JobCommandResponse, error)
 	ReleaseJob(context.Context, *JobCommandRequest) (*JobCommandResponse, error)
 	StopJob(context.Context, *JobCommandRequest) (*JobCommandResponse, error)
+	GetJobStatus(context.Context, *JobCommandRequest) (*JobCommandResponse, error)
+	CleanupJob(context.Context, *JobCommandRequest) (*JobCommandResponse, error)
 	mustEmbedUnimplementedWorkerBridgeServer()
 }
 
@@ -240,6 +266,12 @@ func (UnimplementedWorkerBridgeServer) ReleaseJob(context.Context, *JobCommandRe
 }
 func (UnimplementedWorkerBridgeServer) StopJob(context.Context, *JobCommandRequest) (*JobCommandResponse, error) {
 	return nil, status.Error(codes.Unimplemented, "method StopJob not implemented")
+}
+func (UnimplementedWorkerBridgeServer) GetJobStatus(context.Context, *JobCommandRequest) (*JobCommandResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method GetJobStatus not implemented")
+}
+func (UnimplementedWorkerBridgeServer) CleanupJob(context.Context, *JobCommandRequest) (*JobCommandResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method CleanupJob not implemented")
 }
 func (UnimplementedWorkerBridgeServer) mustEmbedUnimplementedWorkerBridgeServer() {}
 func (UnimplementedWorkerBridgeServer) testEmbeddedByValue()                      {}
@@ -478,6 +510,42 @@ func _WorkerBridge_StopJob_Handler(srv interface{}, ctx context.Context, dec fun
 	return interceptor(ctx, in, info, handler)
 }
 
+func _WorkerBridge_GetJobStatus_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(JobCommandRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(WorkerBridgeServer).GetJobStatus(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: WorkerBridge_GetJobStatus_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(WorkerBridgeServer).GetJobStatus(ctx, req.(*JobCommandRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _WorkerBridge_CleanupJob_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(JobCommandRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(WorkerBridgeServer).CleanupJob(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: WorkerBridge_CleanupJob_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(WorkerBridgeServer).CleanupJob(ctx, req.(*JobCommandRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
 // WorkerBridge_ServiceDesc is the grpc.ServiceDesc for WorkerBridge service.
 // It's only intended for direct use with grpc.RegisterService,
 // and not to be introspected or modified (even as a copy)
@@ -532,6 +600,14 @@ var WorkerBridge_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "StopJob",
 			Handler:    _WorkerBridge_StopJob_Handler,
+		},
+		{
+			MethodName: "GetJobStatus",
+			Handler:    _WorkerBridge_GetJobStatus_Handler,
+		},
+		{
+			MethodName: "CleanupJob",
+			Handler:    _WorkerBridge_CleanupJob_Handler,
 		},
 	},
 	Streams:  []grpc.StreamDesc{},

@@ -3,6 +3,7 @@ package training
 import (
 	"encoding/json"
 	"fmt"
+	"io"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -26,12 +27,15 @@ type process struct {
 	done         chan struct{}
 	errorMessage string
 	logPath      string
+	exitCode     int
 }
 
 type Result struct {
 	Status       gradient.JobRunStatus
 	ErrorMessage string
 	LogPath      string
+	ExitCode     int
+	LogTail      []byte
 }
 
 type Manager struct {
@@ -75,7 +79,7 @@ func (m *Manager) Arm(jobID string) Result {
 		}
 	}
 	logPath := filepath.Join(directory, "logs", "training.log")
-	m.processes[jobID] = &process{status: gradient.JobRunStatus_JOB_RUN_STATUS_ARMED, entrypoint: config.Entrypoint, logPath: logPath}
+	m.processes[jobID] = &process{status: gradient.JobRunStatus_JOB_RUN_STATUS_ARMED, entrypoint: config.Entrypoint, logPath: logPath, exitCode: -1}
 	return Result{Status: gradient.JobRunStatus_JOB_RUN_STATUS_ARMED, LogPath: logPath}
 }
 
@@ -125,9 +129,11 @@ func (m *Manager) wait(jobID string, current *process, log *os.File) {
 	if current.status != gradient.JobRunStatus_JOB_RUN_STATUS_CANCELLED {
 		if err == nil {
 			current.status = gradient.JobRunStatus_JOB_RUN_STATUS_COMPLETED
+			current.exitCode = 0
 		} else {
 			current.status = gradient.JobRunStatus_JOB_RUN_STATUS_FAILED
 			current.errorMessage = err.Error()
+			current.exitCode = current.command.ProcessState.ExitCode()
 		}
 	}
 	close(current.done)
@@ -172,9 +178,55 @@ func (m *Manager) Status(jobID string) Result {
 	return Result{Status: gradient.JobRunStatus_JOB_RUN_STATUS_UNKNOWN}
 }
 
+func (m *Manager) Cleanup(jobID string) Result {
+	status := m.Status(jobID)
+	if status.Status == gradient.JobRunStatus_JOB_RUN_STATUS_ARMED || status.Status == gradient.JobRunStatus_JOB_RUN_STATUS_RUNNING {
+		m.Stop(jobID)
+		status = m.Status(jobID)
+	}
+	status.LogTail = readLogTail(status.LogPath)
+	if err := m.workspace.Remove(jobID); err != nil {
+		return failed("remove workspace: "+err.Error(), status.LogPath)
+	}
+	m.mu.Lock()
+	delete(m.processes, jobID)
+	m.mu.Unlock()
+	return status
+}
+
 func resultOf(value *process) Result {
-	return Result{Status: value.status, ErrorMessage: value.errorMessage, LogPath: value.logPath}
+	return Result{Status: value.status, ErrorMessage: value.errorMessage, LogPath: value.logPath, ExitCode: value.exitCode, LogTail: readLogTail(value.logPath)}
 }
 func failed(message, logPath string) Result {
-	return Result{Status: gradient.JobRunStatus_JOB_RUN_STATUS_FAILED, ErrorMessage: message, LogPath: logPath}
+	return Result{Status: gradient.JobRunStatus_JOB_RUN_STATUS_FAILED, ErrorMessage: message, LogPath: logPath, ExitCode: -1}
+}
+
+const maxLogTailBytes = 1 << 20
+
+func readLogTail(path string) []byte {
+	if path == "" {
+		return nil
+	}
+	file, err := os.Open(path)
+	if err != nil {
+		return nil
+	}
+	defer file.Close()
+	info, err := file.Stat()
+	if err != nil {
+		return nil
+	}
+	start := info.Size() - maxLogTailBytes
+	if start < 0 {
+		start = 0
+	}
+	if _, err := file.Seek(start, 0); err != nil {
+		return nil
+	}
+	if start == 0 {
+		data, _ := os.ReadFile(path)
+		return data
+	}
+	data, _ := io.ReadAll(file)
+	return data
 }

@@ -78,6 +78,8 @@ const (
 	commandArm commandKind = iota
 	commandRelease
 	commandStop
+	commandStatus
+	commandCleanup
 )
 
 func (c *TrainingCoordinator) commandAll(ctx context.Context, job *jobs.JobState, selected []jobs.WorkerAssignment, kind commandKind) ([]jobs.WorkerAssignment, []error) {
@@ -140,7 +142,11 @@ func (c *TrainingCoordinator) command(ctx context.Context, jobID string, worker 
 		return client.ArmJob(requestCtx, request)
 	case commandRelease:
 		return client.ReleaseJob(requestCtx, request)
-	default:
+	case commandStop:
 		return client.StopJob(requestCtx, request)
+	case commandStatus:
+		return client.GetJobStatus(requestCtx, request)
+	default:
+		return client.CleanupJob(requestCtx, request)
 	}
 }

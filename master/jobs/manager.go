@@ -8,8 +8,15 @@ import (
 )
 
 type Manager struct {
-	mu         sync.RWMutex
-	currentJob *JobState
+	mu          sync.RWMutex
+	currentJob  *JobState
+	lastSummary *Summary
+}
+
+func (m *Manager) HasActiveJob() bool {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+	return m.currentJob != nil
 }
 
 func New() *Manager {
@@ -135,4 +142,34 @@ func (m *Manager) AllWorkersReady(jobID string) bool {
 		}
 	}
 	return true
+}
+
+func (m *Manager) ArchiveAndReset(summary Summary) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	if m.currentJob == nil || m.currentJob.JobID != summary.JobID {
+		return fmt.Errorf("job %q is not active", summary.JobID)
+	}
+	copy := summary
+	copy.Workers = make(map[string]WorkerFinalResult, len(summary.Workers))
+	for workerID, result := range summary.Workers {
+		copy.Workers[workerID] = result
+	}
+	m.lastSummary = &copy
+	m.currentJob = nil
+	return nil
+}
+
+func (m *Manager) LastSummary() (*Summary, bool) {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+	if m.lastSummary == nil {
+		return nil, false
+	}
+	copy := *m.lastSummary
+	copy.Workers = make(map[string]WorkerFinalResult, len(m.lastSummary.Workers))
+	for workerID, result := range m.lastSummary.Workers {
+		copy.Workers[workerID] = result
+	}
+	return &copy, true
 }

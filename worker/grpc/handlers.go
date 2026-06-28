@@ -67,6 +67,24 @@ func (s *WorkerBridgeServer) StopJob(ctx context.Context, request *gradient.JobC
 	return commandResponse(request, s.training.Stop(request.GetJobId())), nil
 }
 
+func (s *WorkerBridgeServer) GetJobStatus(ctx context.Context, request *gradient.JobCommandRequest) (*gradient.JobCommandResponse, error) {
+	if err := s.authenticateCommand(request); err != nil {
+		return nil, err
+	}
+	return commandResponse(request, s.training.Status(request.GetJobId())), nil
+}
+
+func (s *WorkerBridgeServer) CleanupJob(ctx context.Context, request *gradient.JobCommandRequest) (*gradient.JobCommandResponse, error) {
+	if err := s.authenticateCommand(request); err != nil {
+		return nil, err
+	}
+	result := s.training.Cleanup(request.GetJobId())
+	if s.setup != nil {
+		s.setup.Forget(request.GetJobId())
+	}
+	return commandResponse(request, result), nil
+}
+
 func (s *WorkerBridgeServer) authenticateCommand(request *gradient.JobCommandRequest) error {
 	if s.pairing == nil || s.training == nil {
 		return fmt.Errorf("training lifecycle is not available")
@@ -79,7 +97,7 @@ func (s *WorkerBridgeServer) authenticateCommand(request *gradient.JobCommandReq
 }
 
 func commandResponse(request *gradient.JobCommandRequest, result training.Result) *gradient.JobCommandResponse {
-	return &gradient.JobCommandResponse{JobId: request.GetJobId(), WorkerId: request.GetWorkerId(), Status: result.Status, ErrorMessage: result.ErrorMessage, LogPath: result.LogPath}
+	return &gradient.JobCommandResponse{JobId: request.GetJobId(), WorkerId: request.GetWorkerId(), Status: result.Status, ErrorMessage: result.ErrorMessage, LogPath: result.LogPath, ExitCode: int32(result.ExitCode), LogTail: result.LogTail}
 }
 
 func (s *WorkerBridgeServer) SetupJob(ctx context.Context, request *gradient.SetupJobRequest) (*gradient.SetupJobResponse, error) {

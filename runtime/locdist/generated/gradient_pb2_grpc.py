@@ -98,6 +98,16 @@ class WorkerBridgeStub:
                 request_serializer=gradient__pb2.JobCommandRequest.SerializeToString,
                 response_deserializer=gradient__pb2.JobCommandResponse.FromString,
                 _registered_method=True)
+        self.GetJobStatus = channel.unary_unary(
+                '/locdist.v1.WorkerBridge/GetJobStatus',
+                request_serializer=gradient__pb2.JobCommandRequest.SerializeToString,
+                response_deserializer=gradient__pb2.JobCommandResponse.FromString,
+                _registered_method=True)
+        self.CleanupJob = channel.unary_unary(
+                '/locdist.v1.WorkerBridge/CleanupJob',
+                request_serializer=gradient__pb2.JobCommandRequest.SerializeToString,
+                response_deserializer=gradient__pb2.JobCommandResponse.FromString,
+                _registered_method=True)
 
 
 class WorkerBridgeServicer:
@@ -179,6 +189,18 @@ class WorkerBridgeServicer:
         context.set_details('Method not implemented!')
         raise NotImplementedError('Method not implemented!')
 
+    def GetJobStatus(self, request, context):
+        """Missing associated documentation comment in .proto file."""
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
+    def CleanupJob(self, request, context):
+        """Missing associated documentation comment in .proto file."""
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
 
 def add_WorkerBridgeServicer_to_server(servicer, server):
     rpc_method_handlers = {
@@ -239,6 +261,16 @@ def add_WorkerBridgeServicer_to_server(servicer, server):
             ),
             'StopJob': grpc.unary_unary_rpc_method_handler(
                     servicer.StopJob,
+                    request_deserializer=gradient__pb2.JobCommandRequest.FromString,
+                    response_serializer=gradient__pb2.JobCommandResponse.SerializeToString,
+            ),
+            'GetJobStatus': grpc.unary_unary_rpc_method_handler(
+                    servicer.GetJobStatus,
+                    request_deserializer=gradient__pb2.JobCommandRequest.FromString,
+                    response_serializer=gradient__pb2.JobCommandResponse.SerializeToString,
+            ),
+            'CleanupJob': grpc.unary_unary_rpc_method_handler(
+                    servicer.CleanupJob,
                     request_deserializer=gradient__pb2.JobCommandRequest.FromString,
                     response_serializer=gradient__pb2.JobCommandResponse.SerializeToString,
             ),
@@ -569,6 +601,60 @@ class WorkerBridge:
             request,
             target,
             '/locdist.v1.WorkerBridge/StopJob',
+            gradient__pb2.JobCommandRequest.SerializeToString,
+            gradient__pb2.JobCommandResponse.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
+
+    @staticmethod
+    def GetJobStatus(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(
+            request,
+            target,
+            '/locdist.v1.WorkerBridge/GetJobStatus',
+            gradient__pb2.JobCommandRequest.SerializeToString,
+            gradient__pb2.JobCommandResponse.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
+
+    @staticmethod
+    def CleanupJob(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(
+            request,
+            target,
+            '/locdist.v1.WorkerBridge/CleanupJob',
             gradient__pb2.JobCommandRequest.SerializeToString,
             gradient__pb2.JobCommandResponse.FromString,
             options,

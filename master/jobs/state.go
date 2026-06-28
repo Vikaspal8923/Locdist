@@ -1,6 +1,9 @@
 package jobs
 
-import gradient "github.com/Vikaspal8923/Locdist/master/generated/gradient"
+import (
+	gradient "github.com/Vikaspal8923/Locdist/master/generated/gradient"
+	"time"
+)
 
 type Status string
 
@@ -34,6 +37,21 @@ type WorkerRun struct {
 	Status       gradient.JobRunStatus
 	ErrorMessage string
 	LogPath      string
+}
+
+type WorkerFinalResult struct {
+	Status       gradient.JobRunStatus
+	ErrorMessage string
+	ExitCode     int32
+	LogTail      string
+}
+
+type Summary struct {
+	JobID      string
+	Status     Status
+	Reason     string
+	FinishedAt time.Time
+	Workers    map[string]WorkerFinalResult
 }
 
 type WorkerSetup struct {

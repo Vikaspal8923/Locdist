@@ -207,7 +207,10 @@ credentials/
 # LDGCC Workspace
 # -----------------------------------------------------
 
-workspace/
+/workspace/
+/worker/workspaces/
+/master/ldgcc_jobs/
+/ldgcc_jobs/
 
 # -----------------------------------------------------
 # Future Distributed Runtime Dumps

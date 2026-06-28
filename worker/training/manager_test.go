@@ -37,6 +37,9 @@ func TestReleaseInjectsRuntimeEnvironmentAndCompletes(t *testing.T) {
 		t.Fatalf("release = %+v", result)
 	}
 	waitForStatus(t, manager, gradient.JobRunStatus_JOB_RUN_STATUS_COMPLETED)
+	if result := manager.Status("job-1"); result.ExitCode != 0 {
+		t.Fatalf("exit code = %d", result.ExitCode)
+	}
 	path, _ := workspaceManager.Path("job-1")
 	log, err := os.ReadFile(filepath.Join(path, "logs", "training.log"))
 	if err != nil {
@@ -44,6 +47,25 @@ func TestReleaseInjectsRuntimeEnvironmentAndCompletes(t *testing.T) {
 	}
 	if !strings.Contains(string(log), "job-1|worker-1|127.0.0.1|51000") {
 		t.Fatalf("environment was not injected: %q", log)
+	}
+	cleanup := manager.Cleanup("job-1")
+	if !strings.Contains(string(cleanup.LogTail), "job-1|worker-1") {
+		t.Fatalf("cleanup lost log tail: %q", cleanup.LogTail)
+	}
+	if _, err := workspaceManager.Path("job-1"); err == nil {
+		t.Fatal("workspace was not removed")
+	}
+}
+
+func TestFailedProcessReportsExitCode(t *testing.T) {
+	manager := New(preparedTrainingWorkspace(t, "#!/bin/sh\necho failed\nexit 7\n"), readiness(true), "50051")
+	if result := manager.Arm("job-1"); result.Status != gradient.JobRunStatus_JOB_RUN_STATUS_ARMED {
+		t.Fatal(result.ErrorMessage)
+	}
+	manager.Release("job-1", "worker-1")
+	waitForStatus(t, manager, gradient.JobRunStatus_JOB_RUN_STATUS_FAILED)
+	if result := manager.Status("job-1"); result.ExitCode != 7 || !strings.Contains(string(result.LogTail), "failed") {
+		t.Fatalf("unexpected result: %+v", result)
 	}
 }
 

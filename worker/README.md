@@ -1884,6 +1884,20 @@ RUNNING, COMPLETED, FAILED, and CANCELLED states.
 
 ---
 
+# LDGCC Phase 11: Status, Cleanup, and Fresh Jobs
+
+The Worker exposes authenticated `GetJobStatus` and `CleanupJob` RPCs. Status
+includes process state, failure reason, exit code, log path, and at most the
+last 1 MiB of `training.log`.
+
+Cleanup stops an active process, returns its final evidence, removes
+`workspaces/<job_id>`, and forgets setup/process state. Pairing is untouched.
+When an offline Worker later receives a different job, workspace preparation
+first removes any stale previous workspace so changed code, dependencies, and
+dataset shards are always delivered fresh.
+
+---
+
 ## Future TODOs
 
 ### Master Phase 2

@@ -1789,6 +1789,33 @@ result. Continuous completion polling and disconnect recovery remain Phase 11.
 
 ---
 
+# LDGCC Phase 11: Lifecycle Monitoring and Job Reset
+
+Phase 11 monitors every required training process after synchronized start. A
+failed, cancelled, offline, or unreachable Worker fails the complete job.
+
+```text
+Poll authenticated Worker status
+    -> any Worker fails/disconnects
+    -> abort the aggregation barrier
+    -> stop surviving processes
+    -> capture exit codes and bounded log tails
+    -> remove Master and Worker job data
+    -> archive a compact final summary
+    -> clear the active job
+```
+
+Pairing and online Worker registration are preserved. The user returns to the
+connected-Workers state and must run **Prepare Job**, **Set Up Workers**, and
+**Start Training** again. New preparation reads the project again and removes
+old Master job data. A Worker that missed cleanup while offline removes stale
+workspaces when it accepts the next job.
+
+`orchestrator/lifecycle.go` also supports job timeout, explicit cancellation,
+and successful completion when every Worker reports COMPLETED.
+
+---
+
 # Current Status
 
 ```text
@@ -1835,6 +1862,9 @@ LDGCC Phase 9
     ✓ COMPLETE
 
 LDGCC Phase 10
+    ✓ COMPLETE
+
+LDGCC Phase 11
     ✓ COMPLETE
 
 Job Spec Foundation

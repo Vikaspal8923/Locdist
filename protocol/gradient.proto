@@ -304,6 +304,10 @@ message JobCommandResponse {
   string error_message = 4;
 
   string log_path = 5;
+
+  int32 exit_code = 6;
+
+  bytes log_tail = 7;
 }
 
 message RegisterWorkerResponse {
@@ -403,6 +407,18 @@ service WorkerBridge {
   );
 
   rpc StopJob(
+    JobCommandRequest
+  ) returns (
+    JobCommandResponse
+  );
+
+  rpc GetJobStatus(
+    JobCommandRequest
+  ) returns (
+    JobCommandResponse
+  );
+
+  rpc CleanupJob(
     JobCommandRequest
   ) returns (
     JobCommandResponse

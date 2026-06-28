@@ -83,6 +83,12 @@ func (m *Manager) IsReady(jobID string) bool {
 	return m.states[jobID].Status == gradient.JobSetupStatus_JOB_SETUP_STATUS_READY
 }
 
+func (m *Manager) Forget(jobID string) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	delete(m.states, jobID)
+}
+
 func (m *Manager) run(ctx context.Context, jobID string) Result {
 	directory, err := m.workspace.Path(jobID)
 	if err != nil {
