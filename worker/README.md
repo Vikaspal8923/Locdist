@@ -1845,6 +1845,27 @@ validated filesystem boundary that execution will use.
 
 ---
 
+# LDGCC Phase 9: Environment Setup and Readiness
+
+After Phase 8 creates `workspaces/<job_id>`, the paired Master can call the
+authenticated `SetupJob` RPC. The Worker creates `.venv`, installs
+`requirements.txt` when it exists, and writes command output to
+`logs/setup.log`.
+
+```text
+WORKSPACE_RECEIVED -> SETTING_UP -> READY
+                                  -> SETUP_FAILED
+```
+
+`setup/manager.go` prevents duplicate concurrent setup. A READY setup is
+idempotent. A failed setup remains failed until an explicit retry; retry removes
+and rebuilds only `.venv` and truncates `logs/setup.log`, preserving project
+code, the assigned dataset shard, and `job_config.json`.
+
+No training process is launched in this phase.
+
+---
+
 ## Future TODOs
 
 ### Master Phase 2

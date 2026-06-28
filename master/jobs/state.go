@@ -1,5 +1,7 @@
 package jobs
 
+import gradient "github.com/Vikaspal8923/Locdist/master/generated/gradient"
+
 type Status string
 
 const (
@@ -20,8 +22,15 @@ type JobState struct {
 	DatasetPath string
 	Workers     []WorkerAssignment
 	Shards      []ShardAssignment
+	Setup       map[string]WorkerSetup
 
 	Status Status
+}
+
+type WorkerSetup struct {
+	Status       gradient.JobSetupStatus
+	ErrorMessage string
+	LogPath      string
 }
 
 type WorkerAssignment struct {

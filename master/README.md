@@ -1731,6 +1731,39 @@ training process execution belong to the next phase.
 
 ---
 
+# LDGCC Phase 9: Worker Setup and Readiness
+
+Phase 9 prepares every selected Worker for training without starting the user
+entrypoint. It is the backend for the future VS Code extension's **Set Up
+Workers** action.
+
+```text
+User chooses Set Up Workers
+    -> Master sends SetupJob to all assigned Workers concurrently
+    -> Worker creates a private .venv
+    -> Worker installs requirements.txt when present
+    -> Worker returns READY or SETUP_FAILED
+    -> Master enables Start Training only when every Worker is READY
+```
+
+## Phase 9 Components
+
+* `orchestrator/setup.go`: runs setup concurrently, stores each response, checks
+  the all-ready barrier, retries one failed Worker, or retries all failures.
+* `jobs/manager.go`: owns job-specific setup states and the `AllWorkersReady`
+  gate.
+* `protocol/gradient.proto`: defines authenticated `SetupJob` messages and the
+  `WORKSPACE_RECEIVED`, `SETTING_UP`, `READY`, and `FAILED` states.
+
+Setup may take several minutes, so each Worker receives an independent
+15-minute request timeout. A failure does not start training. Retrying rebuilds
+only that Worker's environment; Workers already marked READY are not repeated.
+
+Phase 9 intentionally does not launch `train.py`. The user-controlled,
+synchronized start belongs to Phase 10.
+
+---
+
 # Current Status
 
 ```text
@@ -1771,6 +1804,9 @@ LDGCC Phase 7
     ✓ COMPLETE
 
 LDGCC Phase 8
+    ✓ COMPLETE
+
+LDGCC Phase 9
     ✓ COMPLETE
 
 Job Spec Foundation

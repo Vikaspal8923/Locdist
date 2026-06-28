@@ -220,6 +220,49 @@ message PrepareWorkspaceResponse {
   string workspace_path = 3;
 }
 
+// =====================================================
+// Worker Environment Setup
+// =====================================================
+
+enum JobSetupStatus {
+
+  JOB_SETUP_STATUS_UNKNOWN = 0;
+
+  JOB_SETUP_STATUS_WORKSPACE_RECEIVED = 1;
+
+  JOB_SETUP_STATUS_SETTING_UP = 2;
+
+  JOB_SETUP_STATUS_READY = 3;
+
+  JOB_SETUP_STATUS_FAILED = 4;
+}
+
+message SetupJobRequest {
+
+  string job_id = 1;
+
+  string worker_id = 2;
+
+  string master_id = 3;
+
+  string pairing_token = 4;
+
+  bool retry = 5;
+}
+
+message SetupJobResponse {
+
+  string job_id = 1;
+
+  string worker_id = 2;
+
+  JobSetupStatus status = 3;
+
+  string error_message = 4;
+
+  string log_path = 5;
+}
+
 message RegisterWorkerResponse {
 
   string worker_id = 1;
@@ -296,5 +339,11 @@ service WorkerBridge {
     PrepareWorkspaceRequest
   ) returns (
     PrepareWorkspaceResponse
+  );
+
+  rpc SetupJob(
+    SetupJobRequest
+  ) returns (
+    SetupJobResponse
   );
 }

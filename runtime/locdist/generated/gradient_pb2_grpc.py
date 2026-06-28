@@ -78,6 +78,11 @@ class WorkerBridgeStub:
                 request_serializer=gradient__pb2.PrepareWorkspaceRequest.SerializeToString,
                 response_deserializer=gradient__pb2.PrepareWorkspaceResponse.FromString,
                 _registered_method=True)
+        self.SetupJob = channel.unary_unary(
+                '/locdist.v1.WorkerBridge/SetupJob',
+                request_serializer=gradient__pb2.SetupJobRequest.SerializeToString,
+                response_deserializer=gradient__pb2.SetupJobResponse.FromString,
+                _registered_method=True)
 
 
 class WorkerBridgeServicer:
@@ -135,6 +140,12 @@ class WorkerBridgeServicer:
         context.set_details('Method not implemented!')
         raise NotImplementedError('Method not implemented!')
 
+    def SetupJob(self, request, context):
+        """Missing associated documentation comment in .proto file."""
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
 
 def add_WorkerBridgeServicer_to_server(servicer, server):
     rpc_method_handlers = {
@@ -177,6 +188,11 @@ def add_WorkerBridgeServicer_to_server(servicer, server):
                     servicer.PrepareWorkspace,
                     request_deserializer=gradient__pb2.PrepareWorkspaceRequest.FromString,
                     response_serializer=gradient__pb2.PrepareWorkspaceResponse.SerializeToString,
+            ),
+            'SetupJob': grpc.unary_unary_rpc_method_handler(
+                    servicer.SetupJob,
+                    request_deserializer=gradient__pb2.SetupJobRequest.FromString,
+                    response_serializer=gradient__pb2.SetupJobResponse.SerializeToString,
             ),
     }
     generic_handler = grpc.method_handlers_generic_handler(
@@ -399,6 +415,33 @@ class WorkerBridge:
             '/locdist.v1.WorkerBridge/PrepareWorkspace',
             gradient__pb2.PrepareWorkspaceRequest.SerializeToString,
             gradient__pb2.PrepareWorkspaceResponse.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
+
+    @staticmethod
+    def SetupJob(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(
+            request,
+            target,
+            '/locdist.v1.WorkerBridge/SetupJob',
+            gradient__pb2.SetupJobRequest.SerializeToString,
+            gradient__pb2.SetupJobResponse.FromString,
             options,
             channel_credentials,
             insecure,

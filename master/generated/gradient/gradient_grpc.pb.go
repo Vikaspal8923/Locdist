@@ -27,6 +27,7 @@ const (
 	WorkerBridge_Heartbeat_FullMethodName            = "/locdist.v1.WorkerBridge/Heartbeat"
 	WorkerBridge_GoingOffline_FullMethodName         = "/locdist.v1.WorkerBridge/GoingOffline"
 	WorkerBridge_PrepareWorkspace_FullMethodName     = "/locdist.v1.WorkerBridge/PrepareWorkspace"
+	WorkerBridge_SetupJob_FullMethodName             = "/locdist.v1.WorkerBridge/SetupJob"
 )
 
 // WorkerBridgeClient is the client API for WorkerBridge service.
@@ -41,6 +42,7 @@ type WorkerBridgeClient interface {
 	Heartbeat(ctx context.Context, in *WorkerHeartbeat, opts ...grpc.CallOption) (*WorkerHeartbeatResponse, error)
 	GoingOffline(ctx context.Context, in *WorkerOfflineRequest, opts ...grpc.CallOption) (*WorkerOfflineResponse, error)
 	PrepareWorkspace(ctx context.Context, in *PrepareWorkspaceRequest, opts ...grpc.CallOption) (*PrepareWorkspaceResponse, error)
+	SetupJob(ctx context.Context, in *SetupJobRequest, opts ...grpc.CallOption) (*SetupJobResponse, error)
 }
 
 type workerBridgeClient struct {
@@ -131,6 +133,16 @@ func (c *workerBridgeClient) PrepareWorkspace(ctx context.Context, in *PrepareWo
 	return out, nil
 }
 
+func (c *workerBridgeClient) SetupJob(ctx context.Context, in *SetupJobRequest, opts ...grpc.CallOption) (*SetupJobResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(SetupJobResponse)
+	err := c.cc.Invoke(ctx, WorkerBridge_SetupJob_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 // WorkerBridgeServer is the server API for WorkerBridge service.
 // All implementations must embed UnimplementedWorkerBridgeServer
 // for forward compatibility.
@@ -143,6 +155,7 @@ type WorkerBridgeServer interface {
 	Heartbeat(context.Context, *WorkerHeartbeat) (*WorkerHeartbeatResponse, error)
 	GoingOffline(context.Context, *WorkerOfflineRequest) (*WorkerOfflineResponse, error)
 	PrepareWorkspace(context.Context, *PrepareWorkspaceRequest) (*PrepareWorkspaceResponse, error)
+	SetupJob(context.Context, *SetupJobRequest) (*SetupJobResponse, error)
 	mustEmbedUnimplementedWorkerBridgeServer()
 }
 
@@ -176,6 +189,9 @@ func (UnimplementedWorkerBridgeServer) GoingOffline(context.Context, *WorkerOffl
 }
 func (UnimplementedWorkerBridgeServer) PrepareWorkspace(context.Context, *PrepareWorkspaceRequest) (*PrepareWorkspaceResponse, error) {
 	return nil, status.Error(codes.Unimplemented, "method PrepareWorkspace not implemented")
+}
+func (UnimplementedWorkerBridgeServer) SetupJob(context.Context, *SetupJobRequest) (*SetupJobResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method SetupJob not implemented")
 }
 func (UnimplementedWorkerBridgeServer) mustEmbedUnimplementedWorkerBridgeServer() {}
 func (UnimplementedWorkerBridgeServer) testEmbeddedByValue()                      {}
@@ -342,6 +358,24 @@ func _WorkerBridge_PrepareWorkspace_Handler(srv interface{}, ctx context.Context
 	return interceptor(ctx, in, info, handler)
 }
 
+func _WorkerBridge_SetupJob_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(SetupJobRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(WorkerBridgeServer).SetupJob(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: WorkerBridge_SetupJob_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(WorkerBridgeServer).SetupJob(ctx, req.(*SetupJobRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
 // WorkerBridge_ServiceDesc is the grpc.ServiceDesc for WorkerBridge service.
 // It's only intended for direct use with grpc.RegisterService,
 // and not to be introspected or modified (even as a copy)
@@ -380,6 +414,10 @@ var WorkerBridge_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "PrepareWorkspace",
 			Handler:    _WorkerBridge_PrepareWorkspace_Handler,
+		},
+		{
+			MethodName: "SetupJob",
+			Handler:    _WorkerBridge_SetupJob_Handler,
 		},
 	},
 	Streams:  []grpc.StreamDesc{},
