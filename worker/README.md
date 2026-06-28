@@ -1911,6 +1911,58 @@ without hiding otherwise safe logs.
 
 ---
 
+# LDGCC Phase 15: Worker App Production UX
+
+Phase 15 turns the Worker App into the production-facing control surface for the
+Worker laptop owner.
+
+```text
+Open Worker App
+    -> review Worker name, host, ports, workspace
+    -> Start Worker
+    -> advertise on LAN
+    -> accept or reject Master pairing
+    -> show paired/connected/training-ready state
+    -> reset saved Master when intentionally switching Masters
+```
+
+The app still runs locally on loopback at `http://127.0.0.1:<app_port>`.
+Starting the Worker starts the Worker gRPC service and mDNS/DNS-SD
+advertisement. Stopping the Worker removes the advertisement and shuts down the
+local service.
+
+## Phase 15 Components
+
+`app/controller.go`
+
+Exposes richer Worker state for the UI, including status label, public config,
+paired Master name/id, pending pairing request, and last error.
+
+`app/server.go`
+
+Adds `POST /api/config` and replaces the minimal page with a local dashboard
+for Start/Stop, Reset Previous Connection, pairing approval, and install
+settings.
+
+`internal/config/config.go`
+
+Adds atomic `worker_config.json` saving with `0600` permissions. The app can
+update installation settings while the Worker is stopped.
+
+`service/agent.go`
+
+Exposes the current config and accepts config updates before startup. Runtime
+service behavior, discovery, pairing, heartbeats, setup, training, cleanup, and
+results remain owned by the existing Worker services.
+
+## Settings Rule
+
+Settings can be changed only while the Worker is stopped. This avoids changing
+the advertised Worker name, gRPC port, host, or workspace root while the gRPC
+server and LAN advertisement are already active.
+
+---
+
 ## Future TODOs
 
 ### Master Phase 2

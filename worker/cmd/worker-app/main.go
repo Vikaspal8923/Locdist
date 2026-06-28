@@ -14,7 +14,8 @@ import (
 )
 
 func main() {
-	cfg, err := config.Load("worker_config.json")
+	configPath := "worker_config.json"
+	cfg, err := config.Load(configPath)
 	if err != nil {
 		log.Fatalf("failed to load worker config: %v", err)
 	}
@@ -31,7 +32,7 @@ func main() {
 		discovery.NewAdvertiser(),
 		pairingManager,
 	)
-	controller := app.NewController(agent)
+	controller := app.NewController(agent, configPath)
 
 	server, err := app.NewServer(cfg.AppPort, controller)
 	if err != nil {

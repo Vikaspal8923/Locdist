@@ -1,9 +1,11 @@
 package app
 
 import (
+	"errors"
 	"sync"
 
 	gradient "github.com/Vikaspal8923/Locdist/worker/generated/gradient"
+	"github.com/Vikaspal8923/Locdist/worker/internal/config"
 	"github.com/Vikaspal8923/Locdist/worker/pairing"
 	"github.com/Vikaspal8923/Locdist/worker/service"
 )
@@ -15,6 +17,8 @@ type Lifecycle interface {
 	RejectPairing() error
 	ResetPairing() error
 	State() (running bool, connection service.ConnectionState)
+	Config() config.Config
+	UpdateConfig(config.Config) error
 	PendingPairing() (*gradient.PairWorkerRequest, bool)
 	PairingRecord() (*pairing.Record, bool)
 }
@@ -27,19 +31,43 @@ type PairingRequest struct {
 type State struct {
 	Running        bool                    `json:"running"`
 	Connection     service.ConnectionState `json:"connection"`
+	Status         string                  `json:"status"`
+	Config         PublicConfig            `json:"config"`
 	PairedMaster   string                  `json:"paired_master,omitempty"`
+	PairedMasterID string                  `json:"paired_master_id,omitempty"`
 	PendingPairing *PairingRequest         `json:"pending_pairing,omitempty"`
 	Error          string                  `json:"error,omitempty"`
 }
 
 type Controller struct {
-	mu        sync.Mutex
-	lifecycle Lifecycle
-	lastError string
+	mu         sync.Mutex
+	lifecycle  Lifecycle
+	configPath string
+	lastError  string
 }
 
-func NewController(lifecycle Lifecycle) *Controller {
-	return &Controller{lifecycle: lifecycle}
+type PublicConfig struct {
+	WorkerName    string `json:"worker_name"`
+	Host          string `json:"host"`
+	GRPCPort      string `json:"grpc_port"`
+	AppPort       string `json:"app_port"`
+	WorkspaceRoot string `json:"workspace_root"`
+	PairingPath   string `json:"pairing_path"`
+}
+
+type ConfigUpdate struct {
+	WorkerName    string `json:"worker_name"`
+	Host          string `json:"host"`
+	GRPCPort      string `json:"grpc_port"`
+	WorkspaceRoot string `json:"workspace_root"`
+}
+
+func NewController(lifecycle Lifecycle, configPath ...string) *Controller {
+	path := "worker_config.json"
+	if len(configPath) > 0 && configPath[0] != "" {
+		path = configPath[0]
+	}
+	return &Controller{lifecycle: lifecycle, configPath: path}
 }
 
 func (c *Controller) Start() error {
@@ -70,10 +98,13 @@ func (c *Controller) State() State {
 	state := State{
 		Running:    running,
 		Connection: connection,
+		Status:     statusLabel(running, connection),
+		Config:     publicConfig(c.lifecycle.Config()),
 		Error:      c.lastError,
 	}
 	if record, ok := c.lifecycle.PairingRecord(); ok {
 		state.PairedMaster = record.MasterName
+		state.PairedMasterID = record.MasterID
 	}
 	if request, ok := c.lifecycle.PendingPairing(); ok {
 		state.PendingPairing = &PairingRequest{
@@ -82,6 +113,41 @@ func (c *Controller) State() State {
 		}
 	}
 	return state
+}
+
+func (c *Controller) UpdateConfig(update ConfigUpdate) error {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+
+	running, _ := c.lifecycle.State()
+	if running {
+		c.lastError = "stop Worker before changing settings"
+		return errors.New(c.lastError)
+	}
+
+	next := c.lifecycle.Config()
+	if update.WorkerName != "" {
+		next.WorkerName = update.WorkerName
+	}
+	if update.Host != "" {
+		next.Host = update.Host
+	}
+	if update.GRPCPort != "" {
+		next.Port = update.GRPCPort
+	}
+	if update.WorkspaceRoot != "" {
+		next.WorkspaceRoot = update.WorkspaceRoot
+	}
+	if err := c.lifecycle.UpdateConfig(next); err != nil {
+		c.lastError = err.Error()
+		return err
+	}
+	if err := config.Save(c.configPath, next); err != nil {
+		c.lastError = err.Error()
+		return err
+	}
+	c.lastError = ""
+	return nil
 }
 
 func (c *Controller) run(action func() error) error {
@@ -94,4 +160,31 @@ func (c *Controller) run(action func() error) error {
 	}
 	c.lastError = ""
 	return nil
+}
+
+func publicConfig(cfg config.Config) PublicConfig {
+	return PublicConfig{
+		WorkerName:    cfg.WorkerName,
+		Host:          cfg.Host,
+		GRPCPort:      cfg.Port,
+		AppPort:       cfg.AppPort,
+		WorkspaceRoot: cfg.WorkspaceRoot,
+		PairingPath:   cfg.PairingPath,
+	}
+}
+
+func statusLabel(running bool, connection service.ConnectionState) string {
+	if !running {
+		return "stopped"
+	}
+	switch connection {
+	case service.ConnectionPairingPending:
+		return "pairing pending"
+	case service.ConnectionPairedOnline:
+		return "connected"
+	case service.ConnectionPairedOffline:
+		return "paired offline"
+	default:
+		return "discoverable"
+	}
 }

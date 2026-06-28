@@ -110,6 +110,23 @@ func (a *Agent) Start() error {
 	return nil
 }
 
+func (a *Agent) Config() config.Config {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	return a.config
+}
+
+func (a *Agent) UpdateConfig(next config.Config) error {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+
+	if a.running {
+		return fmt.Errorf("stop Worker before changing settings")
+	}
+	a.config = next
+	return nil
+}
+
 func (a *Agent) Stop() error {
 	a.mu.Lock()
 	defer a.mu.Unlock()
