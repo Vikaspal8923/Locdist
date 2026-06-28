@@ -263,6 +263,49 @@ message SetupJobResponse {
   string log_path = 5;
 }
 
+// =====================================================
+// Training Process Lifecycle
+// =====================================================
+
+enum JobRunStatus {
+
+  JOB_RUN_STATUS_UNKNOWN = 0;
+
+  JOB_RUN_STATUS_ARMED = 1;
+
+  JOB_RUN_STATUS_RUNNING = 2;
+
+  JOB_RUN_STATUS_COMPLETED = 3;
+
+  JOB_RUN_STATUS_FAILED = 4;
+
+  JOB_RUN_STATUS_CANCELLED = 5;
+}
+
+message JobCommandRequest {
+
+  string job_id = 1;
+
+  string worker_id = 2;
+
+  string master_id = 3;
+
+  string pairing_token = 4;
+}
+
+message JobCommandResponse {
+
+  string job_id = 1;
+
+  string worker_id = 2;
+
+  JobRunStatus status = 3;
+
+  string error_message = 4;
+
+  string log_path = 5;
+}
+
 message RegisterWorkerResponse {
 
   string worker_id = 1;
@@ -345,5 +388,23 @@ service WorkerBridge {
     SetupJobRequest
   ) returns (
     SetupJobResponse
+  );
+
+  rpc ArmJob(
+    JobCommandRequest
+  ) returns (
+    JobCommandResponse
+  );
+
+  rpc ReleaseJob(
+    JobCommandRequest
+  ) returns (
+    JobCommandResponse
+  );
+
+  rpc StopJob(
+    JobCommandRequest
+  ) returns (
+    JobCommandResponse
   );
 }

@@ -56,8 +56,10 @@ func (m *Manager) PrepareJob(job JobState) error {
 	}
 	job.Status = StatusPrepared
 	job.Setup = make(map[string]WorkerSetup, len(job.Workers))
+	job.Run = make(map[string]WorkerRun, len(job.Workers))
 	for _, worker := range job.Workers {
 		job.Setup[worker.WorkerID] = WorkerSetup{Status: gradient.JobSetupStatus_JOB_SETUP_STATUS_WORKSPACE_RECEIVED}
+		job.Run[worker.WorkerID] = WorkerRun{Status: gradient.JobRunStatus_JOB_RUN_STATUS_UNKNOWN}
 	}
 	m.currentJob = &job
 	return nil
@@ -78,7 +80,34 @@ func (m *Manager) CurrentJob() (*JobState, error) {
 	for workerID, setup := range m.currentJob.Setup {
 		copy.Setup[workerID] = setup
 	}
+	copy.Run = make(map[string]WorkerRun, len(m.currentJob.Run))
+	for workerID, run := range m.currentJob.Run {
+		copy.Run[workerID] = run
+	}
 	return &copy, nil
+}
+
+func (m *Manager) UpdateRun(jobID, workerID string, run WorkerRun) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	if m.currentJob == nil || m.currentJob.JobID != jobID {
+		return fmt.Errorf("job %q is not active", jobID)
+	}
+	if _, ok := m.currentJob.Run[workerID]; !ok {
+		return fmt.Errorf("worker %q is not assigned to job", workerID)
+	}
+	m.currentJob.Run[workerID] = run
+	return nil
+}
+
+func (m *Manager) SetStatus(jobID string, status Status) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	if m.currentJob == nil || m.currentJob.JobID != jobID {
+		return fmt.Errorf("job %q is not active", jobID)
+	}
+	m.currentJob.Status = status
+	return nil
 }
 
 func (m *Manager) UpdateSetup(jobID, workerID string, setup WorkerSetup) error {

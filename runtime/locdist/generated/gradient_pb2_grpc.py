@@ -83,6 +83,21 @@ class WorkerBridgeStub:
                 request_serializer=gradient__pb2.SetupJobRequest.SerializeToString,
                 response_deserializer=gradient__pb2.SetupJobResponse.FromString,
                 _registered_method=True)
+        self.ArmJob = channel.unary_unary(
+                '/locdist.v1.WorkerBridge/ArmJob',
+                request_serializer=gradient__pb2.JobCommandRequest.SerializeToString,
+                response_deserializer=gradient__pb2.JobCommandResponse.FromString,
+                _registered_method=True)
+        self.ReleaseJob = channel.unary_unary(
+                '/locdist.v1.WorkerBridge/ReleaseJob',
+                request_serializer=gradient__pb2.JobCommandRequest.SerializeToString,
+                response_deserializer=gradient__pb2.JobCommandResponse.FromString,
+                _registered_method=True)
+        self.StopJob = channel.unary_unary(
+                '/locdist.v1.WorkerBridge/StopJob',
+                request_serializer=gradient__pb2.JobCommandRequest.SerializeToString,
+                response_deserializer=gradient__pb2.JobCommandResponse.FromString,
+                _registered_method=True)
 
 
 class WorkerBridgeServicer:
@@ -146,6 +161,24 @@ class WorkerBridgeServicer:
         context.set_details('Method not implemented!')
         raise NotImplementedError('Method not implemented!')
 
+    def ArmJob(self, request, context):
+        """Missing associated documentation comment in .proto file."""
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
+    def ReleaseJob(self, request, context):
+        """Missing associated documentation comment in .proto file."""
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
+    def StopJob(self, request, context):
+        """Missing associated documentation comment in .proto file."""
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
 
 def add_WorkerBridgeServicer_to_server(servicer, server):
     rpc_method_handlers = {
@@ -193,6 +226,21 @@ def add_WorkerBridgeServicer_to_server(servicer, server):
                     servicer.SetupJob,
                     request_deserializer=gradient__pb2.SetupJobRequest.FromString,
                     response_serializer=gradient__pb2.SetupJobResponse.SerializeToString,
+            ),
+            'ArmJob': grpc.unary_unary_rpc_method_handler(
+                    servicer.ArmJob,
+                    request_deserializer=gradient__pb2.JobCommandRequest.FromString,
+                    response_serializer=gradient__pb2.JobCommandResponse.SerializeToString,
+            ),
+            'ReleaseJob': grpc.unary_unary_rpc_method_handler(
+                    servicer.ReleaseJob,
+                    request_deserializer=gradient__pb2.JobCommandRequest.FromString,
+                    response_serializer=gradient__pb2.JobCommandResponse.SerializeToString,
+            ),
+            'StopJob': grpc.unary_unary_rpc_method_handler(
+                    servicer.StopJob,
+                    request_deserializer=gradient__pb2.JobCommandRequest.FromString,
+                    response_serializer=gradient__pb2.JobCommandResponse.SerializeToString,
             ),
     }
     generic_handler = grpc.method_handlers_generic_handler(
@@ -442,6 +490,87 @@ class WorkerBridge:
             '/locdist.v1.WorkerBridge/SetupJob',
             gradient__pb2.SetupJobRequest.SerializeToString,
             gradient__pb2.SetupJobResponse.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
+
+    @staticmethod
+    def ArmJob(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(
+            request,
+            target,
+            '/locdist.v1.WorkerBridge/ArmJob',
+            gradient__pb2.JobCommandRequest.SerializeToString,
+            gradient__pb2.JobCommandResponse.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
+
+    @staticmethod
+    def ReleaseJob(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(
+            request,
+            target,
+            '/locdist.v1.WorkerBridge/ReleaseJob',
+            gradient__pb2.JobCommandRequest.SerializeToString,
+            gradient__pb2.JobCommandResponse.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
+
+    @staticmethod
+    def StopJob(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(
+            request,
+            target,
+            '/locdist.v1.WorkerBridge/StopJob',
+            gradient__pb2.JobCommandRequest.SerializeToString,
+            gradient__pb2.JobCommandResponse.FromString,
             options,
             channel_credentials,
             insecure,

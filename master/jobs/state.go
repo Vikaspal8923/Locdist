@@ -5,10 +5,12 @@ import gradient "github.com/Vikaspal8923/Locdist/master/generated/gradient"
 type Status string
 
 const (
-	StatusPrepared Status = "prepared"
-	StatusRunning  Status = "running"
-	StatusFailed   Status = "failed"
-	StatusFinished Status = "finished"
+	StatusPrepared  Status = "prepared"
+	StatusStarting  Status = "starting"
+	StatusRunning   Status = "running"
+	StatusFailed    Status = "failed"
+	StatusFinished  Status = "finished"
+	StatusCancelled Status = "cancelled"
 )
 
 type JobState struct {
@@ -23,8 +25,15 @@ type JobState struct {
 	Workers     []WorkerAssignment
 	Shards      []ShardAssignment
 	Setup       map[string]WorkerSetup
+	Run         map[string]WorkerRun
 
 	Status Status
+}
+
+type WorkerRun struct {
+	Status       gradient.JobRunStatus
+	ErrorMessage string
+	LogPath      string
 }
 
 type WorkerSetup struct {

@@ -9,6 +9,7 @@ import (
 	"github.com/Vikaspal8923/Locdist/worker/pairing"
 	"github.com/Vikaspal8923/Locdist/worker/runtimebridge"
 	workersetup "github.com/Vikaspal8923/Locdist/worker/setup"
+	"github.com/Vikaspal8923/Locdist/worker/training"
 	"github.com/Vikaspal8923/Locdist/worker/workspace"
 	grpcserver "google.golang.org/grpc"
 )
@@ -41,7 +42,9 @@ func NewServer(
 	)
 	workspaceManager := workspace.New(cfg.WorkspaceRoot)
 	workerBridgeServer.SetWorkspaceManager(workspaceManager)
-	workerBridgeServer.SetSetupManager(workersetup.New(workspaceManager))
+	setupManager := workersetup.New(workspaceManager)
+	workerBridgeServer.SetSetupManager(setupManager)
+	workerBridgeServer.SetTrainingManager(training.New(workspaceManager, setupManager, cfg.Port))
 
 	gradient.RegisterWorkerBridgeServer(
 		grpcSrv,

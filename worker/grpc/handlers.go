@@ -8,6 +8,7 @@ import (
 	"github.com/Vikaspal8923/Locdist/worker/pairing"
 	"github.com/Vikaspal8923/Locdist/worker/runtimebridge"
 	workersetup "github.com/Vikaspal8923/Locdist/worker/setup"
+	"github.com/Vikaspal8923/Locdist/worker/training"
 	"github.com/Vikaspal8923/Locdist/worker/workspace"
 )
 
@@ -18,6 +19,7 @@ type WorkerBridgeServer struct {
 	pairing       *pairing.Manager
 	workspace     *workspace.Manager
 	setup         *workersetup.Manager
+	training      *training.Manager
 }
 
 func NewWorkerBridgeServer(
@@ -40,6 +42,44 @@ func (s *WorkerBridgeServer) SetWorkspaceManager(manager *workspace.Manager) {
 
 func (s *WorkerBridgeServer) SetSetupManager(manager *workersetup.Manager) {
 	s.setup = manager
+}
+
+func (s *WorkerBridgeServer) SetTrainingManager(manager *training.Manager) { s.training = manager }
+
+func (s *WorkerBridgeServer) ArmJob(ctx context.Context, request *gradient.JobCommandRequest) (*gradient.JobCommandResponse, error) {
+	if err := s.authenticateCommand(request); err != nil {
+		return nil, err
+	}
+	return commandResponse(request, s.training.Arm(request.GetJobId())), nil
+}
+
+func (s *WorkerBridgeServer) ReleaseJob(ctx context.Context, request *gradient.JobCommandRequest) (*gradient.JobCommandResponse, error) {
+	if err := s.authenticateCommand(request); err != nil {
+		return nil, err
+	}
+	return commandResponse(request, s.training.Release(request.GetJobId(), request.GetWorkerId())), nil
+}
+
+func (s *WorkerBridgeServer) StopJob(ctx context.Context, request *gradient.JobCommandRequest) (*gradient.JobCommandResponse, error) {
+	if err := s.authenticateCommand(request); err != nil {
+		return nil, err
+	}
+	return commandResponse(request, s.training.Stop(request.GetJobId())), nil
+}
+
+func (s *WorkerBridgeServer) authenticateCommand(request *gradient.JobCommandRequest) error {
+	if s.pairing == nil || s.training == nil {
+		return fmt.Errorf("training lifecycle is not available")
+	}
+	record, ok := s.pairing.Record()
+	if !ok || record.WorkerID != request.GetWorkerId() || record.MasterID != request.GetMasterId() || record.PairingToken != request.GetPairingToken() {
+		return fmt.Errorf("Master pairing credentials are invalid")
+	}
+	return nil
+}
+
+func commandResponse(request *gradient.JobCommandRequest, result training.Result) *gradient.JobCommandResponse {
+	return &gradient.JobCommandResponse{JobId: request.GetJobId(), WorkerId: request.GetWorkerId(), Status: result.Status, ErrorMessage: result.ErrorMessage, LogPath: result.LogPath}
 }
 
 func (s *WorkerBridgeServer) SetupJob(ctx context.Context, request *gradient.SetupJobRequest) (*gradient.SetupJobResponse, error) {

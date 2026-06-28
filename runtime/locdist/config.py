@@ -1,4 +1,5 @@
 import json
+import os
 from pathlib import Path
 
 from locdist.models import RuntimeConfig
@@ -17,16 +18,7 @@ def load_config(
 
     path = Path(config_path)
 
-    # --------------------------------------------------
-    # File checks
-    # --------------------------------------------------
-
-    if not path.exists():
-        raise ConfigError(
-            f"Configuration file does not exist: {path}"
-        )
-
-    if not path.is_file():
+    if path.exists() and not path.is_file():
         raise ConfigError(
             f"Configuration path is not a file: {path}"
         )
@@ -35,21 +27,35 @@ def load_config(
     # Parse JSON
     # --------------------------------------------------
 
-    try:
+    data = {}
+    if path.exists():
+        try:
+            with open(path, "r", encoding="utf-8") as f:
+                data = json.load(f)
+        except json.JSONDecodeError as e:
+            raise ConfigError(f"Invalid JSON: {e}") from e
 
-        with open(
-            path,
-            "r",
-            encoding="utf-8",
-        ) as f:
+    # Worker-injected values override the development JSON file. Defaults
+    # allow production jobs to run without copying locdist_config.json.
+    if not path.exists():
+        data.update({"runtime_version": 1, "rpc_timeout_seconds": 120})
 
-            data = json.load(f)
+    environment_fields = {
+        "LDGCC_JOB_ID": "job_id",
+        "LDGCC_WORKER_ID": "worker_id",
+        "LDGCC_WORKER_HOST": "worker_host",
+        "LDGCC_WORKER_PORT": "worker_port",
+    }
+    for environment_name, field_name in environment_fields.items():
+        value = os.environ.get(environment_name)
+        if value is not None:
+            data[field_name] = value
 
-    except json.JSONDecodeError as e:
-
-        raise ConfigError(
-            f"Invalid JSON: {e}"
-        ) from e
+    if "worker_port" in data and isinstance(data["worker_port"], str):
+        try:
+            data["worker_port"] = int(data["worker_port"])
+        except ValueError as e:
+            raise ConfigError("worker_port must be an integer") from e
 
     # --------------------------------------------------
     # Required schema

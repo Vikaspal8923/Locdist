@@ -686,3 +686,18 @@ works correctly while preserving:
 * Mixed dtype support
 
 without requiring users to write distributed-training-specific code.
+
+---
+
+# Phase 10: Automatic Worker Connection
+
+When the Worker launches a training entrypoint, Runtime configuration is
+injected through `LDGCC_JOB_ID`, `LDGCC_WORKER_ID`, `LDGCC_WORKER_HOST`, and
+`LDGCC_WORKER_PORT`. These values override `locdist_config.json`.
+
+Production training therefore connects to the local Worker automatically and
+does not require a copied Runtime config file. `locdist_config.json` remains a
+fallback for manual development and testing. Runtime never receives or connects
+to the Master address directly.
+
+---

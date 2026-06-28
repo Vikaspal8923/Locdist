@@ -77,6 +77,12 @@ func (m *Manager) Setup(ctx context.Context, jobID string, retry bool) Result {
 	return result
 }
 
+func (m *Manager) IsReady(jobID string) bool {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	return m.states[jobID].Status == gradient.JobSetupStatus_JOB_SETUP_STATUS_READY
+}
+
 func (m *Manager) run(ctx context.Context, jobID string) Result {
 	directory, err := m.workspace.Path(jobID)
 	if err != nil {

@@ -1866,6 +1866,24 @@ No training process is launched in this phase.
 
 ---
 
+# LDGCC Phase 10: Training Process Lifecycle
+
+The paired Master controls training through authenticated `ArmJob`,
+`ReleaseJob`, and `StopJob` RPCs.
+
+* Arm validates READY setup state, `.venv/bin/python`, `job_config.json`, and
+  the configured entrypoint without launching user code.
+* Release launches the entrypoint from its workspace and injects the local
+  Runtime connection values.
+* Standard output and errors are written to `logs/training.log`.
+* Stop interrupts a running process, force-stops it after a timeout, and
+  preserves its workspace and logs.
+
+The Worker prevents duplicate arm/release operations and locally tracks ARMED,
+RUNNING, COMPLETED, FAILED, and CANCELLED states.
+
+---
+
 ## Future TODOs
 
 ### Master Phase 2

@@ -1764,6 +1764,31 @@ synchronized start belongs to Phase 10.
 
 ---
 
+# LDGCC Phase 10: Synchronized Training Start
+
+Phase 10 implements the backend for the user-controlled **Start Training**
+action. Master starts only a prepared job whose assigned Workers are all READY,
+online, and not already training.
+
+```text
+User selects Start Training
+    -> Master sends ArmJob concurrently
+    -> Every Worker validates and returns ARMED
+    -> Master sends ReleaseJob concurrently
+    -> Workers launch their training entrypoints
+    -> Runtime -> local Worker -> Master aggregation begins
+```
+
+`orchestrator/training.go` owns the all-Worker arm barrier. Any arm or release
+failure triggers authenticated `StopJob` rollback and marks the complete job
+FAILED. The explicit stop path stops all assigned Workers and marks the job
+CANCELLED.
+
+`jobs/manager.go` tracks each Worker's ARMED, RUNNING, FAILED, or CANCELLED
+result. Continuous completion polling and disconnect recovery remain Phase 11.
+
+---
+
 # Current Status
 
 ```text
@@ -1807,6 +1832,9 @@ LDGCC Phase 8
     ✓ COMPLETE
 
 LDGCC Phase 9
+    ✓ COMPLETE
+
+LDGCC Phase 10
     ✓ COMPLETE
 
 Job Spec Foundation
