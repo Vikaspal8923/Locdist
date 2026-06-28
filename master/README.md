@@ -1899,6 +1899,36 @@ provided data directory.
 
 ---
 
+# LDGCC Phase 14: VS Code Extension Control Surface
+
+Phase 14 adds `extension/`, the first user-facing Brain Laptop control surface
+for LDGCC V1. It uses the Phase 13 localhost API instead of talking directly to
+Master internals.
+
+```text
+VS Code extension
+    -> start or reuse local Master
+    -> read master-session.json
+    -> authenticate with bearer token
+    -> subscribe to /events
+    -> drive discovery, pairing, prepare, setup, training, and results
+```
+
+Development mode starts Master with `go run ./cmd/master`. Production mode can
+set `ldgcc.master.binaryPath` to the bundled Master binary while keeping the
+same session-file and API contract.
+
+The extension contributes:
+
+* `LDGCC` activity bar view
+* cluster tree for Master, discovered Workers, registered Workers, job state,
+  and last results
+* commands for Start/Stop Master, Discover Workers, Pair Worker, Prepare Job,
+  Set Up Workers, Retry Setup, Start/Stop Training, and Open Results
+* Server-Sent Events subscription for live state refreshes
+
+---
+
 # Current Status
 
 ```text
@@ -1954,6 +1984,9 @@ LDGCC Phase 12
     ✓ COMPLETE
 
 LDGCC Phase 13
+    ✓ COMPLETE
+
+LDGCC Phase 14
     ✓ COMPLETE
 
 Job Spec Foundation

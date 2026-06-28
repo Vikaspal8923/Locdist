@@ -1,0 +1,176 @@
+{
+  "name": "ldgcc-studio",
+  "displayName": "LDGCC Studio",
+  "description": "VS Code control panel for local LDGCC distributed training.",
+  "version": "0.1.0",
+  "publisher": "ldgcc",
+  "engines": {
+    "vscode": "^1.90.0"
+  },
+  "categories": [
+    "Machine Learning",
+    "Other"
+  ],
+  "activationEvents": [
+    "onView:ldgcc.cluster",
+    "onCommand:ldgcc.startMaster",
+    "onCommand:ldgcc.stopMaster",
+    "onCommand:ldgcc.refresh",
+    "onCommand:ldgcc.discoverWorkers",
+    "onCommand:ldgcc.pairWorker",
+    "onCommand:ldgcc.prepareJob",
+    "onCommand:ldgcc.setupWorkers",
+    "onCommand:ldgcc.retrySetup",
+    "onCommand:ldgcc.startTraining",
+    "onCommand:ldgcc.stopTraining",
+    "onCommand:ldgcc.openResults"
+  ],
+  "main": "./out/extension.js",
+  "contributes": {
+    "configuration": {
+      "title": "LDGCC",
+      "properties": {
+        "ldgcc.master.binaryPath": {
+          "type": "string",
+          "default": "",
+          "description": "Optional path to a packaged LDGCC Master binary. When empty, the extension uses go run for local development."
+        },
+        "ldgcc.master.sourceRoot": {
+          "type": "string",
+          "default": "",
+          "description": "Optional path to the LDGCC repository root. Defaults to the repository that contains this extension."
+        },
+        "ldgcc.master.dataDir": {
+          "type": "string",
+          "default": "",
+          "description": "Optional Master data directory. Defaults to the extension global storage directory."
+        }
+      }
+    },
+    "commands": [
+      {
+        "command": "ldgcc.startMaster",
+        "title": "LDGCC: Start Master"
+      },
+      {
+        "command": "ldgcc.stopMaster",
+        "title": "LDGCC: Stop Master"
+      },
+      {
+        "command": "ldgcc.refresh",
+        "title": "LDGCC: Refresh"
+      },
+      {
+        "command": "ldgcc.discoverWorkers",
+        "title": "LDGCC: Discover Workers"
+      },
+      {
+        "command": "ldgcc.pairWorker",
+        "title": "LDGCC: Pair Worker"
+      },
+      {
+        "command": "ldgcc.prepareJob",
+        "title": "LDGCC: Prepare Job"
+      },
+      {
+        "command": "ldgcc.setupWorkers",
+        "title": "LDGCC: Set Up Workers"
+      },
+      {
+        "command": "ldgcc.retrySetup",
+        "title": "LDGCC: Retry Failed Setup"
+      },
+      {
+        "command": "ldgcc.startTraining",
+        "title": "LDGCC: Start Training"
+      },
+      {
+        "command": "ldgcc.stopTraining",
+        "title": "LDGCC: Stop Training"
+      },
+      {
+        "command": "ldgcc.openResults",
+        "title": "LDGCC: Open Results"
+      }
+    ],
+    "viewsContainers": {
+      "activitybar": [
+        {
+          "id": "ldgcc",
+          "title": "LDGCC",
+          "icon": "resources/ldgcc.svg"
+        }
+      ]
+    },
+    "views": {
+      "ldgcc": [
+        {
+          "id": "ldgcc.cluster",
+          "name": "Cluster"
+        }
+      ]
+    },
+    "menus": {
+      "view/title": [
+        {
+          "command": "ldgcc.refresh",
+          "when": "view == ldgcc.cluster",
+          "group": "navigation"
+        },
+        {
+          "command": "ldgcc.startMaster",
+          "when": "view == ldgcc.cluster",
+          "group": "navigation"
+        }
+      ],
+      "view/item/context": [
+        {
+          "command": "ldgcc.pairWorker",
+          "when": "view == ldgcc.cluster && viewItem == ldgcc.discoveredWorker",
+          "group": "inline"
+        },
+        {
+          "command": "ldgcc.openResults",
+          "when": "view == ldgcc.cluster && viewItem == ldgcc.results",
+          "group": "inline"
+        }
+      ],
+      "commandPalette": [
+        {
+          "command": "ldgcc.startMaster"
+        },
+        {
+          "command": "ldgcc.stopMaster"
+        },
+        {
+          "command": "ldgcc.discoverWorkers"
+        },
+        {
+          "command": "ldgcc.prepareJob"
+        },
+        {
+          "command": "ldgcc.setupWorkers"
+        },
+        {
+          "command": "ldgcc.retrySetup"
+        },
+        {
+          "command": "ldgcc.startTraining"
+        },
+        {
+          "command": "ldgcc.stopTraining"
+        }
+      ]
+    }
+  },
+  "scripts": {
+    "compile": "tsc -p ./",
+    "watch": "tsc -watch -p ./",
+    "vscode:prepublish": "npm run compile"
+  },
+  "devDependencies": {
+    "@types/node": "^20.14.10",
+    "@types/vscode": "^1.90.0",
+    "typescript": "^5.5.3"
+  }
+}
