@@ -6,22 +6,129 @@ import (
 	"fmt"
 	"net"
 	"net/http"
+	"strings"
 	"time"
 )
 
 type Server struct {
 	httpServer *http.Server
 	listener   net.Listener
+	token      string
+	shutdown   func()
 }
 
 func NewServer(port string, controller *Controller) (*Server, error) {
-	listener, err := net.Listen("tcp", "127.0.0.1:"+port)
+	return NewSecureServer("127.0.0.1", port, "", controller)
+}
+
+func NewSecureServer(host, port, token string, controller *Controller) (*Server, error) {
+	if host != "127.0.0.1" && host != "localhost" && host != "::1" {
+		return nil, fmt.Errorf("Master App must bind to loopback")
+	}
+	listener, err := net.Listen("tcp", net.JoinHostPort(host, port))
 	if err != nil {
 		return nil, err
 	}
 
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /", serveApp)
+	mux.HandleFunc("GET /health", func(writer http.ResponseWriter, request *http.Request) {
+		writeJSON(writer, http.StatusOK, map[string]any{"status": "ok", "version": Version})
+	})
+	mux.HandleFunc("GET /state", func(writer http.ResponseWriter, request *http.Request) {
+		writeJSON(writer, http.StatusOK, controller.State())
+	})
+	mux.HandleFunc("POST /discovery/start", func(writer http.ResponseWriter, request *http.Request) {
+		controller.Events().Publish("discovery.started", nil)
+		writeJSON(writer, http.StatusAccepted, map[string]string{"status": "started"})
+	})
+	mux.HandleFunc("GET /workers/discovered", func(writer http.ResponseWriter, request *http.Request) {
+		writeJSON(writer, http.StatusOK, controller.Workers())
+	})
+	mux.HandleFunc("POST /workers/{instance}/pair", func(writer http.ResponseWriter, request *http.Request) {
+		if err := controller.Pair(request.PathValue("instance")); err != nil {
+			writeError(writer, http.StatusConflict, err)
+			return
+		}
+		writeJSON(writer, http.StatusAccepted, map[string]string{"status": "pending"})
+	})
+	mux.HandleFunc("POST /jobs/prepare", func(writer http.ResponseWriter, request *http.Request) {
+		var body struct {
+			ProjectRoot string `json:"project_root"`
+		}
+		if err := json.NewDecoder(request.Body).Decode(&body); err != nil || body.ProjectRoot == "" {
+			writeError(writer, http.StatusBadRequest, fmt.Errorf("project_root is required"))
+			return
+		}
+		go func() {
+			if err := controller.Prepare(context.Background(), body.ProjectRoot); err != nil {
+				controller.Events().Publish("command.rejected", map[string]string{"command": "prepare", "error": err.Error()})
+			}
+		}()
+		writeJSON(writer, http.StatusAccepted, map[string]string{"status": "preparing"})
+	})
+	mux.HandleFunc("POST /jobs/setup", func(writer http.ResponseWriter, request *http.Request) {
+		go func() {
+			if err := controller.Setup(context.Background(), false); err != nil {
+				controller.Events().Publish("command.rejected", map[string]string{"command": "setup", "error": err.Error()})
+			}
+		}()
+		writeJSON(writer, http.StatusAccepted, map[string]string{"status": "setting_up"})
+	})
+	mux.HandleFunc("POST /jobs/setup/retry", func(writer http.ResponseWriter, request *http.Request) {
+		go func() {
+			if err := controller.Setup(context.Background(), true); err != nil {
+				controller.Events().Publish("command.rejected", map[string]string{"command": "setup_retry", "error": err.Error()})
+			}
+		}()
+		writeJSON(writer, http.StatusAccepted, map[string]string{"status": "retrying"})
+	})
+	mux.HandleFunc("POST /jobs/start", func(writer http.ResponseWriter, request *http.Request) {
+		if err := controller.Start(request.Context()); err != nil {
+			writeError(writer, http.StatusConflict, err)
+			return
+		}
+		writeJSON(writer, http.StatusAccepted, map[string]string{"status": "started"})
+	})
+	mux.HandleFunc("POST /jobs/stop", func(writer http.ResponseWriter, request *http.Request) {
+		if err := controller.Stop(); err != nil {
+			writeError(writer, http.StatusConflict, err)
+			return
+		}
+		writeJSON(writer, http.StatusAccepted, map[string]string{"status": "stopping"})
+	})
+	mux.HandleFunc("GET /jobs/current", func(writer http.ResponseWriter, request *http.Request) {
+		state := controller.State()
+		if state.Job == nil {
+			writeError(writer, http.StatusNotFound, fmt.Errorf("no active job"))
+			return
+		}
+		writeJSON(writer, http.StatusOK, state.Job)
+	})
+	mux.HandleFunc("GET /jobs/last-summary", func(writer http.ResponseWriter, request *http.Request) {
+		state := controller.State()
+		if state.LastSummary == nil {
+			writeError(writer, http.StatusNotFound, fmt.Errorf("no completed job summary"))
+			return
+		}
+		writeJSON(writer, http.StatusOK, state.LastSummary)
+	})
+	mux.HandleFunc("GET /results/{job_id}", func(writer http.ResponseWriter, request *http.Request) {
+		path, err := controller.ResultPath(request.PathValue("job_id"))
+		if err != nil {
+			writeError(writer, http.StatusNotFound, err)
+			return
+		}
+		writeJSON(writer, http.StatusOK, map[string]string{"job_id": request.PathValue("job_id"), "path": path})
+	})
+	mux.HandleFunc("GET /events", func(writer http.ResponseWriter, request *http.Request) { serveEvents(writer, request, controller) })
+	server := &Server{token: token}
+	mux.HandleFunc("POST /shutdown", func(writer http.ResponseWriter, request *http.Request) {
+		writeJSON(writer, http.StatusAccepted, map[string]string{"status": "shutting_down"})
+		if server.shutdown != nil {
+			go server.shutdown()
+		}
+	})
 	mux.HandleFunc(
 		"GET /api/workers",
 		func(writer http.ResponseWriter, request *http.Request) {
@@ -50,13 +157,51 @@ func NewServer(port string, controller *Controller) (*Server, error) {
 		},
 	)
 
-	return &Server{
-		httpServer: &http.Server{
-			Handler:           mux,
-			ReadHeaderTimeout: 5 * time.Second,
-		},
-		listener: listener,
-	}, nil
+	server.httpServer = &http.Server{
+		Handler:           server.authenticate(mux),
+		ReadHeaderTimeout: 5 * time.Second,
+	}
+	server.listener = listener
+	return server, nil
+}
+
+func (s *Server) authenticate(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
+		if s.token != "" && request.Header.Get("Authorization") != "Bearer "+s.token && request.Header.Get("X-LDGCC-Token") != s.token {
+			writeError(writer, http.StatusUnauthorized, fmt.Errorf("invalid session token"))
+			return
+		}
+		next.ServeHTTP(writer, request)
+	})
+}
+
+func (s *Server) SetShutdown(callback func()) { s.shutdown = callback }
+
+func serveEvents(writer http.ResponseWriter, request *http.Request, controller *Controller) {
+	flusher, ok := writer.(http.Flusher)
+	if !ok {
+		writeError(writer, http.StatusInternalServerError, fmt.Errorf("streaming is unavailable"))
+		return
+	}
+	writer.Header().Set("Content-Type", "text/event-stream")
+	writer.Header().Set("Cache-Control", "no-cache")
+	events, unsubscribe := controller.Events().Subscribe()
+	defer unsubscribe()
+	_, _ = fmt.Fprintf(writer, "event: state\ndata: %s\n\n", eventJSON(Event{Type: "state", Time: time.Now(), Data: controller.State()}))
+	flusher.Flush()
+	for {
+		select {
+		case <-request.Context().Done():
+			return
+		case event := <-events:
+			_, _ = fmt.Fprintf(writer, "event: %s\ndata: %s\n\n", strings.ReplaceAll(event.Type, "\n", ""), eventJSON(event))
+			flusher.Flush()
+		}
+	}
+}
+
+func writeError(writer http.ResponseWriter, status int, err error) {
+	writeJSON(writer, status, map[string]string{"error": err.Error()})
 }
 
 func (s *Server) Start() error {

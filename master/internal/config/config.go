@@ -11,6 +11,7 @@ type Config struct {
 	Host        string `json:"host"`
 	Port        string `json:"grpc_port"`
 	AppPort     string `json:"app_port"`
+	AppHost     string `json:"app_host"`
 	PairingPath string `json:"pairing_path"`
 }
 
@@ -21,6 +22,7 @@ func Default() Config {
 		Host:        "127.0.0.1",
 		Port:        "60051",
 		AppPort:     "6060",
+		AppHost:     "127.0.0.1",
 		PairingPath: "master_pairings.json",
 	}
 }

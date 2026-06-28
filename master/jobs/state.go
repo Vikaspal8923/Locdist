@@ -1,6 +1,7 @@
 package jobs
 
 import (
+	"encoding/json"
 	gradient "github.com/Vikaspal8923/Locdist/master/generated/gradient"
 	"time"
 )
@@ -17,60 +18,83 @@ const (
 )
 
 type JobState struct {
-	JobID string
+	JobID string `json:"job_id"`
 
-	ExpectedWorkers int
+	ExpectedWorkers int `json:"expected_workers"`
 
-	Name        string
-	ProjectRoot string
-	Entrypoint  string
-	DatasetPath string
-	Outputs     []string
-	Workers     []WorkerAssignment
-	Shards      []ShardAssignment
-	Setup       map[string]WorkerSetup
-	Run         map[string]WorkerRun
+	Name        string                 `json:"name"`
+	ProjectRoot string                 `json:"project_root"`
+	Entrypoint  string                 `json:"entrypoint"`
+	DatasetPath string                 `json:"dataset_path"`
+	Outputs     []string               `json:"outputs,omitempty"`
+	Workers     []WorkerAssignment     `json:"workers"`
+	Shards      []ShardAssignment      `json:"shards"`
+	Setup       map[string]WorkerSetup `json:"setup"`
+	Run         map[string]WorkerRun   `json:"run"`
 
-	Status Status
+	Status Status `json:"status"`
 }
 
 type WorkerRun struct {
-	Status       gradient.JobRunStatus
-	ErrorMessage string
-	LogPath      string
+	Status       gradient.JobRunStatus `json:"-"`
+	ErrorMessage string                `json:"error_message,omitempty"`
+	LogPath      string                `json:"log_path,omitempty"`
 }
 
 type WorkerFinalResult struct {
-	Status       gradient.JobRunStatus
-	ErrorMessage string
-	ExitCode     int32
-	LogTail      string
+	Status       gradient.JobRunStatus `json:"-"`
+	ErrorMessage string                `json:"error_message,omitempty"`
+	ExitCode     int32                 `json:"exit_code"`
+	LogTail      string                `json:"log_tail,omitempty"`
 }
 
 type Summary struct {
-	JobID      string
-	Status     Status
-	Reason     string
-	FinishedAt time.Time
-	Workers    map[string]WorkerFinalResult
+	JobID      string                       `json:"job_id"`
+	Status     Status                       `json:"status"`
+	Reason     string                       `json:"reason"`
+	FinishedAt time.Time                    `json:"finished_at"`
+	Workers    map[string]WorkerFinalResult `json:"workers"`
 }
 
 type WorkerSetup struct {
-	Status       gradient.JobSetupStatus
-	ErrorMessage string
-	LogPath      string
+	Status       gradient.JobSetupStatus `json:"-"`
+	ErrorMessage string                  `json:"error_message,omitempty"`
+	LogPath      string                  `json:"log_path,omitempty"`
 }
 
 type WorkerAssignment struct {
-	WorkerID string
-	Host     string
-	GRPCPort string
+	WorkerID string `json:"worker_id"`
+	Host     string `json:"host"`
+	GRPCPort string `json:"grpc_port"`
 }
 
 type ShardAssignment struct {
-	WorkerID string
-	Start    int
-	End      int
-	Count    int
-	Path     string
+	WorkerID string `json:"worker_id"`
+	Start    int    `json:"start"`
+	End      int    `json:"end"`
+	Count    int    `json:"count"`
+	Path     string `json:"path"`
+}
+
+func (value WorkerSetup) MarshalJSON() ([]byte, error) {
+	return json.Marshal(struct {
+		Status       string `json:"status"`
+		ErrorMessage string `json:"error_message,omitempty"`
+		LogPath      string `json:"log_path,omitempty"`
+	}{value.Status.String(), value.ErrorMessage, value.LogPath})
+}
+func (value WorkerRun) MarshalJSON() ([]byte, error) {
+	return json.Marshal(struct {
+		Status       string `json:"status"`
+		ErrorMessage string `json:"error_message,omitempty"`
+		LogPath      string `json:"log_path,omitempty"`
+	}{value.Status.String(), value.ErrorMessage, value.LogPath})
+}
+func (value WorkerFinalResult) MarshalJSON() ([]byte, error) {
+	return json.Marshal(struct {
+		Status       string `json:"status"`
+		ErrorMessage string `json:"error_message,omitempty"`
+		ExitCode     int32  `json:"exit_code"`
+		LogTail      string `json:"log_tail,omitempty"`
+	}{value.Status.String(), value.ErrorMessage, value.ExitCode, value.LogTail})
 }

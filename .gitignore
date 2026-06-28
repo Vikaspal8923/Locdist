@@ -213,6 +213,8 @@ credentials/
 /ldgcc_jobs/
 /ldgcc_results/
 /master/ldgcc_results/
+master-session.json
+*/master-session.json
 
 # -----------------------------------------------------
 # Future Distributed Runtime Dumps

@@ -4,5 +4,6 @@
   "host": "127.0.0.1",
   "grpc_port": "60051",
   "app_port": "6060",
+  "app_host": "127.0.0.1",
   "pairing_path": "master_pairings.json"
 }

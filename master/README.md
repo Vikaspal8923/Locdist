@@ -1853,6 +1853,52 @@ rejected. Worker workspaces are cleaned only after collection.
 
 ---
 
+# LDGCC Phase 13: Unified Local Application API
+
+Phase 13 composes discovery, pairing, preparation, setup, training, lifecycle,
+and results into one localhost API for the VS Code extension.
+
+```text
+GET  /health
+GET  /state
+GET  /events
+POST /discovery/start
+GET  /workers/discovered
+POST /workers/{instance}/pair
+POST /jobs/prepare
+POST /jobs/setup
+POST /jobs/setup/retry
+POST /jobs/start
+POST /jobs/stop
+GET  /jobs/current
+GET  /jobs/last-summary
+GET  /results/{job_id}
+POST /shutdown
+```
+
+The API accepts only loopback hosts and requires the extension's bearer session
+token. `/events` uses Server-Sent Events for Worker, setup, training, failure,
+completion, and result notifications. `/state` returns one secret-free snapshot
+with readable state names.
+
+Production process options:
+
+```text
+--config
+--data-dir
+--app-host
+--app-port
+--session-token
+```
+
+Port `0` selects an available port. Master writes a mode-0600,
+`master-session.json` atomically with PID, host, port, version, address, and
+session token. The extension can health-check/reuse that process and request
+graceful shutdown. Pairings, jobs, results, and session metadata live under the
+provided data directory.
+
+---
+
 # Current Status
 
 ```text
@@ -1905,6 +1951,9 @@ LDGCC Phase 11
     ✓ COMPLETE
 
 LDGCC Phase 12
+    ✓ COMPLETE
+
+LDGCC Phase 13
     ✓ COMPLETE
 
 Job Spec Foundation
