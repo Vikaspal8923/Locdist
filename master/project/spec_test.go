@@ -21,6 +21,10 @@ dataset:
 
 workers:
   count: 3
+
+outputs:
+  - model/model.pt
+  - results/
 `)
 
 	spec, err := LoadSpec(root)
@@ -38,6 +42,19 @@ workers:
 	}
 	if spec.Workers.Count != 3 {
 		t.Fatalf("unexpected worker count: %d", spec.Workers.Count)
+	}
+	if len(spec.Outputs) != 2 || spec.Outputs[0] != "model/model.pt" || spec.Outputs[1] != "results/" {
+		t.Fatalf("unexpected outputs: %v", spec.Outputs)
+	}
+}
+
+func TestLoadSpecRejectsUnsafeOutput(t *testing.T) {
+	root := t.TempDir()
+	writeFile(t, filepath.Join(root, "train.py"), "x")
+	writeFile(t, filepath.Join(root, "dataset", "train.jsonl"), "{}\n")
+	writeFile(t, filepath.Join(root, DefaultSpecFile), "entrypoint: train.py\ndataset:\n  train: dataset/train.jsonl\nworkers:\n  count: 1\noutputs:\n  - ../secret\n")
+	if _, err := LoadSpec(root); err == nil {
+		t.Fatal("expected unsafe output to fail")
 	}
 }
 

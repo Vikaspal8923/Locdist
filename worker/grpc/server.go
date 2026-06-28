@@ -7,6 +7,7 @@ import (
 	gradient "github.com/Vikaspal8923/Locdist/worker/generated/gradient"
 	"github.com/Vikaspal8923/Locdist/worker/internal/config"
 	"github.com/Vikaspal8923/Locdist/worker/pairing"
+	workerresults "github.com/Vikaspal8923/Locdist/worker/results"
 	"github.com/Vikaspal8923/Locdist/worker/runtimebridge"
 	workersetup "github.com/Vikaspal8923/Locdist/worker/setup"
 	"github.com/Vikaspal8923/Locdist/worker/training"
@@ -45,6 +46,7 @@ func NewServer(
 	setupManager := workersetup.New(workspaceManager)
 	workerBridgeServer.SetSetupManager(setupManager)
 	workerBridgeServer.SetTrainingManager(training.New(workspaceManager, setupManager, cfg.Port))
+	workerBridgeServer.SetResultManager(workerresults.New(workspaceManager))
 
 	gradient.RegisterWorkerBridgeServer(
 		grpcSrv,

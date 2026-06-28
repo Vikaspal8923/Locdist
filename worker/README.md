@@ -1898,6 +1898,19 @@ dataset shards are always delivered fresh.
 
 ---
 
+# LDGCC Phase 12: Declared Output Collection
+
+`results/manager.go` reads the optional `outputs` list from `job_config.json`,
+expands declared directories, and always includes available setup/training logs.
+It exposes authenticated manifest and streaming-download RPCs.
+
+Only manifest-listed files may be downloaded. Paths are confined to the job
+workspace, symlinks are rejected at every path component, and SHA-256, per-file,
+and total-size metadata is enforced. Invalid configured outputs are reported
+without hiding otherwise safe logs.
+
+---
+
 ## Future TODOs
 
 ### Master Phase 2

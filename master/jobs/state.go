@@ -25,6 +25,7 @@ type JobState struct {
 	ProjectRoot string
 	Entrypoint  string
 	DatasetPath string
+	Outputs     []string
 	Workers     []WorkerAssignment
 	Shards      []ShardAssignment
 	Setup       map[string]WorkerSetup

@@ -310,6 +310,48 @@ message JobCommandResponse {
   bytes log_tail = 7;
 }
 
+message ResultFile {
+
+  string path = 1;
+
+  uint64 size = 2;
+
+  string sha256 = 3;
+
+  bool log_file = 4;
+}
+
+message ResultManifestResponse {
+
+  string job_id = 1;
+
+  string worker_id = 2;
+
+  repeated ResultFile files = 3;
+
+  repeated string missing_outputs = 4;
+
+  repeated string collection_errors = 5;
+}
+
+message DownloadResultRequest {
+
+  string job_id = 1;
+
+  string worker_id = 2;
+
+  string master_id = 3;
+
+  string pairing_token = 4;
+
+  string path = 5;
+}
+
+message ResultChunk {
+
+  bytes data = 1;
+}
+
 message RegisterWorkerResponse {
 
   string worker_id = 1;
@@ -422,5 +464,17 @@ service WorkerBridge {
     JobCommandRequest
   ) returns (
     JobCommandResponse
+  );
+
+  rpc GetResultManifest(
+    JobCommandRequest
+  ) returns (
+    ResultManifestResponse
+  );
+
+  rpc DownloadResult(
+    DownloadResultRequest
+  ) returns (
+    stream ResultChunk
   );
 }

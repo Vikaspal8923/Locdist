@@ -33,6 +33,8 @@ const (
 	WorkerBridge_StopJob_FullMethodName              = "/locdist.v1.WorkerBridge/StopJob"
 	WorkerBridge_GetJobStatus_FullMethodName         = "/locdist.v1.WorkerBridge/GetJobStatus"
 	WorkerBridge_CleanupJob_FullMethodName           = "/locdist.v1.WorkerBridge/CleanupJob"
+	WorkerBridge_GetResultManifest_FullMethodName    = "/locdist.v1.WorkerBridge/GetResultManifest"
+	WorkerBridge_DownloadResult_FullMethodName       = "/locdist.v1.WorkerBridge/DownloadResult"
 )
 
 // WorkerBridgeClient is the client API for WorkerBridge service.
@@ -53,6 +55,8 @@ type WorkerBridgeClient interface {
 	StopJob(ctx context.Context, in *JobCommandRequest, opts ...grpc.CallOption) (*JobCommandResponse, error)
 	GetJobStatus(ctx context.Context, in *JobCommandRequest, opts ...grpc.CallOption) (*JobCommandResponse, error)
 	CleanupJob(ctx context.Context, in *JobCommandRequest, opts ...grpc.CallOption) (*JobCommandResponse, error)
+	GetResultManifest(ctx context.Context, in *JobCommandRequest, opts ...grpc.CallOption) (*ResultManifestResponse, error)
+	DownloadResult(ctx context.Context, in *DownloadResultRequest, opts ...grpc.CallOption) (grpc.ServerStreamingClient[ResultChunk], error)
 }
 
 type workerBridgeClient struct {
@@ -203,6 +207,35 @@ func (c *workerBridgeClient) CleanupJob(ctx context.Context, in *JobCommandReque
 	return out, nil
 }
 
+func (c *workerBridgeClient) GetResultManifest(ctx context.Context, in *JobCommandRequest, opts ...grpc.CallOption) (*ResultManifestResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(ResultManifestResponse)
+	err := c.cc.Invoke(ctx, WorkerBridge_GetResultManifest_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *workerBridgeClient) DownloadResult(ctx context.Context, in *DownloadResultRequest, opts ...grpc.CallOption) (grpc.ServerStreamingClient[ResultChunk], error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	stream, err := c.cc.NewStream(ctx, &WorkerBridge_ServiceDesc.Streams[0], WorkerBridge_DownloadResult_FullMethodName, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	x := &grpc.GenericClientStream[DownloadResultRequest, ResultChunk]{ClientStream: stream}
+	if err := x.ClientStream.SendMsg(in); err != nil {
+		return nil, err
+	}
+	if err := x.ClientStream.CloseSend(); err != nil {
+		return nil, err
+	}
+	return x, nil
+}
+
+// This type alias is provided for backwards compatibility with existing code that references the prior non-generic stream type by name.
+type WorkerBridge_DownloadResultClient = grpc.ServerStreamingClient[ResultChunk]
+
 // WorkerBridgeServer is the server API for WorkerBridge service.
 // All implementations must embed UnimplementedWorkerBridgeServer
 // for forward compatibility.
@@ -221,6 +254,8 @@ type WorkerBridgeServer interface {
 	StopJob(context.Context, *JobCommandRequest) (*JobCommandResponse, error)
 	GetJobStatus(context.Context, *JobCommandRequest) (*JobCommandResponse, error)
 	CleanupJob(context.Context, *JobCommandRequest) (*JobCommandResponse, error)
+	GetResultManifest(context.Context, *JobCommandRequest) (*ResultManifestResponse, error)
+	DownloadResult(*DownloadResultRequest, grpc.ServerStreamingServer[ResultChunk]) error
 	mustEmbedUnimplementedWorkerBridgeServer()
 }
 
@@ -272,6 +307,12 @@ func (UnimplementedWorkerBridgeServer) GetJobStatus(context.Context, *JobCommand
 }
 func (UnimplementedWorkerBridgeServer) CleanupJob(context.Context, *JobCommandRequest) (*JobCommandResponse, error) {
 	return nil, status.Error(codes.Unimplemented, "method CleanupJob not implemented")
+}
+func (UnimplementedWorkerBridgeServer) GetResultManifest(context.Context, *JobCommandRequest) (*ResultManifestResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method GetResultManifest not implemented")
+}
+func (UnimplementedWorkerBridgeServer) DownloadResult(*DownloadResultRequest, grpc.ServerStreamingServer[ResultChunk]) error {
+	return status.Error(codes.Unimplemented, "method DownloadResult not implemented")
 }
 func (UnimplementedWorkerBridgeServer) mustEmbedUnimplementedWorkerBridgeServer() {}
 func (UnimplementedWorkerBridgeServer) testEmbeddedByValue()                      {}
@@ -546,6 +587,35 @@ func _WorkerBridge_CleanupJob_Handler(srv interface{}, ctx context.Context, dec 
 	return interceptor(ctx, in, info, handler)
 }
 
+func _WorkerBridge_GetResultManifest_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(JobCommandRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(WorkerBridgeServer).GetResultManifest(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: WorkerBridge_GetResultManifest_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(WorkerBridgeServer).GetResultManifest(ctx, req.(*JobCommandRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _WorkerBridge_DownloadResult_Handler(srv interface{}, stream grpc.ServerStream) error {
+	m := new(DownloadResultRequest)
+	if err := stream.RecvMsg(m); err != nil {
+		return err
+	}
+	return srv.(WorkerBridgeServer).DownloadResult(m, &grpc.GenericServerStream[DownloadResultRequest, ResultChunk]{ServerStream: stream})
+}
+
+// This type alias is provided for backwards compatibility with existing code that references the prior non-generic stream type by name.
+type WorkerBridge_DownloadResultServer = grpc.ServerStreamingServer[ResultChunk]
+
 // WorkerBridge_ServiceDesc is the grpc.ServiceDesc for WorkerBridge service.
 // It's only intended for direct use with grpc.RegisterService,
 // and not to be introspected or modified (even as a copy)
@@ -609,7 +679,17 @@ var WorkerBridge_ServiceDesc = grpc.ServiceDesc{
 			MethodName: "CleanupJob",
 			Handler:    _WorkerBridge_CleanupJob_Handler,
 		},
+		{
+			MethodName: "GetResultManifest",
+			Handler:    _WorkerBridge_GetResultManifest_Handler,
+		},
 	},
-	Streams:  []grpc.StreamDesc{},
+	Streams: []grpc.StreamDesc{
+		{
+			StreamName:    "DownloadResult",
+			Handler:       _WorkerBridge_DownloadResult_Handler,
+			ServerStreams: true,
+		},
+	},
 	Metadata: "gradient.proto",
 }

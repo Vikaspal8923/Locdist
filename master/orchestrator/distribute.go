@@ -49,6 +49,7 @@ func (d *Distributor) Distribute(ctx context.Context, job *jobs.JobState) ([]Wor
 		archive, err := packager.Build(packager.PackageRequest{
 			ProjectRoot: job.ProjectRoot, JobID: job.JobID, WorkerID: worker.WorkerID,
 			Entrypoint: job.Entrypoint, DatasetPath: job.DatasetPath, ShardPath: shardPath,
+			Outputs: job.Outputs,
 		})
 		if err != nil {
 			return nil, fmt.Errorf("package worker %q: %w", worker.WorkerID, err)

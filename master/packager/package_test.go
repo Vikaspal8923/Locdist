@@ -26,7 +26,7 @@ func TestBuildReplacesDatasetAndExcludesLocalState(t *testing.T) {
 	write(".git/config", "secret")
 	shard := write("ldgcc_jobs/job-1/shards/worker-1.jsonl", "worker shard\n")
 
-	data, err := Build(PackageRequest{ProjectRoot: root, JobID: "job-1", WorkerID: "worker-1", Entrypoint: "train.py", DatasetPath: "dataset/train.jsonl", ShardPath: shard})
+	data, err := Build(PackageRequest{ProjectRoot: root, JobID: "job-1", WorkerID: "worker-1", Entrypoint: "train.py", DatasetPath: "dataset/train.jsonl", ShardPath: shard, Outputs: []string{"model/model.pt"}})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -39,6 +39,9 @@ func TestBuildReplacesDatasetAndExcludesLocalState(t *testing.T) {
 	}
 	if _, ok := files["job_config.json"]; !ok {
 		t.Fatal("job_config.json is missing")
+	}
+	if !bytes.Contains(files["job_config.json"], []byte("model/model.pt")) {
+		t.Fatal("configured outputs are missing from job config")
 	}
 }
 

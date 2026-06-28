@@ -108,6 +108,16 @@ class WorkerBridgeStub:
                 request_serializer=gradient__pb2.JobCommandRequest.SerializeToString,
                 response_deserializer=gradient__pb2.JobCommandResponse.FromString,
                 _registered_method=True)
+        self.GetResultManifest = channel.unary_unary(
+                '/locdist.v1.WorkerBridge/GetResultManifest',
+                request_serializer=gradient__pb2.JobCommandRequest.SerializeToString,
+                response_deserializer=gradient__pb2.ResultManifestResponse.FromString,
+                _registered_method=True)
+        self.DownloadResult = channel.unary_stream(
+                '/locdist.v1.WorkerBridge/DownloadResult',
+                request_serializer=gradient__pb2.DownloadResultRequest.SerializeToString,
+                response_deserializer=gradient__pb2.ResultChunk.FromString,
+                _registered_method=True)
 
 
 class WorkerBridgeServicer:
@@ -201,6 +211,18 @@ class WorkerBridgeServicer:
         context.set_details('Method not implemented!')
         raise NotImplementedError('Method not implemented!')
 
+    def GetResultManifest(self, request, context):
+        """Missing associated documentation comment in .proto file."""
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
+    def DownloadResult(self, request, context):
+        """Missing associated documentation comment in .proto file."""
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
 
 def add_WorkerBridgeServicer_to_server(servicer, server):
     rpc_method_handlers = {
@@ -273,6 +295,16 @@ def add_WorkerBridgeServicer_to_server(servicer, server):
                     servicer.CleanupJob,
                     request_deserializer=gradient__pb2.JobCommandRequest.FromString,
                     response_serializer=gradient__pb2.JobCommandResponse.SerializeToString,
+            ),
+            'GetResultManifest': grpc.unary_unary_rpc_method_handler(
+                    servicer.GetResultManifest,
+                    request_deserializer=gradient__pb2.JobCommandRequest.FromString,
+                    response_serializer=gradient__pb2.ResultManifestResponse.SerializeToString,
+            ),
+            'DownloadResult': grpc.unary_stream_rpc_method_handler(
+                    servicer.DownloadResult,
+                    request_deserializer=gradient__pb2.DownloadResultRequest.FromString,
+                    response_serializer=gradient__pb2.ResultChunk.SerializeToString,
             ),
     }
     generic_handler = grpc.method_handlers_generic_handler(
@@ -657,6 +689,60 @@ class WorkerBridge:
             '/locdist.v1.WorkerBridge/CleanupJob',
             gradient__pb2.JobCommandRequest.SerializeToString,
             gradient__pb2.JobCommandResponse.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
+
+    @staticmethod
+    def GetResultManifest(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(
+            request,
+            target,
+            '/locdist.v1.WorkerBridge/GetResultManifest',
+            gradient__pb2.JobCommandRequest.SerializeToString,
+            gradient__pb2.ResultManifestResponse.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
+
+    @staticmethod
+    def DownloadResult(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_stream(
+            request,
+            target,
+            '/locdist.v1.WorkerBridge/DownloadResult',
+            gradient__pb2.DownloadResultRequest.SerializeToString,
+            gradient__pb2.ResultChunk.FromString,
             options,
             channel_credentials,
             insecure,

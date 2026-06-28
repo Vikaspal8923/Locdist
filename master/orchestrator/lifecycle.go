@@ -21,10 +21,12 @@ type LifecycleCoordinator struct {
 	jobsRoot     string
 	pollInterval time.Duration
 	aggregator   *aggregator.Service
+	results      *ResultCollector
 }
 
 func NewLifecycleCoordinator(jobManager *jobs.Manager, workerManager *workers.Manager, jobsRoot string, aggregatorService ...*aggregator.Service) *LifecycleCoordinator {
-	coordinator := &LifecycleCoordinator{jobs: jobManager, workers: workerManager, training: NewTrainingCoordinator(jobManager, workerManager), jobsRoot: jobsRoot, pollInterval: time.Second}
+	resultsRoot := filepath.Join(filepath.Dir(filepath.Clean(jobsRoot)), "ldgcc_results")
+	coordinator := &LifecycleCoordinator{jobs: jobManager, workers: workerManager, training: NewTrainingCoordinator(jobManager, workerManager), jobsRoot: jobsRoot, pollInterval: time.Second, results: NewResultCollector(workerManager, resultsRoot)}
 	if len(aggregatorService) > 0 {
 		coordinator.aggregator = aggregatorService[0]
 	}
@@ -136,6 +138,11 @@ func (c *LifecycleCoordinator) finalize(ctx context.Context, job *jobs.JobState,
 	if stop {
 		_ = c.training.stopWorkers(ctx, job, online)
 	}
+	if err := c.results.Collect(ctx, job, status == jobs.StatusFinished); err != nil && status == jobs.StatusFinished {
+		status = jobs.StatusFailed
+		reason = "result collection failed: " + err.Error()
+		_ = c.results.Collect(ctx, job, false)
+	}
 	results := make(map[string]jobs.WorkerFinalResult, len(job.Workers))
 	var cleanupErrors []error
 	for _, assignment := range job.Workers {
@@ -163,6 +170,9 @@ func (c *LifecycleCoordinator) finalize(ctx context.Context, job *jobs.JobState,
 	summary := jobs.Summary{JobID: job.JobID, Status: status, Reason: reason, FinishedAt: time.Now(), Workers: results}
 	if err := c.jobs.ArchiveAndReset(summary); err != nil {
 		return nil, err
+	}
+	if err := c.results.WriteSummary(summary); err != nil {
+		cleanupErrors = append(cleanupErrors, fmt.Errorf("write result summary: %w", err))
 	}
 	if len(cleanupErrors) > 0 {
 		return &summary, fmt.Errorf("job finalized with cleanup errors: %v", cleanupErrors)

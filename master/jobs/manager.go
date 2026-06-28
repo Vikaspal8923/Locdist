@@ -83,6 +83,7 @@ func (m *Manager) CurrentJob() (*JobState, error) {
 	copy := *m.currentJob
 	copy.Workers = append([]WorkerAssignment(nil), m.currentJob.Workers...)
 	copy.Shards = append([]ShardAssignment(nil), m.currentJob.Shards...)
+	copy.Outputs = append([]string(nil), m.currentJob.Outputs...)
 	copy.Setup = make(map[string]WorkerSetup, len(m.currentJob.Setup))
 	for workerID, setup := range m.currentJob.Setup {
 		copy.Setup[workerID] = setup

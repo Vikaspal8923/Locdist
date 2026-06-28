@@ -23,13 +23,15 @@ type PackageRequest struct {
 	Entrypoint  string
 	DatasetPath string
 	ShardPath   string
+	Outputs     []string
 }
 
 type JobConfig struct {
-	JobID       string `json:"job_id"`
-	WorkerID    string `json:"worker_id"`
-	Entrypoint  string `json:"entrypoint"`
-	DatasetPath string `json:"dataset_path"`
+	JobID       string   `json:"job_id"`
+	WorkerID    string   `json:"worker_id"`
+	Entrypoint  string   `json:"entrypoint"`
+	DatasetPath string   `json:"dataset_path"`
+	Outputs     []string `json:"outputs,omitempty"`
 }
 
 func Build(request PackageRequest) ([]byte, error) {
@@ -144,6 +146,7 @@ func addJobConfig(writer *zip.Writer, request PackageRequest) error {
 			WorkerID:    request.WorkerID,
 			Entrypoint:  request.Entrypoint,
 			DatasetPath: request.DatasetPath,
+			Outputs:     request.Outputs,
 		},
 		"",
 		"  ",

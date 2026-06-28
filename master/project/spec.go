@@ -16,6 +16,7 @@ type Spec struct {
 	Entrypoint string
 	Dataset    DatasetSpec
 	Workers    WorkerSpec
+	Outputs    []string
 }
 
 type JobSpec struct {
@@ -32,6 +33,9 @@ type WorkerSpec struct {
 
 func LoadSpec(projectRoot string) (Spec, error) {
 	specPath := filepath.Join(projectRoot, DefaultSpecFile)
+	if _, err := os.Stat(filepath.Join(projectRoot, "ldgcc.yml")); err == nil {
+		specPath = filepath.Join(projectRoot, "ldgcc.yml")
+	}
 	file, err := os.Open(specPath)
 	if err != nil {
 		return Spec{}, fmt.Errorf("open project spec: %w", err)
@@ -61,6 +65,17 @@ func (s Spec) Validate(projectRoot string) error {
 	if filepath.IsAbs(s.Entrypoint) || filepath.IsAbs(s.Dataset.Train) {
 		return fmt.Errorf("entrypoint and dataset paths must be relative")
 	}
+	seenOutputs := make(map[string]struct{}, len(s.Outputs))
+	for _, output := range s.Outputs {
+		if strings.TrimSpace(output) == "" || filepath.IsAbs(output) || !withinProject(projectRoot, output) {
+			return fmt.Errorf("output paths must be relative and stay inside project")
+		}
+		clean := filepath.ToSlash(filepath.Clean(output))
+		if _, exists := seenOutputs[clean]; exists {
+			return fmt.Errorf("duplicate output path %q", output)
+		}
+		seenOutputs[clean] = struct{}{}
+	}
 	if !withinProject(projectRoot, s.Entrypoint) ||
 		!withinProject(projectRoot, s.Dataset.Train) {
 		return fmt.Errorf("entrypoint and dataset paths must stay inside project")
@@ -86,6 +101,15 @@ func parse(file *os.File) (Spec, error) {
 		}
 
 		indent := leadingSpaces(line)
+		trimmed := strings.TrimSpace(line)
+		if section == "outputs" && strings.HasPrefix(trimmed, "- ") {
+			value := strings.Trim(strings.TrimSpace(strings.TrimPrefix(trimmed, "- ")), `"'`)
+			if value == "" {
+				return Spec{}, fmt.Errorf("output path cannot be empty")
+			}
+			spec.Outputs = append(spec.Outputs, value)
+			continue
+		}
 		key, value, ok := splitKeyValue(strings.TrimSpace(line))
 		if !ok {
 			return Spec{}, fmt.Errorf("invalid line %q", scanner.Text())
@@ -110,6 +134,8 @@ func parse(file *os.File) (Spec, error) {
 				return Spec{}, fmt.Errorf("workers.count must be a number")
 			}
 			spec.Workers.Count = count
+		case section == "outputs" && key == "outputs":
+			return Spec{}, fmt.Errorf("outputs must be a YAML list")
 		case section == "" && key == "entrypoint":
 			spec.Entrypoint = value
 		default:

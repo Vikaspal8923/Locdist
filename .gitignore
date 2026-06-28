@@ -211,6 +211,8 @@ credentials/
 /worker/workspaces/
 /master/ldgcc_jobs/
 /ldgcc_jobs/
+/ldgcc_results/
+/master/ldgcc_results/
 
 # -----------------------------------------------------
 # Future Distributed Runtime Dumps

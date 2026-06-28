@@ -3,9 +3,11 @@ package grpc
 import (
 	"context"
 	"fmt"
+	"io"
 
 	gradient "github.com/Vikaspal8923/Locdist/worker/generated/gradient"
 	"github.com/Vikaspal8923/Locdist/worker/pairing"
+	workerresults "github.com/Vikaspal8923/Locdist/worker/results"
 	"github.com/Vikaspal8923/Locdist/worker/runtimebridge"
 	workersetup "github.com/Vikaspal8923/Locdist/worker/setup"
 	"github.com/Vikaspal8923/Locdist/worker/training"
@@ -20,6 +22,7 @@ type WorkerBridgeServer struct {
 	workspace     *workspace.Manager
 	setup         *workersetup.Manager
 	training      *training.Manager
+	results       *workerresults.Manager
 }
 
 func NewWorkerBridgeServer(
@@ -44,7 +47,8 @@ func (s *WorkerBridgeServer) SetSetupManager(manager *workersetup.Manager) {
 	s.setup = manager
 }
 
-func (s *WorkerBridgeServer) SetTrainingManager(manager *training.Manager) { s.training = manager }
+func (s *WorkerBridgeServer) SetTrainingManager(manager *training.Manager)    { s.training = manager }
+func (s *WorkerBridgeServer) SetResultManager(manager *workerresults.Manager) { s.results = manager }
 
 func (s *WorkerBridgeServer) ArmJob(ctx context.Context, request *gradient.JobCommandRequest) (*gradient.JobCommandResponse, error) {
 	if err := s.authenticateCommand(request); err != nil {
@@ -85,12 +89,62 @@ func (s *WorkerBridgeServer) CleanupJob(ctx context.Context, request *gradient.J
 	return commandResponse(request, result), nil
 }
 
+func (s *WorkerBridgeServer) GetResultManifest(ctx context.Context, request *gradient.JobCommandRequest) (*gradient.ResultManifestResponse, error) {
+	if err := s.authenticateCommand(request); err != nil {
+		return nil, err
+	}
+	if s.results == nil {
+		return nil, fmt.Errorf("result collection is not available")
+	}
+	files, missing, collectionErrors, err := s.results.Manifest(request.GetJobId())
+	if err != nil {
+		return nil, err
+	}
+	return &gradient.ResultManifestResponse{JobId: request.GetJobId(), WorkerId: request.GetWorkerId(), Files: files, MissingOutputs: missing, CollectionErrors: collectionErrors}, nil
+}
+
+func (s *WorkerBridgeServer) DownloadResult(request *gradient.DownloadResultRequest, stream gradient.WorkerBridge_DownloadResultServer) error {
+	if s.results == nil {
+		return fmt.Errorf("result collection is not available")
+	}
+	if err := s.authenticateValues(request.GetWorkerId(), request.GetMasterId(), request.GetPairingToken()); err != nil {
+		return err
+	}
+	file, err := s.results.Open(request.GetJobId(), request.GetPath())
+	if err != nil {
+		return err
+	}
+	defer file.Close()
+	buffer := make([]byte, 64<<10)
+	for {
+		count, readErr := file.Read(buffer)
+		if count > 0 {
+			if err := stream.Send(&gradient.ResultChunk{Data: append([]byte(nil), buffer[:count]...)}); err != nil {
+				return err
+			}
+		}
+		if readErr == io.EOF {
+			return nil
+		}
+		if readErr != nil {
+			return readErr
+		}
+	}
+}
+
 func (s *WorkerBridgeServer) authenticateCommand(request *gradient.JobCommandRequest) error {
 	if s.pairing == nil || s.training == nil {
 		return fmt.Errorf("training lifecycle is not available")
 	}
+	return s.authenticateValues(request.GetWorkerId(), request.GetMasterId(), request.GetPairingToken())
+}
+
+func (s *WorkerBridgeServer) authenticateValues(workerID, masterID, token string) error {
+	if s.pairing == nil {
+		return fmt.Errorf("pairing is not available")
+	}
 	record, ok := s.pairing.Record()
-	if !ok || record.WorkerID != request.GetWorkerId() || record.MasterID != request.GetMasterId() || record.PairingToken != request.GetPairingToken() {
+	if !ok || record.WorkerID != workerID || record.MasterID != masterID || record.PairingToken != token {
 		return fmt.Errorf("Master pairing credentials are invalid")
 	}
 	return nil

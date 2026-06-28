@@ -1513,10 +1513,16 @@ dataset:
 
 workers:
   count: 3
+
+outputs:
+  - model/model.pt
+  - results/
 ```
 
 `job.name` is optional. `entrypoint`, `dataset.train`, and
-`workers.count` are required.
+`workers.count` are required. `outputs` is optional and accepts relative files
+or directories. Both `ldgcc.yaml` and `ldgcc.yml` are supported; `.yml` is
+preferred when both exist.
 
 ## Dataset Rule
 
@@ -1816,6 +1822,37 @@ and successful completion when every Worker reports COMPLETED.
 
 ---
 
+# LDGCC Phase 12: Configurable Results and Logs
+
+Phase 12 collects only outputs declared by the user in `ldgcc.yml`, plus setup
+and training logs. When `outputs` is omitted, LDGCC collects logs and the final
+summary without guessing which project files are models or metrics.
+
+```yaml
+outputs:
+  - model/model.pt
+  - results/metrics.json
+  - checkpoints/
+```
+
+Workers return an authenticated manifest containing relative paths, sizes, and
+SHA-256 checksums. Master downloads files through bounded gRPC streams, verifies
+every size and checksum, and atomically publishes:
+
+```text
+ldgcc_results/<job_id>/
+  summary.json
+  logs/<worker_id>/
+  workers/<worker_id>/outputs/<declared paths>
+```
+
+Successful jobs require every configured output. Failed jobs preserve whatever
+safe logs and outputs are available. Absolute paths, traversal, symlinks,
+undeclared downloads, files over 64 MiB, and Worker result sets over 256 MiB are
+rejected. Worker workspaces are cleaned only after collection.
+
+---
+
 # Current Status
 
 ```text
@@ -1865,6 +1902,9 @@ LDGCC Phase 10
     ✓ COMPLETE
 
 LDGCC Phase 11
+    ✓ COMPLETE
+
+LDGCC Phase 12
     ✓ COMPLETE
 
 Job Spec Foundation
