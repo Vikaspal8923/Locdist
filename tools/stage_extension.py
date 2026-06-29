@@ -22,6 +22,7 @@ def main() -> int:
     output.mkdir(parents=True)
 
     print("compiling extension", flush=True)
+    shutil.rmtree(EXTENSION / "out", ignore_errors=True)
     subprocess.run(["npm", "run", "compile"], cwd=EXTENSION, check=True)
 
     for name in ["package.json", "package-lock.json", "README.md", "tsconfig.json"]:

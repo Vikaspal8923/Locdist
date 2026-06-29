@@ -1,17 +1,17 @@
 import * as vscode from "vscode";
-import { ClusterNode, ClusterTreeDataProvider } from "./clusterView";
 import { MasterClient } from "./masterClient";
 import { MasterProcess } from "./masterProcess";
+import { StudioViewProvider } from "./studioView";
 import { DiscoveredWorker, JobSummary } from "./types";
 
 let masterProcess: MasterProcess;
 let client: MasterClient | undefined;
-let tree: ClusterTreeDataProvider;
+let studio: StudioViewProvider;
 
 export function activate(context: vscode.ExtensionContext): void {
   masterProcess = new MasterProcess(context);
-  tree = new ClusterTreeDataProvider();
-  context.subscriptions.push(vscode.window.registerTreeDataProvider("ldgcc.cluster", tree));
+  studio = new StudioViewProvider(context, handleViewAction);
+  context.subscriptions.push(vscode.window.registerWebviewViewProvider("ldgcc.cluster", studio));
 
   register(context, "ldgcc.startMaster", startMaster);
   register(context, "ldgcc.stopMaster", stopMaster);
@@ -57,13 +57,13 @@ async function stopMaster(): Promise<void> {
     client = undefined;
   }
   await masterProcess.stop();
-  tree.setConnected(false);
+  studio.setDisconnected();
   vscode.window.showInformationMessage("LDGCC Master stopped");
 }
 
 async function refresh(): Promise<void> {
   const api = await ensureClient();
-  tree.setState(await api.state());
+  studio.setState(await api.state());
 }
 
 async function discoverWorkers(): Promise<void> {
@@ -160,6 +160,35 @@ function subscribeToEvents(): void {
   );
 }
 
+async function handleViewAction(action: string, payload?: unknown): Promise<void> {
+  switch (action) {
+    case "startMaster":
+      return startMaster();
+    case "stopMaster":
+      return stopMaster();
+    case "refresh":
+      return refresh();
+    case "discoverWorkers":
+      return discoverWorkers();
+    case "pairWorker":
+      return pairWorker(workerPayloadToDiscovered(payload));
+    case "prepareJob":
+      return prepareJob();
+    case "setupWorkers":
+      return setupWorkers();
+    case "retrySetup":
+      return retrySetup();
+    case "startTraining":
+      return startTraining();
+    case "stopTraining":
+      return stopTraining();
+    case "openResults":
+      return openResults();
+    default:
+      throw new Error(`Unsupported LDGCC action: ${action}`);
+  }
+}
+
 function workspaceRoot(): string | undefined {
   return vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
 }
@@ -179,21 +208,29 @@ async function pickDiscoveredWorker(): Promise<DiscoveredWorker | undefined> {
 }
 
 function workerFromNode(value: unknown): DiscoveredWorker | undefined {
-  if (value instanceof ClusterNode) {
-    const candidate = value.value as Partial<DiscoveredWorker> | undefined;
-    if (candidate?.instance) {
-      return candidate as DiscoveredWorker;
-    }
+  const candidate = value as Partial<DiscoveredWorker> | undefined;
+  if (candidate?.instance) {
+    return candidate as DiscoveredWorker;
   }
   return undefined;
 }
 
 function resultSummaryFromNode(value: unknown): JobSummary | undefined {
-  if (value instanceof ClusterNode) {
-    const candidate = value.value as Partial<JobSummary> | undefined;
-    if (candidate?.job_id) {
-      return candidate as JobSummary;
-    }
+  const candidate = value as Partial<JobSummary> | undefined;
+  if (candidate?.job_id) {
+    return candidate as JobSummary;
+  }
+  return undefined;
+}
+
+function workerPayloadToDiscovered(payload: unknown): DiscoveredWorker | undefined {
+  const candidate = payload as { instance?: unknown } | undefined;
+  if (typeof candidate?.instance === "string") {
+    return {
+      instance: candidate.instance,
+      address: "",
+      pairing_status: "",
+    };
   }
   return undefined;
 }
