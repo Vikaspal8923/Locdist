@@ -1989,6 +1989,40 @@ Worker App
 
 ---
 
+# LDGCC Phase 23: Worker App Production Packaging
+
+The Worker App can now be staged as a worker-laptop package:
+
+```bash
+python3 tools/stage_worker_app.py
+```
+
+The staged package includes:
+
+```text
+run-worker-app.sh
+manifest.json
+README.md
+bin/<platform>-<arch>/ldgcc-worker-app
+bin/<platform>-<arch>/ldgcc-worker
+```
+
+Worker user flow:
+
+```text
+Run Worker App package
+    -> open local Worker page
+    -> click Start Worker
+    -> accept pairing request
+    -> leave the app running during setup/training
+```
+
+The launcher uses `~/.ldgcc/worker` by default for `worker_config.json`,
+`pairing.json`, and `workspaces/`. This keeps Worker state stable even when the
+package is moved or started from a different directory.
+
+---
+
 ## Future TODOs
 
 ### Master Phase 2

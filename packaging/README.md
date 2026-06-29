@@ -114,3 +114,56 @@ configured Master binary
 
 The next release step is turning this staged folder into a `.vsix` with VS Code
 packaging tooling.
+
+---
+
+# LDGCC Phase 23: Worker App Production Packaging
+
+Phase 23 stages the Worker App as a worker-laptop package. The package contains
+the Worker App binary, headless Worker binary, launcher script, manifest, and a
+worker-facing README.
+
+From the repository root:
+
+```bash
+python3 tools/stage_worker_app.py
+```
+
+This creates:
+
+```text
+dist/ldgcc-worker-app/
+    README.md
+    manifest.json
+    run-worker-app.sh
+    bin/
+        linux-x64/
+            ldgcc-worker-app
+            ldgcc-worker
+```
+
+Worker laptop flow:
+
+```text
+run-worker-app.sh
+    -> starts local Worker App
+    -> opens/prints http://127.0.0.1:5050
+    -> user clicks Start Worker
+    -> user accepts Master pairing request
+    -> Worker receives setup/training commands
+```
+
+The launcher stores local Worker state under:
+
+```text
+~/.ldgcc/worker
+```
+
+Override it with:
+
+```bash
+LDGCC_WORKER_DATA_DIR=/custom/path ./run-worker-app.sh
+```
+
+This is still a staged package, not a native OS installer. A future release step
+can wrap this folder into platform-specific installers.
