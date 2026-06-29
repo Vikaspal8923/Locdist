@@ -766,3 +766,20 @@ Runtime download: sparse top-k union from Master
 Dense responses are still supported for no-compression and warmup syncs.
 Runtime validates sparse response size, duplicate indices, and index bounds
 before applying gradients.
+
+---
+
+# Phase 18: Packed Sparse Indices
+
+Runtime now sends top-k sparse indices as packed little-endian uint32 bytes in
+`indices_u32`. The older repeated `indices` field is still readable for
+compatibility, but new Runtime payloads use the compact format.
+
+```text
+fp16 value + int64 index  = 10 bytes
+fp16 value + uint32 index =  6 bytes
+```
+
+Runtime rejects indices outside the uint32 range before sending. Sparse
+responses from Master are decoded from `indices_u32` and then applied through
+the same sparse gradient validation path.

@@ -6,6 +6,7 @@ from locdist.models import (
     GradientChunk,
     ParameterMetadata,
 )
+from locdist.indices import unpack_u32_indices
 
 
 TORCH_DTYPE_MAP = {
@@ -132,7 +133,11 @@ def _sparse_chunk_to_tensor(
 ) -> torch.Tensor:
     if chunk.data is None:
         raise ValueError("Sparse gradient chunk has no data")
-    indices = chunk.indices or []
+    indices = (
+        unpack_u32_indices(chunk.indices_u32)
+        if chunk.indices_u32
+        else chunk.indices or []
+    )
     dtype = TORCH_DTYPE_MAP[
         chunk.data_dtype
         or chunk.metadata.dtype

@@ -8,6 +8,7 @@ from locdist.models import (
     GradientChunk,
     ParameterMetadata,
 )
+from locdist.indices import pack_u32_indices
 
 
 PRECISION_TO_DTYPE = {
@@ -175,6 +176,7 @@ def _sparse_chunk(
 ) -> GradientChunk:
     payload = values.to(payload_dtype).contiguous()
     data = payload.numpy().tobytes()
+    packed_indices = [int(value) for value in indices.tolist()]
     return GradientChunk(
         metadata=metadata,
         has_grad=True,
@@ -182,7 +184,8 @@ def _sparse_chunk(
         byte_size=len(data),
         data_dtype=str(payload.dtype),
         encoding="topk",
-        indices=[int(value) for value in indices.tolist()],
+        indices=[],
+        indices_u32=pack_u32_indices(packed_indices),
     )
 
 
@@ -204,4 +207,5 @@ def _empty_chunk(metadata: ParameterMetadata) -> GradientChunk:
         data_dtype=None,
         encoding="dense",
         indices=[],
+        indices_u32=None,
     )

@@ -8,6 +8,7 @@ from locdist.compression import (
 from locdist.config import parse_communication_config
 from locdist.exceptions import ConfigError
 from locdist.gradients import apply_gradient_chunks
+from locdist.indices import unpack_u32_indices
 from locdist.models import GradientChunk, ParameterMetadata
 
 
@@ -37,9 +38,9 @@ def test_per_layer_topk_keeps_each_parameter():
     chunks = extract_compressed_gradient_chunks(model, config, CompressionState())
 
     assert chunks[0].encoding == "topk"
-    assert chunks[0].indices == [1]
+    assert unpack_u32_indices(chunks[0].indices_u32) == [1]
     assert chunks[0].data_dtype == "torch.float16"
-    assert chunks[1].indices == [2]
+    assert unpack_u32_indices(chunks[1].indices_u32) == [2]
 
 
 def test_global_topk_selects_across_all_parameters():
@@ -58,7 +59,10 @@ def test_global_topk_selects_across_all_parameters():
     )
 
     chunks = extract_compressed_gradient_chunks(model, config, CompressionState())
-    selected = {chunk.metadata.name: chunk.indices for chunk in chunks}
+    selected = {
+        chunk.metadata.name: unpack_u32_indices(chunk.indices_u32)
+        for chunk in chunks
+    }
 
     assert selected == {"a": [1], "b": [2]}
 
@@ -85,7 +89,7 @@ def test_error_feedback_reuses_dropped_values():
     model.b.grad = torch.zeros(4)
     chunks = extract_compressed_gradient_chunks(model, config, state)
 
-    assert chunks[0].indices == [3]
+    assert unpack_u32_indices(chunks[0].indices_u32) == [3]
 
 
 def test_warmup_sends_dense_before_topk():

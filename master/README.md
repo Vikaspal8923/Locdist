@@ -2005,6 +2005,40 @@ feedback.
 
 ---
 
+# LDGCC Phase 18: Packed Sparse Indices
+
+Phase 18 reduces top-k payload size by replacing protobuf `repeated int64`
+sparse indices with packed little-endian uint32 bytes.
+
+```text
+Before:
+  fp16 value = 2 bytes
+  int64 index = 8 bytes
+  total      = 10 bytes per selected gradient
+
+After:
+  fp16 value  = 2 bytes
+  uint32 index = 4 bytes
+  total       = 6 bytes per selected gradient
+```
+
+The protocol keeps the old `indices` field for compatibility and adds
+`indices_u32` for the compact form. Runtime writes `indices_u32`; Master reads
+either format and returns `indices_u32` for sparse responses.
+
+For a 50M parameter model with `top_k: 5%`, one sparse direction drops from
+roughly:
+
+```text
+2.5M selected gradients * 10 bytes = ~25 MB+
+2.5M selected gradients *  6 bytes = ~15 MB+
+```
+
+If a sparse index exceeds uint32 capacity, aggregation fails clearly instead of
+silently changing payload format.
+
+---
+
 # Current Status
 
 ```text
@@ -2069,6 +2103,9 @@ LDGCC Phase 16
     ✓ COMPLETE
 
 LDGCC Phase 17
+    ✓ COMPLETE
+
+LDGCC Phase 18
     ✓ COMPLETE
 
 Job Spec Foundation

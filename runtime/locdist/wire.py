@@ -8,6 +8,7 @@ from locdist.models import (
 )
 
 from locdist.generated import gradient_pb2
+from locdist.indices import unpack_u32_indices
 
 
 def package_to_submission_proto(
@@ -60,6 +61,11 @@ def package_to_submission_proto(
             chunk.indices or []
         )
 
+        if chunk.indices_u32:
+            proto_chunk.indices_u32 = (
+                chunk.indices_u32
+            )
+
         if chunk.data is not None:
             proto_chunk.data = chunk.data
 
@@ -100,7 +106,11 @@ def submission_proto_to_package(
                 proto_chunk.encoding
                 or "dense"
             ),
-            indices=list(proto_chunk.indices),
+            indices=indices_from_proto(proto_chunk),
+            indices_u32=(
+                proto_chunk.indices_u32
+                or None
+            ),
         )
 
         chunks.append(chunk)
@@ -147,7 +157,11 @@ def response_proto_to_package(
                 proto_chunk.encoding
                 or "dense"
             ),
-            indices=list(proto_chunk.indices),
+            indices=indices_from_proto(proto_chunk),
+            indices_u32=(
+                proto_chunk.indices_u32
+                or None
+            ),
         )
 
         chunks.append(chunk)
@@ -224,7 +238,20 @@ def package_to_response_proto(
             chunk.indices or []
         )
 
+        if chunk.indices_u32:
+            proto_chunk.indices_u32 = (
+                chunk.indices_u32
+            )
+
         if chunk.data is not None:
             proto_chunk.data = chunk.data
 
     return response
+
+
+def indices_from_proto(proto_chunk) -> list[int]:
+    if proto_chunk.indices_u32:
+        return unpack_u32_indices(
+            proto_chunk.indices_u32
+        )
+    return list(proto_chunk.indices)

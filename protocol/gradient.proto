@@ -39,6 +39,8 @@ message GradientChunk {
   string encoding = 6;
 
   repeated int64 indices = 7;
+
+  bytes indices_u32 = 8;
 }
 
 

@@ -321,6 +321,7 @@ type GradientChunk struct {
 	DataDtype     string                 `protobuf:"bytes,5,opt,name=data_dtype,json=dataDtype,proto3" json:"data_dtype,omitempty"`
 	Encoding      string                 `protobuf:"bytes,6,opt,name=encoding,proto3" json:"encoding,omitempty"`
 	Indices       []int64                `protobuf:"varint,7,rep,packed,name=indices,proto3" json:"indices,omitempty"`
+	IndicesU32    []byte                 `protobuf:"bytes,8,opt,name=indices_u32,json=indicesU32,proto3" json:"indices_u32,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -400,6 +401,13 @@ func (x *GradientChunk) GetEncoding() string {
 func (x *GradientChunk) GetIndices() []int64 {
 	if x != nil {
 		return x.Indices
+	}
+	return nil
+}
+
+func (x *GradientChunk) GetIndicesU32() []byte {
+	if x != nil {
+		return x.IndicesU32
 	}
 	return nil
 }
@@ -2014,7 +2022,7 @@ const file_gradient_proto_rawDesc = "" +
 	"\x04name\x18\x01 \x01(\tR\x04name\x12\x14\n" +
 	"\x05shape\x18\x02 \x03(\x03R\x05shape\x12\x14\n" +
 	"\x05numel\x18\x03 \x01(\x03R\x05numel\x12\x14\n" +
-	"\x05dtype\x18\x04 \x01(\tR\x05dtype\"\xeb\x01\n" +
+	"\x05dtype\x18\x04 \x01(\tR\x05dtype\"\x8c\x02\n" +
 	"\rGradientChunk\x129\n" +
 	"\bmetadata\x18\x01 \x01(\v2\x1d.locdist.v1.ParameterMetadataR\bmetadata\x12\x19\n" +
 	"\bhas_grad\x18\x02 \x01(\bR\ahasGrad\x12\x12\n" +
@@ -2023,7 +2031,9 @@ const file_gradient_proto_rawDesc = "" +
 	"\n" +
 	"data_dtype\x18\x05 \x01(\tR\tdataDtype\x12\x1a\n" +
 	"\bencoding\x18\x06 \x01(\tR\bencoding\x12\x18\n" +
-	"\aindices\x18\a \x03(\x03R\aindices\"\xa4\x01\n" +
+	"\aindices\x18\a \x03(\x03R\aindices\x12\x1f\n" +
+	"\vindices_u32\x18\b \x01(\fR\n" +
+	"indicesU32\"\xa4\x01\n" +
 	"\x12GradientSubmission\x12'\n" +
 	"\x0fruntime_version\x18\x01 \x01(\rR\x0eruntimeVersion\x12\x15\n" +
 	"\x06job_id\x18\x02 \x01(\tR\x05jobId\x12\x1b\n" +

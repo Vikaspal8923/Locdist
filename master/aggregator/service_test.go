@@ -79,8 +79,15 @@ func TestAggregateSparseTopKReturnsSparseUnionAverage(t *testing.T) {
 	if chunk.GetEncoding() != "topk" {
 		t.Fatalf("expected sparse response, got %q", chunk.GetEncoding())
 	}
-	if got, want := chunk.GetIndices(), []int64{0, 1, 2}; len(got) != len(want) || got[0] != want[0] || got[1] != want[1] || got[2] != want[2] {
+	got, err := chunkIndices(chunk)
+	if err != nil {
+		t.Fatalf("decode response indices: %v", err)
+	}
+	if want := []int64{0, 1, 2}; len(got) != len(want) || got[0] != want[0] || got[1] != want[1] || got[2] != want[2] {
 		t.Fatalf("indices = %v, expected %v", got, want)
+	}
+	if len(chunk.GetIndices()) != 0 || len(chunk.GetIndicesU32()) != 12 {
+		t.Fatalf("expected packed uint32 response indices, repeated=%v bytes=%d", chunk.GetIndices(), len(chunk.GetIndicesU32()))
 	}
 	values := decodeTestFloat32(chunk.GetData())
 	expected := []float32{1, 2, 8}

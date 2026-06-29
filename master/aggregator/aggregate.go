@@ -12,6 +12,8 @@ import (
 	"google.golang.org/protobuf/proto"
 )
 
+const maxUint32Index = int64(1<<32 - 1)
+
 func (s *Service) Aggregate(
 	request *gradient.GradientSubmission,
 	expectedWorkers int,
@@ -227,7 +229,12 @@ func averageChunks(
 		result.ByteSize = uint64(len(averagedData))
 		result.DataDtype = responseDataDtype(reference)
 		result.Encoding = "topk"
-		result.Indices = indices
+		packedIndices, err := packUint32Indices(indices)
+		if err != nil {
+			return nil, err
+		}
+		result.Indices = nil
+		result.IndicesU32 = packedIndices
 		return result, nil
 	}
 
@@ -337,7 +344,10 @@ func averageSparseResponse(
 		if err != nil {
 			return nil, nil, err
 		}
-		indices := chunk.GetIndices()
+		indices, err := chunkIndices(chunk)
+		if err != nil {
+			return nil, nil, err
+		}
 		if len(chunk.GetData()) != len(indices)*elementSize || int(chunk.GetByteSize()) != len(indices)*elementSize {
 			return nil, nil, fmt.Errorf("sparse gradient data size mismatch")
 		}
@@ -428,7 +438,10 @@ func decodeSparseFloat32(
 	if err != nil {
 		return nil, err
 	}
-	indices := chunk.GetIndices()
+	indices, err := chunkIndices(chunk)
+	if err != nil {
+		return nil, err
+	}
 	if len(chunk.GetData()) != len(indices)*elementSize || int(chunk.GetByteSize()) != len(indices)*elementSize {
 		return nil, fmt.Errorf("sparse gradient data size mismatch")
 	}
@@ -449,6 +462,39 @@ func decodeSparseFloat32(
 		values[int(rawIndex)] = value
 	}
 	return values, nil
+}
+
+func chunkIndices(chunk *gradient.GradientChunk) ([]int64, error) {
+	if len(chunk.GetIndicesU32()) > 0 {
+		return unpackUint32Indices(chunk.GetIndicesU32())
+	}
+	return chunk.GetIndices(), nil
+}
+
+func unpackUint32Indices(data []byte) ([]int64, error) {
+	if len(data)%4 != 0 {
+		return nil, fmt.Errorf("packed uint32 indices byte length must be divisible by 4")
+	}
+	indices := make([]int64, len(data)/4)
+	for index := range indices {
+		offset := index * 4
+		indices[index] = int64(binary.LittleEndian.Uint32(data[offset : offset+4]))
+	}
+	return indices, nil
+}
+
+func packUint32Indices(indices []int64) ([]byte, error) {
+	if len(indices) == 0 {
+		return nil, nil
+	}
+	data := make([]byte, len(indices)*4)
+	for index, value := range indices {
+		if value < 0 || value > maxUint32Index {
+			return nil, fmt.Errorf("packed uint32 indices support values up to %d", maxUint32Index)
+		}
+		binary.LittleEndian.PutUint32(data[index*4:index*4+4], uint32(value))
+	}
+	return data, nil
 }
 
 func dtypeSize(dtype string) (int, error) {

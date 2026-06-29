@@ -65,6 +65,8 @@ class GradientChunk:
 
     indices: list[int] | None = None
 
+    indices_u32: bytes | None = None
+
 
 @dataclass
 class GradientPackage:
