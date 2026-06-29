@@ -26,6 +26,18 @@ func TestPrepareExtractsValidatedWorkspace(t *testing.T) {
 	}
 }
 
+func TestPrepareAcceptsDatasetDirectory(t *testing.T) {
+	manager := New(filepath.Join(t.TempDir(), "workspaces"))
+	archive := makeZip(t, map[string]string{"train.py": "print('ok')", "dataset/train/caries/1.jpg": "image", "job_config.json": "{}"})
+	path, err := manager.Prepare("job-1", "train.py", "dataset/train", archive)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if info, err := os.Stat(filepath.Join(path, "dataset", "train", "caries")); err != nil || !info.IsDir() {
+		t.Fatalf("image class directory was not prepared: %v", err)
+	}
+}
+
 func TestPrepareRejectsPathTraversal(t *testing.T) {
 	manager := New(filepath.Join(t.TempDir(), "workspaces"))
 	archive := makeZip(t, map[string]string{"../outside": "bad", "train.py": "x", "dataset/train.jsonl": "x", "job_config.json": "{}"})

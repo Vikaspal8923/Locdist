@@ -75,11 +75,14 @@ func (m *Manager) Prepare(jobID, entrypoint, datasetPath string, archive []byte)
 	if err := extract(archive, temporary); err != nil {
 		return "", err
 	}
-	for _, required := range []string{entrypoint, datasetPath, "job_config.json"} {
+	for _, required := range []string{entrypoint, "job_config.json"} {
 		info, err := os.Stat(filepath.Join(temporary, filepath.FromSlash(required)))
 		if err != nil || !info.Mode().IsRegular() {
 			return "", fmt.Errorf("required workspace file %q is missing", required)
 		}
+	}
+	if info, err := os.Stat(filepath.Join(temporary, filepath.FromSlash(datasetPath))); err != nil || !(info.Mode().IsRegular() || info.IsDir()) {
+		return "", fmt.Errorf("required workspace dataset %q is missing", datasetPath)
 	}
 	for _, directory := range []string{"logs", "artifacts"} {
 		if err := os.MkdirAll(filepath.Join(temporary, directory), 0o700); err != nil {
