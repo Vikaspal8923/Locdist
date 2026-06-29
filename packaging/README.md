@@ -212,3 +212,56 @@ Worker Laptop
 
 This phase produces local release artifacts. It does not yet produce native OS
 installers such as `.deb`, `.dmg`, `.msi`, or AppImage.
+
+---
+
+# LDGCC Phase 25: Cross-Platform Worker Packages
+
+Phase 25 supports mixed Worker operating systems in one LDGCC cluster.
+
+From the repository root:
+
+```bash
+python3 tools/package_release.py
+```
+
+The release now includes Linux and Windows Worker packages by default:
+
+```text
+dist/release/
+    ldgcc-studio.vsix
+    ldgcc-worker-app-linux-x64.zip
+    ldgcc-worker-app-windows-x64.zip
+    INSTALL.md
+    manifest.json
+    checksums.txt
+```
+
+Worker install flow:
+
+```text
+Linux worker laptop
+    -> extract ldgcc-worker-app-linux-x64.zip
+    -> run ./run-worker-app.sh
+
+Windows worker laptop
+    -> extract ldgcc-worker-app-windows-x64.zip
+    -> run run-worker-app.bat
+```
+
+Both Worker packages speak the same LDGCC gRPC protocol, so a single Master can
+train with Linux and Windows Workers in the same job.
+
+Build only one Worker target when needed:
+
+```bash
+python3 tools/package_release.py --worker-target linux-x64
+python3 tools/package_release.py --worker-target windows-x64
+```
+
+Stage one Worker package directly:
+
+```bash
+python3 tools/stage_worker_app.py --target linux-x64
+python3 tools/stage_worker_app.py --target windows-x64
+```

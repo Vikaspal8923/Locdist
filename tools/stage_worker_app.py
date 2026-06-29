@@ -15,6 +15,7 @@ WORKER = ROOT / "worker"
 def main() -> int:
     parser = argparse.ArgumentParser(description="Stage the LDGCC Worker App package.")
     parser.add_argument("--out", default="dist/ldgcc-worker-app", help="Output staging directory.")
+    parser.add_argument("--target", default=platform_key(), help="Target platform, for example linux-x64 or windows-x64.")
     args = parser.parse_args()
 
     output = (ROOT / args.out).resolve()
@@ -22,30 +23,40 @@ def main() -> int:
         shutil.rmtree(output)
     output.mkdir(parents=True)
 
-    platform_dir = platform_key()
+    target = parse_target(args.target)
+    platform_dir = target["platform_key"]
     bin_dir = output / "bin" / platform_dir
     bin_dir.mkdir(parents=True)
 
     go_env = dict(os.environ)
     go_env.setdefault("GOCACHE", "/tmp/locdist-go-cache")
+    go_env["GOOS"] = target["goos"]
+    go_env["GOARCH"] = target["goarch"]
 
-    worker_app = bin_dir / executable_name("ldgcc-worker-app")
-    worker_service = bin_dir / executable_name("ldgcc-worker")
+    worker_app = bin_dir / executable_name("ldgcc-worker-app", target)
+    worker_service = bin_dir / executable_name("ldgcc-worker", target)
     print(f"building Worker App: {worker_app}", flush=True)
     subprocess.run(["go", "build", "-o", str(worker_app), "./cmd/worker-app"], cwd=WORKER, check=True, env=go_env)
     print(f"building Worker service: {worker_service}", flush=True)
     subprocess.run(["go", "build", "-o", str(worker_service), "./cmd/worker"], cwd=WORKER, check=True, env=go_env)
 
-    write_readme(output, platform_dir)
-    write_launcher(output, platform_dir)
-    write_manifest(output, platform_dir)
+    write_readme(output, target)
+    write_launcher(output, target)
+    write_manifest(output, target)
 
     print(f"Worker App stage: {output}", flush=True)
     return 0
 
 
-def write_readme(output: Path, platform_dir: str) -> None:
-    launcher = "run-worker-app.bat" if node_platform() == "win32" else "run-worker-app.sh"
+def write_readme(output: Path, target: dict) -> None:
+    launcher = "run-worker-app.bat" if target["node_platform"] == "win32" else "run-worker-app.sh"
+    run_block = f"{launcher}" if target["node_platform"] == "win32" else f"./{launcher}"
+    default_data_dir = "%USERPROFILE%\\.ldgcc\\worker" if target["node_platform"] == "win32" else "~/.ldgcc/worker"
+    override_block = (
+        "set LDGCC_WORKER_DATA_DIR=C:\\\\ldgcc-worker\r\nrun-worker-app.bat"
+        if target["node_platform"] == "win32"
+        else "LDGCC_WORKER_DATA_DIR=/custom/path ./run-worker-app.sh"
+    )
     (output / "README.md").write_text(
         "# LDGCC Worker App Package\n\n"
         "This package is for the worker laptop. It starts the local LDGCC Worker App,\n"
@@ -53,7 +64,7 @@ def write_readme(output: Path, platform_dir: str) -> None:
         "previous Master connection, and view Worker settings.\n\n"
         "## Run\n\n"
         "```bash\n"
-        f"./{launcher}\n"
+        f"{run_block}\n"
         "```\n\n"
         "Then open the URL printed by the app, usually:\n\n"
         "```text\n"
@@ -70,23 +81,24 @@ def write_readme(output: Path, platform_dir: str) -> None:
         "## Local Data\n\n"
         "By default, the launcher stores Worker state under:\n\n"
         "```text\n"
-        "~/.ldgcc/worker\n"
+        f"{default_data_dir}\n"
         "```\n\n"
         "Override with:\n\n"
         "```bash\n"
-        "LDGCC_WORKER_DATA_DIR=/custom/path ./run-worker-app.sh\n"
+        f"{override_block}\n"
         "```\n\n"
         "## Binaries\n\n"
         "```text\n"
-        f"bin/{platform_dir}/ldgcc-worker-app\n"
-        f"bin/{platform_dir}/ldgcc-worker\n"
+        f"bin/{target['platform_key']}/{executable_name('ldgcc-worker-app', target)}\n"
+        f"bin/{target['platform_key']}/{executable_name('ldgcc-worker', target)}\n"
         "```\n",
         encoding="utf-8",
     )
 
 
-def write_launcher(output: Path, platform_dir: str) -> None:
-    if node_platform() == "win32":
+def write_launcher(output: Path, target: dict) -> None:
+    platform_dir = target["platform_key"]
+    if target["node_platform"] == "win32":
         launcher = output / "run-worker-app.bat"
         launcher.write_text(
             "@echo off\r\n"
@@ -95,7 +107,7 @@ def write_launcher(output: Path, platform_dir: str) -> None:
             "if \"%LDGCC_WORKER_DATA_DIR%\"==\"\" set LDGCC_WORKER_DATA_DIR=%USERPROFILE%\\.ldgcc\\worker\r\n"
             "if \"%LDGCC_WORKER_CONFIG%\"==\"\" set LDGCC_WORKER_CONFIG=%LDGCC_WORKER_DATA_DIR%\\worker_config.json\r\n"
             "if not exist \"%LDGCC_WORKER_DATA_DIR%\" mkdir \"%LDGCC_WORKER_DATA_DIR%\"\r\n"
-            f"\"%APP_DIR%bin\\{platform_dir}\\{executable_name('ldgcc-worker-app')}\" --config \"%LDGCC_WORKER_CONFIG%\" --data-dir \"%LDGCC_WORKER_DATA_DIR%\"\r\n",
+            f"\"%APP_DIR%bin\\{platform_dir}\\{executable_name('ldgcc-worker-app', target)}\" --config \"%LDGCC_WORKER_CONFIG%\" --data-dir \"%LDGCC_WORKER_DATA_DIR%\"\r\n",
             encoding="utf-8",
         )
         return
@@ -108,22 +120,24 @@ def write_launcher(output: Path, platform_dir: str) -> None:
         "DATA_DIR=${LDGCC_WORKER_DATA_DIR:-$HOME/.ldgcc/worker}\n"
         "CONFIG_PATH=${LDGCC_WORKER_CONFIG:-$DATA_DIR/worker_config.json}\n"
         "mkdir -p \"$DATA_DIR\"\n"
-        f"exec \"$APP_DIR/bin/{platform_dir}/{executable_name('ldgcc-worker-app')}\" --config \"$CONFIG_PATH\" --data-dir \"$DATA_DIR\"\n",
+        f"exec \"$APP_DIR/bin/{platform_dir}/{executable_name('ldgcc-worker-app', target)}\" --config \"$CONFIG_PATH\" --data-dir \"$DATA_DIR\"\n",
         encoding="utf-8",
     )
     launcher.chmod(0o755)
 
 
-def write_manifest(output: Path, platform_dir: str) -> None:
+def write_manifest(output: Path, target: dict) -> None:
+    platform_dir = target["platform_key"]
+    default_data_dir = "%USERPROFILE%\\.ldgcc\\worker" if target["node_platform"] == "win32" else "~/.ldgcc/worker"
     manifest = {
         "name": "ldgcc-worker-app",
         "platform": platform_dir,
         "binaries": {
-            "worker_app": f"bin/{platform_dir}/{executable_name('ldgcc-worker-app')}",
-            "worker": f"bin/{platform_dir}/{executable_name('ldgcc-worker')}",
+            "worker_app": f"bin/{platform_dir}/{executable_name('ldgcc-worker-app', target)}",
+            "worker": f"bin/{platform_dir}/{executable_name('ldgcc-worker', target)}",
         },
-        "launcher": "run-worker-app.bat" if node_platform() == "win32" else "run-worker-app.sh",
-        "default_data_dir": "~/.ldgcc/worker",
+        "launcher": "run-worker-app.bat" if target["node_platform"] == "win32" else "run-worker-app.sh",
+        "default_data_dir": default_data_dir,
     }
     (output / "manifest.json").write_text(json.dumps(manifest, indent=2) + "\n", encoding="utf-8")
 
@@ -150,8 +164,20 @@ def node_arch() -> str:
     return machine
 
 
-def executable_name(name: str) -> str:
-    return name + ".exe" if node_platform() == "win32" else name
+def parse_target(value: str) -> dict:
+    targets = {
+        "linux-x64": {"platform_key": "linux-x64", "node_platform": "linux", "node_arch": "x64", "goos": "linux", "goarch": "amd64"},
+        "linux-arm64": {"platform_key": "linux-arm64", "node_platform": "linux", "node_arch": "arm64", "goos": "linux", "goarch": "arm64"},
+        "windows-x64": {"platform_key": "win32-x64", "node_platform": "win32", "node_arch": "x64", "goos": "windows", "goarch": "amd64"},
+        "win32-x64": {"platform_key": "win32-x64", "node_platform": "win32", "node_arch": "x64", "goos": "windows", "goarch": "amd64"},
+    }
+    if value not in targets:
+        raise SystemExit(f"unsupported target {value!r}; choose one of: {', '.join(sorted(targets))}")
+    return targets[value]
+
+
+def executable_name(name: str, target: dict) -> str:
+    return name + ".exe" if target["node_platform"] == "win32" else name
 
 
 if __name__ == "__main__":

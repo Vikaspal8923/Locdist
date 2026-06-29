@@ -2023,6 +2023,27 @@ package is moved or started from a different directory.
 
 ---
 
+# LDGCC Phase 25: Cross-Platform Worker Packages
+
+Worker packages can now be staged for Linux and Windows:
+
+```bash
+python3 tools/stage_worker_app.py --target linux-x64
+python3 tools/stage_worker_app.py --target windows-x64
+```
+
+The release bundle includes both by default:
+
+```text
+ldgcc-worker-app-linux-x64.zip
+ldgcc-worker-app-windows-x64.zip
+```
+
+This allows one Master to train with mixed Worker laptops, for example Linux
+Worker 1 and Windows Worker 2 in the same LAN job.
+
+---
+
 ## Future TODOs
 
 ### Master Phase 2

@@ -19,6 +19,12 @@ EXTENSION = ROOT / "extension"
 def main() -> int:
     parser = argparse.ArgumentParser(description="Create a local LDGCC release bundle.")
     parser.add_argument("--out", default="dist/release", help="Release output directory.")
+    parser.add_argument(
+        "--worker-target",
+        action="append",
+        default=[],
+        help="Worker package target. May be repeated. Defaults to linux-x64 and windows-x64.",
+    )
     args = parser.parse_args()
 
     release = (ROOT / args.out).resolve()
@@ -28,23 +34,28 @@ def main() -> int:
     work.mkdir(parents=True)
 
     extension_stage = work / "extension"
-    worker_stage = work / "worker-app"
     run(["python3", "tools/stage_extension.py", "--out", str(extension_stage)], ROOT)
-    run(["python3", "tools/stage_worker_app.py", "--out", str(worker_stage)], ROOT)
 
     package = read_json(EXTENSION / "package.json")
     version = package["version"]
-    platform_name = platform_key()
+    worker_targets = args.worker_target or ["linux-x64", "windows-x64"]
 
     vsix = release / "ldgcc-studio.vsix"
-    worker_zip = release / f"ldgcc-worker-app-{platform_name}.zip"
     create_vsix(extension_stage, package, vsix)
-    create_zip(worker_stage, worker_zip, "ldgcc-worker-app")
+
+    worker_zips = []
+    for target in worker_targets:
+        worker_stage = work / f"worker-app-{target}"
+        run(["python3", "tools/stage_worker_app.py", "--target", target, "--out", str(worker_stage)], ROOT)
+        artifact_target = artifact_target_name(target)
+        worker_zip = release / f"ldgcc-worker-app-{artifact_target}.zip"
+        create_zip(worker_stage, worker_zip, "ldgcc-worker-app")
+        worker_zips.append(worker_zip)
 
     install = release / "INSTALL.md"
-    install.write_text(install_text(vsix.name, worker_zip.name), encoding="utf-8")
+    install.write_text(install_text(vsix.name, [artifact.name for artifact in worker_zips]), encoding="utf-8")
 
-    artifacts = [vsix, worker_zip, install]
+    artifacts = [vsix, *worker_zips, install]
     checksums = release / "checksums.txt"
     write_checksums(checksums, artifacts)
     artifacts.append(checksums)
@@ -55,7 +66,8 @@ def main() -> int:
             {
                 "name": "ldgcc-v1-local-release",
                 "version": version,
-                "platform": platform_name,
+                "platform": platform_key(),
+                "worker_targets": [artifact_target_name(target) for target in worker_targets],
                 "artifacts": [{"path": artifact.name, "sha256": sha256(artifact)} for artifact in artifacts],
             },
             indent=2,
@@ -158,7 +170,33 @@ def vsix_manifest_xml(package: dict) -> str:
 """
 
 
-def install_text(vsix_name: str, worker_zip_name: str) -> str:
+def install_text(vsix_name: str, worker_zip_names: list[str]) -> str:
+    worker_list = "\n".join(f"* `{name}`" for name in worker_zip_names)
+    linux_zip = next((name for name in worker_zip_names if "linux" in name), worker_zip_names[0])
+    windows_zip = next((name for name in worker_zip_names if "windows" in name), "")
+    windows_section = ""
+    if windows_zip:
+        windows_section = f"""
+### Windows Worker
+
+Extract:
+
+```text
+{windows_zip}
+```
+
+Run:
+
+```text
+ldgcc-worker-app\\run-worker-app.bat
+```
+
+Open the printed local URL, usually:
+
+```text
+http://127.0.0.1:5050
+```
+"""
     return f"""# LDGCC V1 Local Release Install
 
 This release contains the Brain Laptop package and Worker Laptop package.
@@ -188,10 +226,16 @@ Start Master
 
 ## Worker Laptop
 
+Choose the package for the worker laptop OS:
+
+{worker_list}
+
+### Linux Worker
+
 Extract:
 
 ```text
-{worker_zip_name}
+{linux_zip}
 ```
 
 Run:
@@ -206,6 +250,7 @@ Open the printed local URL, usually:
 ```text
 http://127.0.0.1:5050
 ```
+{windows_section}
 
 Then:
 
@@ -217,8 +262,8 @@ Click Start Worker
 
 ## Notes
 
-This is a local Linux x64 release bundle when built on Linux x64. Build on each
-target platform to produce platform-native binaries.
+Linux and Windows workers can join the same LDGCC job. They only need to be on
+the same LAN and speak the same LDGCC protocol.
 """
 
 
@@ -260,6 +305,12 @@ def platform_key() -> str:
     else:
         node_arch = machine
     return f"{node_platform}-{node_arch}"
+
+
+def artifact_target_name(target: str) -> str:
+    if target == "win32-x64":
+        return "windows-x64"
+    return target.replace("win32", "windows")
 
 
 if __name__ == "__main__":
