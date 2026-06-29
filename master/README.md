@@ -2094,6 +2094,36 @@ YOLO/COCO and bounding-box annotations are intentionally outside V1 scope.
 
 ---
 
+# LDGCC Phase 20: End-to-End Local Validation
+
+Phase 20 adds a local smoke harness for validating the main LDGCC V1 flow with
+real Master and Worker App processes.
+
+```bash
+# from the repository root
+python3 tools/e2e_local_validation.py
+```
+
+The harness:
+
+* builds local Master and Worker App binaries
+* writes temporary Master and Worker configs
+* starts Master and Worker App on localhost ports
+* starts the Worker from its local app API
+* waits for LAN discovery
+* sends and accepts pairing
+* prepares a tiny JSONL project
+* sets up the Worker environment
+* starts training
+* waits for completion
+* verifies declared output collection
+* stops processes and removes temporary state
+
+This is not a replacement for unit tests. It is a real-process validation path
+for the full local control flow before production packaging.
+
+---
+
 # Current Status
 
 ```text
@@ -2164,6 +2194,9 @@ LDGCC Phase 18
     ✓ COMPLETE
 
 LDGCC Phase 19
+    ✓ COMPLETE
+
+LDGCC Phase 20
     ✓ COMPLETE
 
 Job Spec Foundation

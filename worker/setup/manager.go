@@ -3,6 +3,7 @@ package setup
 import (
 	"context"
 	"fmt"
+	"log"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -109,9 +110,11 @@ func (m *Manager) run(ctx context.Context, jobID string) Result {
 	if err != nil {
 		return failed(fmt.Errorf("python3 is not installed"), logPath)
 	}
+	log.Printf("creating private Python environment for job %q", jobID)
 	if err := m.runner.Run(ctx, directory, logPath, python, "-m", "venv", ".venv"); err != nil {
 		return failed(fmt.Errorf("create Python environment: %w", err), logPath)
 	}
+	log.Printf("private Python environment ready for job %q", jobID)
 	requirements := filepath.Join(directory, "requirements.txt")
 	if _, err := os.Stat(requirements); os.IsNotExist(err) {
 		return Result{Status: gradient.JobSetupStatus_JOB_SETUP_STATUS_READY, LogPath: logPath}

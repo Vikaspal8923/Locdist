@@ -105,9 +105,15 @@ func (m *Manager) Release(jobID, workerID string) Result {
 		m.mu.Unlock()
 		return failed(err.Error(), current.logPath)
 	}
-	python := filepath.Join(directory, ".venv", "bin", "python")
+	absDirectory, err := filepath.Abs(directory)
+	if err != nil {
+		log.Close()
+		m.mu.Unlock()
+		return failed("resolve workspace path: "+err.Error(), current.logPath)
+	}
+	python := filepath.Join(absDirectory, ".venv", "bin", "python")
 	command := exec.Command(python, current.entrypoint)
-	command.Dir = directory
+	command.Dir = absDirectory
 	command.Env = append(os.Environ(), "LDGCC_JOB_ID="+jobID, "LDGCC_WORKER_ID="+workerID, "LDGCC_WORKER_HOST=127.0.0.1", "LDGCC_WORKER_PORT="+m.workerPort)
 	if current.communication != "" {
 		command.Env = append(command.Env, "LDGCC_COMMUNICATION="+current.communication)

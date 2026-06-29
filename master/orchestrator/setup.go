@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"log"
 	"net"
 	"sync"
 	"time"
@@ -75,6 +76,7 @@ func (s *SetupCoordinator) AllReady() (bool, error) {
 }
 
 func (s *SetupCoordinator) setupWorkers(ctx context.Context, job *jobs.JobState, selected []jobs.WorkerAssignment, retry bool) error {
+	log.Printf("starting setup for job %q on %d Worker(s)", job.JobID, len(selected))
 	var wait sync.WaitGroup
 	failureChannel := make(chan error, len(selected))
 	for _, worker := range selected {
@@ -82,6 +84,7 @@ func (s *SetupCoordinator) setupWorkers(ctx context.Context, job *jobs.JobState,
 		wait.Add(1)
 		go func() {
 			defer wait.Done()
+			log.Printf("marking Worker %q setup as setting_up for job %q", worker.WorkerID, job.JobID)
 			_ = s.jobs.UpdateSetup(job.JobID, worker.WorkerID, jobs.WorkerSetup{Status: gradient.JobSetupStatus_JOB_SETUP_STATUS_SETTING_UP})
 			response, err := s.setupWorker(ctx, job.JobID, worker, retry)
 			if err != nil {
@@ -112,12 +115,20 @@ func (s *SetupCoordinator) setupWorker(ctx context.Context, jobID string, worker
 	}
 	requestCtx, cancel := context.WithTimeout(ctx, s.timeout)
 	defer cancel()
+	log.Printf("setting up Worker %q for job %q at %s", worker.WorkerID, jobID, net.JoinHostPort(worker.Host, worker.GRPCPort))
 	connection, err := grpc.DialContext(requestCtx, net.JoinHostPort(worker.Host, worker.GRPCPort), grpc.WithTransportCredentials(insecure.NewCredentials()), grpc.WithBlock())
 	if err != nil {
+		log.Printf("setup dial failed for Worker %q job %q: %v", worker.WorkerID, jobID, err)
 		return nil, err
 	}
 	defer connection.Close()
-	return gradient.NewWorkerBridgeClient(connection).SetupJob(requestCtx, &gradient.SetupJobRequest{
+	response, err := gradient.NewWorkerBridgeClient(connection).SetupJob(requestCtx, &gradient.SetupJobRequest{
 		JobId: jobID, WorkerId: worker.WorkerID, MasterId: pairing.MasterID, PairingToken: pairing.Token, Retry: retry,
 	})
+	if err != nil {
+		log.Printf("setup RPC failed for Worker %q job %q: %v", worker.WorkerID, jobID, err)
+		return nil, err
+	}
+	log.Printf("setup completed for Worker %q job %q with status %s", worker.WorkerID, jobID, response.GetStatus())
+	return response, nil
 }

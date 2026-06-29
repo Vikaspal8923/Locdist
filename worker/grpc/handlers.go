@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"io"
+	"log"
 
 	gradient "github.com/Vikaspal8923/Locdist/worker/generated/gradient"
 	"github.com/Vikaspal8923/Locdist/worker/pairing"
@@ -162,7 +163,9 @@ func (s *WorkerBridgeServer) SetupJob(ctx context.Context, request *gradient.Set
 	if !ok || record.WorkerID != request.GetWorkerId() || record.MasterID != request.GetMasterId() || record.PairingToken != request.GetPairingToken() {
 		return nil, fmt.Errorf("Master pairing credentials are invalid")
 	}
+	log.Printf("received setup request for job %q from Master %q", request.GetJobId(), request.GetMasterId())
 	result := s.setup.Setup(ctx, request.GetJobId(), request.GetRetry())
+	log.Printf("setup request for job %q finished with status %s", request.GetJobId(), result.Status)
 	return &gradient.SetupJobResponse{
 		JobId: request.GetJobId(), WorkerId: request.GetWorkerId(), Status: result.Status,
 		ErrorMessage: result.ErrorMessage, LogPath: result.LogPath,
