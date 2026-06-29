@@ -67,12 +67,7 @@ func (p *Preparer) Prepare(projectRoot string) (*jobs.JobState, error) {
 		})
 	}
 
-	shards, err := sharder.ShardJSONL(
-		filepath.Join(projectRoot, spec.Dataset.Train),
-		spec.Dataset.Train,
-		filepath.Join(p.jobsRoot, jobID, "shards"),
-		workerIDs,
-	)
+	shards, err := shardDataset(projectRoot, spec, filepath.Join(p.jobsRoot, jobID, "shards"), workerIDs)
 	if err != nil {
 		return nil, err
 	}
@@ -85,6 +80,7 @@ func (p *Preparer) Prepare(projectRoot string) (*jobs.JobState, error) {
 			End:      shard.End,
 			Count:    shard.Count,
 			Path:     shard.Path,
+			Kind:     shard.Kind,
 		})
 	}
 
@@ -104,6 +100,22 @@ func (p *Preparer) Prepare(projectRoot string) (*jobs.JobState, error) {
 		return nil, err
 	}
 	return p.jobManager.CurrentJob()
+}
+
+func shardDataset(projectRoot string, spec project.Spec, outputRoot string, workerIDs []string) ([]sharder.Assignment, error) {
+	datasetType := spec.Dataset.Type
+	if datasetType == "" {
+		datasetType = "jsonl"
+	}
+	sourcePath := filepath.Join(projectRoot, spec.Dataset.Train)
+	switch datasetType {
+	case "jsonl":
+		return sharder.ShardJSONL(sourcePath, spec.Dataset.Train, outputRoot, workerIDs)
+	case "image_folder":
+		return sharder.ShardImageFolder(sourcePath, spec.Dataset.Train, outputRoot, workerIDs)
+	default:
+		return nil, fmt.Errorf("unsupported dataset.type %q", datasetType)
+	}
 }
 
 func newJobID() string {

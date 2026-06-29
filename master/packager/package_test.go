@@ -45,6 +45,36 @@ func TestBuildReplacesDatasetAndExcludesLocalState(t *testing.T) {
 	}
 }
 
+func TestBuildReplacesImageFolderDataset(t *testing.T) {
+	root := t.TempDir()
+	write := func(relative, content string) string {
+		path := filepath.Join(root, relative)
+		if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(path, []byte(content), 0o600); err != nil {
+			t.Fatal(err)
+		}
+		return path
+	}
+	write("train.py", "print('train')")
+	write("dataset/train/caries/original.jpg", "original")
+	shardRoot := filepath.Join(root, "ldgcc_jobs", "job-1", "shards", "worker-1", "dataset", "train")
+	write("ldgcc_jobs/job-1/shards/worker-1/dataset/train/caries/shard.jpg", "shard")
+
+	data, err := Build(PackageRequest{ProjectRoot: root, JobID: "job-1", WorkerID: "worker-1", Entrypoint: "train.py", DatasetPath: "dataset/train", ShardPath: shardRoot, ShardKind: "directory"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	files := unzip(t, data)
+	if _, ok := files["dataset/train/caries/original.jpg"]; ok {
+		t.Fatal("original image dataset file was packaged")
+	}
+	if string(files["dataset/train/caries/shard.jpg"]) != "shard" {
+		t.Fatalf("image shard was not packaged: %q", files["dataset/train/caries/shard.jpg"])
+	}
+}
+
 func unzip(t *testing.T, data []byte) map[string][]byte {
 	t.Helper()
 	reader, err := zip.NewReader(bytes.NewReader(data), int64(len(data)))

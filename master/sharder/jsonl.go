@@ -14,6 +14,7 @@ type Assignment struct {
 	End      int
 	Count    int
 	Path     string
+	Kind     string
 }
 
 func ShardJSONL(
@@ -55,6 +56,7 @@ func ShardJSONL(
 			return nil, fmt.Errorf("write shard for %s: %w", assignment.WorkerID, err)
 		}
 		assignment.Path = workerPath
+		assignment.Kind = "file"
 		cursor = end
 	}
 

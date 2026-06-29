@@ -76,6 +76,7 @@ type ShardAssignment struct {
 	End      int    `json:"end"`
 	Count    int    `json:"count"`
 	Path     string `json:"path"`
+	Kind     string `json:"kind,omitempty"`
 }
 
 func (value WorkerSetup) MarshalJSON() ([]byte, error) {

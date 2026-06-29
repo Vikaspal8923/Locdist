@@ -26,6 +26,7 @@ type JobSpec struct {
 
 type DatasetSpec struct {
 	Train string
+	Type  string
 }
 
 type WorkerSpec struct {
@@ -72,6 +73,13 @@ func (s Spec) Validate(projectRoot string) error {
 	}
 	if strings.TrimSpace(s.Dataset.Train) == "" {
 		return fmt.Errorf("dataset.train is required")
+	}
+	datasetType := s.Dataset.Type
+	if datasetType == "" {
+		datasetType = "jsonl"
+	}
+	if datasetType != "jsonl" && datasetType != "image_folder" {
+		return fmt.Errorf("dataset.type must be jsonl or image_folder")
 	}
 	if s.Workers.Count <= 0 {
 		return fmt.Errorf("workers.count must be greater than zero")
@@ -178,6 +186,8 @@ func parse(file *os.File) (Spec, error) {
 			spec.Job.Name = value
 		case section == "dataset" && key == "train":
 			spec.Dataset.Train = value
+		case section == "dataset" && key == "type":
+			spec.Dataset.Type = value
 		case section == "workers" && key == "count":
 			count, err := strconv.Atoi(value)
 			if err != nil {

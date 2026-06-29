@@ -32,13 +32,13 @@ func (d *Distributor) Distribute(ctx context.Context, job *jobs.JobState) ([]Wor
 	if job == nil {
 		return nil, fmt.Errorf("job is required")
 	}
-	shards := make(map[string]string, len(job.Shards))
+	shards := make(map[string]jobs.ShardAssignment, len(job.Shards))
 	for _, shard := range job.Shards {
-		shards[shard.WorkerID] = shard.Path
+		shards[shard.WorkerID] = shard
 	}
 	results := make([]WorkspaceResult, 0, len(job.Workers))
 	for _, worker := range job.Workers {
-		shardPath, ok := shards[worker.WorkerID]
+		shard, ok := shards[worker.WorkerID]
 		if !ok {
 			return nil, fmt.Errorf("worker %q has no dataset shard", worker.WorkerID)
 		}
@@ -48,7 +48,7 @@ func (d *Distributor) Distribute(ctx context.Context, job *jobs.JobState) ([]Wor
 		}
 		archive, err := packager.Build(packager.PackageRequest{
 			ProjectRoot: job.ProjectRoot, JobID: job.JobID, WorkerID: worker.WorkerID,
-			Entrypoint: job.Entrypoint, DatasetPath: job.DatasetPath, ShardPath: shardPath,
+			Entrypoint: job.Entrypoint, DatasetPath: job.DatasetPath, ShardPath: shard.Path, ShardKind: shard.Kind,
 			Outputs:       job.Outputs,
 			Communication: job.Communication,
 		})

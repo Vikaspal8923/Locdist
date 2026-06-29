@@ -25,6 +25,7 @@ type PackageRequest struct {
 	Entrypoint    string
 	DatasetPath   string
 	ShardPath     string
+	ShardKind     string
 	Outputs       []string
 	Communication project.CommunicationSpec
 }
@@ -97,17 +98,42 @@ func addProjectFiles(writer *zip.Writer, request PackageRequest) error {
 				return nil
 			}
 			if entry.IsDir() {
+				if request.ShardKind == "directory" && relativePath == filepath.ToSlash(request.DatasetPath) {
+					if err := addDirectory(writer, request.ShardPath, relativePath); err != nil {
+						return err
+					}
+					return filepath.SkipDir
+				}
 				return nil
 			}
 			if entry.Type()&os.ModeSymlink != 0 {
 				return nil
 			}
-			if relativePath == filepath.ToSlash(request.DatasetPath) {
+			if request.ShardKind != "directory" && relativePath == filepath.ToSlash(request.DatasetPath) {
 				return addFile(writer, request.ShardPath, relativePath)
 			}
 			return addFile(writer, path, relativePath)
 		},
 	)
+}
+
+func addDirectory(writer *zip.Writer, sourceRoot string, archiveRoot string) error {
+	return filepath.WalkDir(sourceRoot, func(path string, entry os.DirEntry, err error) error {
+		if err != nil {
+			return err
+		}
+		if entry.IsDir() {
+			return nil
+		}
+		if entry.Type()&os.ModeSymlink != 0 {
+			return nil
+		}
+		relative, err := filepath.Rel(sourceRoot, path)
+		if err != nil {
+			return err
+		}
+		return addFile(writer, path, filepath.ToSlash(filepath.Join(archiveRoot, relative)))
+	})
 }
 
 func shouldSkip(relativePath string, entry os.DirEntry) bool {

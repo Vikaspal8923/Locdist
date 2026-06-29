@@ -18,6 +18,7 @@ entrypoint: train.py
 
 dataset:
   train: dataset/train.jsonl
+  type: jsonl
 
 workers:
   count: 3
@@ -48,6 +49,9 @@ communication:
 	}
 	if spec.Dataset.Train != "dataset/train.jsonl" {
 		t.Fatalf("unexpected dataset: %q", spec.Dataset.Train)
+	}
+	if spec.Dataset.Type != "jsonl" {
+		t.Fatalf("unexpected dataset type: %q", spec.Dataset.Type)
 	}
 	if spec.Workers.Count != 3 {
 		t.Fatalf("unexpected worker count: %d", spec.Workers.Count)

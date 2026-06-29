@@ -2039,6 +2039,61 @@ silently changing payload format.
 
 ---
 
+# LDGCC Phase 19: V1 Image Folder Sharding
+
+Phase 19 expands V1 dataset support from JSONL-only to:
+
+```text
+jsonl
+image_folder
+```
+
+`jsonl` remains the default and keeps the existing rule:
+
+```text
+one line = one sample
+```
+
+`image_folder` supports the common image classification layout used by
+PyTorch-style `ImageFolder` datasets:
+
+```yaml
+dataset:
+  train: dataset/train
+  type: image_folder
+```
+
+Expected structure:
+
+```text
+dataset/train/
+  caries/
+    c1.jpg
+    c2.jpg
+  calculus/
+    a1.jpg
+    a2.jpg
+```
+
+Sharding preserves class folders and distributes images per class across
+Workers:
+
+```text
+worker-a/dataset/train/
+  caries/c1.jpg
+  calculus/a1.jpg
+
+worker-b/dataset/train/
+  caries/c2.jpg
+  calculus/a2.jpg
+```
+
+The Worker receives the shard at the same dataset path, so user training code
+continues to load `dataset/train` normally. Object detection formats such as
+YOLO/COCO and bounding-box annotations are intentionally outside V1 scope.
+
+---
+
 # Current Status
 
 ```text
@@ -2106,6 +2161,9 @@ LDGCC Phase 17
     ✓ COMPLETE
 
 LDGCC Phase 18
+    ✓ COMPLETE
+
+LDGCC Phase 19
     ✓ COMPLETE
 
 Job Spec Foundation
