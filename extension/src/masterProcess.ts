@@ -22,9 +22,10 @@ export class MasterProcess {
     const token = randomBytes(32).toString("hex");
     const binary = this.config("master.binaryPath");
     const repoRoot = this.repoRoot();
+    const configPath = binary ? await this.ensureMasterConfig() : join(repoRoot, "master", "master_config.json");
     const args = [
       "--config",
-      join(repoRoot, "master", "master_config.json"),
+      configPath,
       "--data-dir",
       this.dataDir(),
       "--app-host",
@@ -36,7 +37,7 @@ export class MasterProcess {
     ];
 
     if (binary) {
-      this.child = spawn(resolve(binary), args, { cwd: repoRoot });
+      this.child = spawn(resolve(binary), args, { cwd: this.dataDir() });
     } else {
       this.child = spawn("go", ["run", "./cmd/master", ...args], { cwd: join(repoRoot, "master") });
     }
@@ -106,6 +107,37 @@ export class MasterProcess {
       }
       throw error;
     }
+  }
+
+  private async ensureMasterConfig(): Promise<string> {
+    const path = join(this.dataDir(), "master_config.json");
+    try {
+      await fs.access(path);
+      return path;
+    } catch (error) {
+      const code = typeof error === "object" && error && "code" in error ? String(error.code) : "";
+      if (code !== "ENOENT") {
+        throw error;
+      }
+    }
+    await fs.writeFile(
+      path,
+      JSON.stringify(
+        {
+          master_id: "master-local",
+          master_name: "LDGCC Master",
+          host: "127.0.0.1",
+          grpc_port: "60051",
+          app_host: "127.0.0.1",
+          app_port: "0",
+          pairing_path: "master_pairings.json",
+        },
+        null,
+        2,
+      ) + "\n",
+      { mode: 0o600 },
+    );
+    return path;
   }
 
   private async isHealthy(session: MasterSession): Promise<boolean> {

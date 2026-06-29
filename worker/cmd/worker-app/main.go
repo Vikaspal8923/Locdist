@@ -1,9 +1,11 @@
 package main
 
 import (
+	"flag"
 	"log"
 	"os"
 	"os/signal"
+	"path/filepath"
 	"syscall"
 
 	"github.com/Vikaspal8923/Locdist/worker/app"
@@ -14,10 +16,41 @@ import (
 )
 
 func main() {
-	configPath := "worker_config.json"
-	cfg, err := config.Load(configPath)
+	configPath := flag.String("config", "worker_config.json", "Worker configuration file")
+	dataDirectory := flag.String("data-dir", "", "persistent LDGCC Worker data directory")
+	appPort := flag.String("app-port", "", "localhost Worker App API port")
+	flag.Parse()
+
+	if _, err := os.Stat(*configPath); os.IsNotExist(err) {
+		if err := config.Save(*configPath, config.Default()); err != nil {
+			log.Fatalf("create default worker config: %v", err)
+		}
+	} else if err != nil {
+		log.Fatalf("read worker config: %v", err)
+	}
+
+	cfg, err := config.Load(*configPath)
 	if err != nil {
 		log.Fatalf("failed to load worker config: %v", err)
+	}
+	if *appPort != "" {
+		cfg.AppPort = *appPort
+	}
+	dataRoot := *dataDirectory
+	if dataRoot == "" {
+		dataRoot = filepath.Dir(*configPath)
+		if dataRoot == "." || dataRoot == "" {
+			dataRoot = "."
+		}
+	}
+	if err := os.MkdirAll(dataRoot, 0o700); err != nil {
+		log.Fatalf("create Worker data directory: %v", err)
+	}
+	if !filepath.IsAbs(cfg.PairingPath) {
+		cfg.PairingPath = filepath.Join(dataRoot, cfg.PairingPath)
+	}
+	if !filepath.IsAbs(cfg.WorkspaceRoot) {
+		cfg.WorkspaceRoot = filepath.Join(dataRoot, cfg.WorkspaceRoot)
 	}
 
 	pairingManager, err := pairing.NewManager(
@@ -32,7 +65,7 @@ func main() {
 		discovery.NewAdvertiser(),
 		pairingManager,
 	)
-	controller := app.NewController(agent, configPath)
+	controller := app.NewController(agent, *configPath)
 
 	server, err := app.NewServer(cfg.AppPort, controller)
 	if err != nil {

@@ -1963,6 +1963,32 @@ server and LAN advertisement are already active.
 
 ---
 
+# LDGCC Phase 21: Production Packaging Foundation
+
+The Worker binaries now support install-style startup with explicit config and
+data paths.
+
+```bash
+ldgcc-worker-app --config /path/to/worker_config.json --data-dir /path/to/worker-data
+```
+
+If the configured file does not exist, the Worker creates a default
+`worker_config.json` with restricted permissions. Relative `pairing_path` and
+`workspace_root` values are resolved under the Worker data directory, so pairing
+state and job workspaces no longer depend on the shell working directory.
+
+Production ownership:
+
+```text
+Worker App
+    -> starts local Worker service
+    -> owns worker_config.json
+    -> owns pairing.json
+    -> owns workspaces/
+```
+
+---
+
 ## Future TODOs
 
 ### Master Phase 2

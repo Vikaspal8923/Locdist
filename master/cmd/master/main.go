@@ -35,6 +35,14 @@ func main() {
 	sessionToken := flag.String("session-token", "", "application API bearer token")
 	flag.Parse()
 
+	if _, err := os.Stat(*configPath); os.IsNotExist(err) {
+		if err := config.Save(*configPath, config.Default()); err != nil {
+			log.Fatalf("create default master config: %v", err)
+		}
+	} else if err != nil {
+		log.Fatalf("read master config: %v", err)
+	}
+
 	cfg, err := config.Load(
 		*configPath,
 	)

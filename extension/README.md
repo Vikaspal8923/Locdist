@@ -63,6 +63,12 @@ For packaged releases, set `ldgcc.master.binaryPath` to the bundled Master
 binary. The same session file and API flow is used, so the extension does not
 need a separate production control path.
 
+Phase 21 makes production mode independent of the source tree. When a packaged
+Master binary is configured, the extension creates and uses
+`master_config.json` inside its VS Code global storage directory. The same
+directory also owns `master-session.json`, pairing state, job packages, and
+collected results.
+
 ## Views
 
 The `LDGCC` activity bar view shows:

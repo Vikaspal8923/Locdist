@@ -2250,6 +2250,36 @@ go run cmd/master/main.go
 
 ---
 
+# LDGCC Phase 21: Production Packaging Foundation
+
+The Master binary now supports install-style startup. When the configured
+`--config` file does not exist, Master creates a default `master_config.json`
+with restricted permissions before loading it.
+
+Production ownership:
+
+```text
+VS Code extension
+    -> starts ldgcc-master
+    -> passes --config
+    -> passes --data-dir
+    -> reads master-session.json
+```
+
+The `--data-dir` folder owns persistent Master state:
+
+```text
+master-session.json
+master_pairings.json
+ldgcc_jobs/
+ldgcc_results/
+```
+
+This keeps production Master state independent of the repository working
+directory.
+
+---
+
 # Master Phase 1 Success Criteria
 
 Master Phase 1 is considered complete because:
