@@ -106,7 +106,7 @@
       "ldgcc": [
         {
           "id": "ldgcc.cluster",
-          "name": "Cluster"
+          "name": "Studio"
         }
       ]
     },
@@ -121,18 +121,6 @@
           "command": "ldgcc.startMaster",
           "when": "view == ldgcc.cluster",
           "group": "navigation"
-        }
-      ],
-      "view/item/context": [
-        {
-          "command": "ldgcc.pairWorker",
-          "when": "view == ldgcc.cluster && viewItem == ldgcc.discoveredWorker",
-          "group": "inline"
-        },
-        {
-          "command": "ldgcc.openResults",
-          "when": "view == ldgcc.cluster && viewItem == ldgcc.results",
-          "group": "inline"
         }
       ],
       "commandPalette": [
