@@ -1,6 +1,7 @@
 import { ChildProcessWithoutNullStreams, spawn } from "node:child_process";
 import { randomBytes } from "node:crypto";
 import { promises as fs } from "node:fs";
+import { createServer } from "node:net";
 import { join, resolve } from "node:path";
 import * as vscode from "vscode";
 import { MasterSession } from "./types";
@@ -8,10 +9,14 @@ import { MasterSession } from "./types";
 export class MasterProcess {
   private child?: ChildProcessWithoutNullStreams;
   private session?: MasterSession;
+  private startupOutput = "";
+  private startupFailure?: Error;
 
   constructor(private readonly context: vscode.ExtensionContext) {}
 
   async ensureStarted(): Promise<MasterSession> {
+    this.startupOutput = "";
+    this.startupFailure = undefined;
     const existing = await this.readSession();
     if (existing && (await this.isHealthy(existing))) {
       this.session = existing;
@@ -44,7 +49,20 @@ export class MasterProcess {
       this.child = spawn("go", ["run", "./cmd/master", ...args], { cwd: join(repoRoot, "master") });
     }
 
-    this.child.on("exit", () => {
+    this.child.stdout.on("data", (chunk) => {
+      this.appendStartupOutput(chunk);
+    });
+    this.child.stderr.on("data", (chunk) => {
+      this.appendStartupOutput(chunk);
+    });
+    this.child.on("error", (error) => {
+      this.startupFailure = error instanceof Error ? error : new Error(String(error));
+    });
+
+    this.child.on("exit", (code, signal) => {
+      if (!this.session) {
+        this.startupFailure = new Error(this.describeExit(code, signal));
+      }
       this.child = undefined;
       this.session = undefined;
     });
@@ -95,7 +113,7 @@ export class MasterProcess {
       }
       await new Promise((resolveWait) => setTimeout(resolveWait, 250));
     }
-    throw lastError ?? new Error("Master did not write a usable session file");
+    throw this.buildStartupError(lastError);
   }
 
   private async readSession(): Promise<MasterSession | undefined> {
@@ -113,9 +131,10 @@ export class MasterProcess {
 
   private async ensureMasterConfig(): Promise<string> {
     const path = join(this.dataDir(), "master_config.json");
+    const grpcPort = await this.reserveLoopbackPort();
+    let current: Record<string, unknown> = {};
     try {
-      await fs.access(path);
-      return path;
+      current = JSON.parse(await fs.readFile(path, "utf8")) as Record<string, unknown>;
     } catch (error) {
       const code = typeof error === "object" && error && "code" in error ? String(error.code) : "";
       if (code !== "ENOENT") {
@@ -126,13 +145,14 @@ export class MasterProcess {
       path,
       JSON.stringify(
         {
-          master_id: "master-local",
-          master_name: "LDGCC Master",
+          ...current,
+          master_id: typeof current.master_id === "string" && current.master_id ? current.master_id : "master-local",
+          master_name: typeof current.master_name === "string" && current.master_name ? current.master_name : "LDGCC Master",
           host: "127.0.0.1",
-          grpc_port: "60051",
+          grpc_port: grpcPort,
           app_host: "127.0.0.1",
           app_port: "0",
-          pairing_path: "master_pairings.json",
+          pairing_path: typeof current.pairing_path === "string" && current.pairing_path ? current.pairing_path : "master_pairings.json",
         },
         null,
         2,
@@ -168,6 +188,56 @@ export class MasterProcess {
 
   private config(key: string): string {
     return vscode.workspace.getConfiguration("ldgcc").get<string>(key, "").trim();
+  }
+
+  private reserveLoopbackPort(): Promise<string> {
+    return new Promise((resolvePort, reject) => {
+      const server = createServer();
+      server.once("error", reject);
+      server.listen(0, "127.0.0.1", () => {
+        const address = server.address();
+        if (!address || typeof address === "string") {
+          server.close(() => reject(new Error("Failed to reserve a loopback port for Master gRPC")));
+          return;
+        }
+        const { port } = address;
+        server.close((error) => {
+          if (error) {
+            reject(error);
+            return;
+          }
+          resolvePort(String(port));
+        });
+      });
+    });
+  }
+
+  private appendStartupOutput(chunk: string | Buffer): void {
+    const text = Buffer.isBuffer(chunk) ? chunk.toString("utf8") : chunk;
+    this.startupOutput = `${this.startupOutput}${text}`.slice(-8000);
+  }
+
+  private describeExit(code: number | null, signal: NodeJS.Signals | null): string {
+    if (signal) {
+      return `Master process exited from signal ${signal}`;
+    }
+    if (code !== null) {
+      return `Master process exited with code ${code}`;
+    }
+    return "Master process exited before becoming ready";
+  }
+
+  private buildStartupError(lastError?: Error): Error {
+    const parts = [
+      this.startupFailure?.message,
+      lastError?.message,
+      "Master did not write a usable session file",
+    ].filter((value, index, values): value is string => Boolean(value) && values.indexOf(value) === index);
+    const output = this.startupOutput.trim();
+    if (output) {
+      parts.push(`Recent master output:\n${output}`);
+    }
+    return new Error(parts.join("\n\n"));
   }
 }
 
