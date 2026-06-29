@@ -167,3 +167,48 @@ LDGCC_WORKER_DATA_DIR=/custom/path ./run-worker-app.sh
 
 This is still a staged package, not a native OS installer. A future release step
 can wrap this folder into platform-specific installers.
+
+---
+
+# LDGCC Phase 24: Release Bundle and Install Artifacts
+
+Phase 24 creates one release folder for local distribution.
+
+From the repository root:
+
+```bash
+python3 tools/package_release.py
+```
+
+This creates:
+
+```text
+dist/release/
+    ldgcc-studio.vsix
+    ldgcc-worker-app-linux-x64.zip
+    INSTALL.md
+    manifest.json
+    checksums.txt
+```
+
+User install flow:
+
+```text
+Brain Laptop
+    -> install ldgcc-studio.vsix in VS Code
+    -> open training project
+    -> use LDGCC view
+
+Worker Laptop
+    -> extract ldgcc-worker-app-linux-x64.zip
+    -> run ./run-worker-app.sh
+    -> open http://127.0.0.1:5050
+    -> click Start Worker
+    -> accept pairing request
+```
+
+`manifest.json` records release artifact names and SHA-256 values.
+`checksums.txt` provides copy-paste checksum verification.
+
+This phase produces local release artifacts. It does not yet produce native OS
+installers such as `.deb`, `.dmg`, `.msi`, or AppImage.
