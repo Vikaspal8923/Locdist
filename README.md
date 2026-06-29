@@ -71,7 +71,8 @@ Training:
     fp32 or fp16 gradient communication
     optional top-k gradient compression
     setup with private Worker .venv
-    optional requirements.txt install
+    automatic LDGCC runtime dependency install
+    optional user requirements.txt install
     declared output collection
 ```
 
@@ -428,8 +429,9 @@ All machines must be on the same LAN.
 Each Worker pairs with one Master at a time. Use `Reset Previous Connection` in
 the Worker App before pairing with a different Brain laptop.
 
-Worker setup creates a private `.venv` for each job. If the project contains
-`requirements.txt`, Workers install it during setup.
+Worker setup creates a private `.venv` for each job. LDGCC installs its runtime
+dependencies automatically. If the project contains `requirements.txt`, Workers
+also install it for the user's training code.
 
 Every new job sends a fresh project package and dataset shard. This matters when
 the user changes code or data between runs.

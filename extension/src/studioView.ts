@@ -10,6 +10,8 @@ export class StudioViewProvider implements vscode.WebviewViewProvider {
   private busy = false;
   private actionBusy: Record<string, boolean> = {};
   private message = "Master stopped";
+  private errors: Array<{ title: string; detail: string; time: string }> = [];
+  private trainingStartedAt?: number;
 
   constructor(private readonly context: vscode.ExtensionContext, private readonly onAction: ActionHandler) {}
 
@@ -26,6 +28,7 @@ export class StudioViewProvider implements vscode.WebviewViewProvider {
     this.connected = false;
     this.state = undefined;
     this.message = message;
+    this.trainingStartedAt = undefined;
     this.render();
   }
 
@@ -33,6 +36,9 @@ export class StudioViewProvider implements vscode.WebviewViewProvider {
     this.connected = true;
     this.state = state;
     this.message = "Master ready";
+    if (state.job?.status !== "running" && state.job?.status !== "prepared") {
+      this.trainingStartedAt = undefined;
+    }
     this.render();
   }
 
@@ -41,15 +47,44 @@ export class StudioViewProvider implements vscode.WebviewViewProvider {
     this.render();
   }
 
+  addError(title: string, detail?: string): void {
+    const normalized = detail?.trim() || title;
+    this.errors = [{ title, detail: normalized, time: new Date().toLocaleTimeString() }, ...this.errors].slice(0, 5);
+    this.message = normalized;
+    this.render();
+  }
+
+  clearErrors(): void {
+    this.errors = [];
+    this.render();
+  }
+
+  markTrainingStarted(): void {
+    this.trainingStartedAt = Date.now();
+    this.render();
+  }
+
+  markTrainingStopped(): void {
+    this.trainingStartedAt = undefined;
+    this.render();
+  }
+
   private async run(action: string, payload?: unknown): Promise<void> {
     this.busy = true;
     this.actionBusy[action] = true;
+    if (action === "startTraining") {
+      this.markTrainingStarted();
+    }
     this.message = labelForAction(action);
     this.render();
     try {
       await this.onAction(action, payload);
     } catch (error) {
       this.message = error instanceof Error ? error.message : String(error);
+      if (action === "startTraining") {
+        this.trainingStartedAt = undefined;
+      }
+      this.addError(`LDGCC: ${actionFailedLabel(action)}`, this.message);
       vscode.window.showErrorMessage(this.message);
       this.render();
     } finally {
@@ -93,6 +128,18 @@ export class StudioViewProvider implements vscode.WebviewViewProvider {
     const retryBusy = this.actionBusy["retrySetup"] ?? false;
     const startBusy = this.actionBusy["startTraining"] ?? false;
     const stopBusy = this.actionBusy["stopTraining"] ?? false;
+    const elapsedTraining = this.trainingStartedAt ? formatElapsed(Date.now() - this.trainingStartedAt) : "Not running";
+    const errorRows = this.errors.length
+      ? this.errors
+          .map(
+            (error) => `
+              <div class="error-card">
+                <div><strong>${escapeHtml(error.title)}</strong><span>${escapeHtml(error.time)}</span></div>
+                <pre>${escapeHtml(error.detail)}</pre>
+              </div>`,
+          )
+          .join("")
+      : `<div class="empty">No errors in this session.</div>`;
     const workerRows = workers.length
       ? workers
           .map(
@@ -186,10 +233,12 @@ export class StudioViewProvider implements vscode.WebviewViewProvider {
     .panel-head { display: flex; justify-content: space-between; gap: 10px; align-items: center; margin-bottom: 10px; }
     .actions { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
     .workflow { display: grid; gap: 8px; }
-    .step { display: grid; grid-template-columns: 26px minmax(0, 1fr) auto; gap: 9px; align-items: center; width: 100%; min-height: 44px; text-align: left; }
-    .step-number { display: grid; place-items: center; width: 24px; height: 24px; border-radius: 50%; background: color-mix(in srgb, var(--button) 18%, var(--bg)); color: var(--fg); font-weight: 760; }
-    .step strong, .step span { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-    .step span { color: color-mix(in srgb, var(--button-fg) 70%, transparent); font-size: 11px; margin-top: 2px; }
+    .step { display: grid; grid-template-columns: 34px minmax(0, 1fr) 42px; gap: 10px; align-items: center; width: 100%; min-height: 58px; text-align: left; padding: 10px 12px; }
+    .step-number { display: grid; place-items: center; width: 26px; height: 26px; border-radius: 50%; background: color-mix(in srgb, var(--bg) 35%, #000); color: var(--button-fg); font-size: 12px; font-weight: 760; line-height: 1; }
+    .step-label { min-width: 0; }
+    .step-label strong, .step-label span { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .step-label span { color: color-mix(in srgb, var(--button-fg) 70%, transparent); font-size: 11px; margin-top: 2px; }
+    .step-action { justify-self: end; color: color-mix(in srgb, var(--button-fg) 78%, transparent); font-size: 11px; font-weight: 760; }
     button { min-height: 34px; border: 1px solid transparent; border-radius: 6px; padding: 7px 11px; color: var(--button-fg); background: var(--button); font: inherit; font-weight: 650; cursor: pointer; }
     button:hover { background: var(--button-hover); }
     button.secondary { color: var(--secondary-fg); background: var(--secondary); border-color: var(--border); }
@@ -215,6 +264,12 @@ export class StudioViewProvider implements vscode.WebviewViewProvider {
     .mini span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
     .result { display: grid; gap: 8px; }
     .loader { display:inline-block; width:12px; height:12px; border:2px solid transparent; border-top-color:var(--accent); border-radius:50%; animation:spin 1s linear infinite; vertical-align:middle }
+    .timer { display: inline-flex; gap: 6px; align-items: center; font-variant-numeric: tabular-nums; }
+    .timer::before { content: ""; width: 7px; height: 7px; border-radius: 50%; background: ${this.trainingStartedAt ? "#2ea043" : "var(--muted)"}; }
+    .error-card { display: grid; gap: 6px; padding: 10px; border: 1px solid color-mix(in srgb, #f85149 45%, var(--border)); border-radius: 7px; background: color-mix(in srgb, #f85149 8%, var(--card)); }
+    .error-card div { display: flex; justify-content: space-between; gap: 8px; }
+    .error-card span { color: var(--muted); font-size: 11px; white-space: nowrap; }
+    .error-card pre { margin: 0; white-space: pre-wrap; word-break: break-word; color: #ff7b72; font-family: var(--vscode-editor-font-family); font-size: 11px; line-height: 1.4; }
     @keyframes spin { from { transform: rotate(0deg) } to { transform: rotate(360deg) } }
     @media (min-width: 560px) {
       .actions { grid-template-columns: repeat(4, minmax(0, 1fr)); }
@@ -256,25 +311,30 @@ export class StudioViewProvider implements vscode.WebviewViewProvider {
     <section class="panel">
       <div class="panel-head">
         <h2>Job Workflow</h2>
-        <span class="badge subtle">Active folder</span>
+        <span class="badge subtle timer" data-training-start="${this.trainingStartedAt ?? ""}">${escapeHtml(elapsedTraining)}</span>
       </div>
       <div class="workflow">
         <button class="step" data-action="prepareJob" ${prepareEnabled ? "" : "disabled"}>
-          <span class="step-number">1</span><span><strong>Prepare</strong><span>Package project and shard dataset</span></span><span>${prepareBusy ? `<span class="loader" title="Preparing"></span>` : `Start`}</span>
+          <span class="step-number">1</span><span class="step-label"><strong>Prepare</strong><span>Validate config, package project, shard dataset</span></span><span class="step-action">${prepareBusy ? `<span class="loader" title="Preparing"></span>` : `Start`}</span>
         </button>
         <button class="step" data-action="setupWorkers" ${setupEnabled ? "" : "disabled"}>
-          <span class="step-number">2</span><span><strong>Set Up</strong><span>Create venv and install requirements</span></span><span>${setupBusy ? `<span class="loader" title="Setting up"></span>` : `Run`}</span>
+          <span class="step-number">2</span><span class="step-label"><strong>Set Up</strong><span>Create venv and install dependencies</span></span><span class="step-action">${setupBusy ? `<span class="loader" title="Setting up"></span>` : `Run`}</span>
         </button>
         <button class="step secondary" data-action="retrySetup" ${retrySetupEnabled ? "" : "disabled"}>
-          <span class="step-number">R</span><span><strong>Retry</strong><span>Retry failed worker setup</span></span><span>${retryBusy ? `<span class="loader" title="Retrying"></span>` : `Retry`}</span>
+          <span class="step-number">R</span><span class="step-label"><strong>Retry</strong><span>Retry failed Worker setup</span></span><span class="step-action">${retryBusy ? `<span class="loader" title="Retrying"></span>` : `Retry`}</span>
         </button>
         <button class="step" data-action="startTraining" ${startTrainingEnabled ? "" : "disabled"}>
-          <span class="step-number">3</span><span><strong>Train</strong><span>Launch workers and sync gradients</span></span><span>${startBusy ? `<span class="loader" title="Starting"></span>` : `Go`}</span>
+          <span class="step-number">3</span><span class="step-label"><strong>Start Training</strong><span>Launch Workers and sync gradients</span></span><span class="step-action">${startBusy ? `<span class="loader" title="Starting"></span>` : `Go`}</span>
         </button>
         <button class="step secondary" data-action="stopTraining" ${stopTrainingEnabled ? "" : "disabled"}>
-          <span class="step-number">4</span><span><strong>Stop</strong><span>Request training stop</span></span><span>${stopBusy ? `<span class="loader" title="Stopping"></span>` : `Stop`}</span>
+          <span class="step-number">4</span><span class="step-label"><strong>Stop</strong><span>Request training stop</span></span><span class="step-action">${stopBusy ? `<span class="loader" title="Stopping"></span>` : `Stop`}</span>
         </button>
       </div>
+    </section>
+
+    <section class="panel">
+      <div class="panel-head"><h2>Errors</h2><span class="badge subtle">${this.errors.length}</span></div>
+      ${errorRows}
     </section>
 
     <section class="panel">
@@ -317,6 +377,21 @@ export class StudioViewProvider implements vscode.WebviewViewProvider {
       const payload = button.dataset.id ? { id: button.dataset.id } : undefined;
       vscode.postMessage({ action: button.dataset.action, payload });
     });
+    const timer = document.querySelector("[data-training-start]");
+    const formatElapsed = (milliseconds) => {
+      const totalSeconds = Math.max(0, Math.floor(milliseconds / 1000));
+      const hours = Math.floor(totalSeconds / 3600);
+      const minutes = Math.floor((totalSeconds % 3600) / 60);
+      const seconds = totalSeconds % 60;
+      if (hours > 0) return hours + ":" + String(minutes).padStart(2, "0") + ":" + String(seconds).padStart(2, "0");
+      return minutes + ":" + String(seconds).padStart(2, "0");
+    };
+    if (timer && timer.dataset.trainingStart) {
+      const startedAt = Number(timer.dataset.trainingStart);
+      setInterval(() => {
+        timer.textContent = formatElapsed(Date.now() - startedAt);
+      }, 1000);
+    }
   </script>
 </body>
 </html>`;
@@ -338,6 +413,19 @@ function labelForAction(action: string): string {
     openResults: "Opening collected results...",
   };
   return labels[action] ?? "Working...";
+}
+
+function actionFailedLabel(action: string): string {
+  const labels: Record<string, string> = {
+    prepareJob: "Prepare failed",
+    setupWorkers: "Setup failed",
+    retrySetup: "Retry setup failed",
+    startTraining: "Start training failed",
+    stopTraining: "Stop training failed",
+    pairWorker: "Pairing failed",
+    discoverWorkers: "Discovery failed",
+  };
+  return labels[action] ?? "Action failed";
 }
 
 function randomNonce(): string {
@@ -370,4 +458,15 @@ function cleanStatus(value: unknown): string {
     .replace(/_/g, " ")
     .toLowerCase()
     .replace(/\b\w/g, (letter) => letter.toUpperCase());
+}
+
+function formatElapsed(milliseconds: number): string {
+  const totalSeconds = Math.max(0, Math.floor(milliseconds / 1000));
+  const hours = Math.floor(totalSeconds / 3600);
+  const minutes = Math.floor((totalSeconds % 3600) / 60);
+  const seconds = totalSeconds % 60;
+  if (hours > 0) {
+    return `${hours}:${String(minutes).padStart(2, "0")}:${String(seconds).padStart(2, "0")}`;
+  }
+  return `${minutes}:${String(seconds).padStart(2, "0")}`;
 }

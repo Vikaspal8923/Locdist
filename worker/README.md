@@ -1849,8 +1849,8 @@ validated filesystem boundary that execution will use.
 
 After Phase 8 creates `workspaces/<job_id>`, the paired Master can call the
 authenticated `SetupJob` RPC. The Worker creates `.venv`, installs
-`requirements.txt` when it exists, and writes command output to
-`logs/setup.log`.
+LDGCC runtime dependencies, installs `requirements.txt` when it exists, and
+writes command output to `logs/setup.log`.
 
 ```text
 WORKSPACE_RECEIVED -> SETTING_UP -> READY

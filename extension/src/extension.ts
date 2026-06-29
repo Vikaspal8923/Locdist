@@ -1,4 +1,6 @@
 import * as vscode from "vscode";
+import * as fs from "node:fs/promises";
+import * as path from "node:path";
 import { MasterClient } from "./masterClient";
 import { MasterProcess } from "./masterProcess";
 import { StudioViewProvider } from "./studioView";
@@ -103,6 +105,8 @@ async function prepareJob(): Promise<void> {
   if (!root) {
     throw new Error("Open the training project folder before preparing an LDGCC job");
   }
+  const state = await api.state();
+  await validateProjectBeforePrepare(root, state.workers?.filter((worker) => worker.availability === "ONLINE").length ?? 0);
   await api.prepareJob(root);
   await loadState();
   vscode.window.showInformationMessage("LDGCC job preparation started");
@@ -166,17 +170,235 @@ function subscribeToEvents(): void {
         const message = eventError(event)
           ? `LDGCC: ${event.type} - ${eventError(event)}`
           : `LDGCC: ${event.type}`;
+        studio.addError(`LDGCC: ${event.type}`, eventError(event) ?? message);
         studio.setMessage(message);
         vscode.window.showErrorMessage(message);
       }
       if (event.type === "job.completed") {
         const message = "LDGCC job completed";
+        studio.markTrainingStopped();
         studio.setMessage(message);
         vscode.window.showInformationMessage(message);
+      }
+      if (event.type === "job.failed") {
+        studio.markTrainingStopped();
       }
     },
     () => undefined,
   );
+}
+
+interface ParsedProjectSpec {
+  entrypoint?: string;
+  datasetTrain?: string;
+  datasetType?: string;
+  workersCount?: number;
+  outputs: string[];
+  precision?: string;
+  compressionType?: string;
+  compressionMode?: string;
+  topK?: string;
+  errorFeedback?: boolean;
+  warmupSteps?: number;
+}
+
+async function validateProjectBeforePrepare(projectRoot: string, onlineWorkers: number): Promise<void> {
+  const specPath = await findSpecPath(projectRoot);
+  const spec = parseProjectSpec(await fs.readFile(specPath, "utf8"));
+  const errors: string[] = [];
+  if (!spec.entrypoint) {
+    errors.push("entrypoint is required");
+  }
+  if (!spec.datasetTrain) {
+    errors.push("dataset.train is required");
+  }
+  if (!spec.workersCount || spec.workersCount <= 0) {
+    errors.push("workers.count must be greater than zero");
+  }
+  const datasetType = spec.datasetType || "jsonl";
+  if (datasetType !== "jsonl" && datasetType !== "image_folder") {
+    errors.push("dataset.type must be jsonl or image_folder");
+  }
+  if (spec.precision && spec.precision !== "fp32" && spec.precision !== "fp16") {
+    errors.push("communication.precision must be fp32 or fp16");
+  }
+  if (spec.compressionType && spec.compressionType !== "none" && spec.compressionType !== "topk") {
+    errors.push("communication.compression.type must be none or topk");
+  }
+  if (spec.compressionType === "topk") {
+    if (spec.compressionMode && spec.compressionMode !== "global" && spec.compressionMode !== "per_layer") {
+      errors.push("communication.compression.mode must be global or per_layer");
+    }
+    if (spec.topK && !isValidPercent(spec.topK)) {
+      errors.push("communication.compression.top_k must be a percent string > 0% and <= 100%");
+    }
+    if (spec.errorFeedback !== true) {
+      errors.push("communication.compression.error_feedback must be true for topk");
+    }
+    if (spec.warmupSteps !== undefined && spec.warmupSteps < 0) {
+      errors.push("communication.compression.warmup_steps must be non-negative");
+    }
+  }
+  for (const [label, value] of [
+    ["entrypoint", spec.entrypoint],
+    ["dataset.train", spec.datasetTrain],
+  ] as const) {
+    if (value && !isSafeRelativePath(value)) {
+      errors.push(`${label} must be a relative path inside the project`);
+    }
+  }
+  for (const output of spec.outputs) {
+    if (!isSafeRelativePath(output)) {
+      errors.push(`output path "${output}" must be relative and stay inside the project`);
+    }
+  }
+  if (spec.entrypoint && isSafeRelativePath(spec.entrypoint) && !(await exists(path.join(projectRoot, spec.entrypoint)))) {
+    errors.push(`entrypoint is not readable: ${spec.entrypoint}`);
+  }
+  if (spec.datasetTrain && isSafeRelativePath(spec.datasetTrain) && !(await exists(path.join(projectRoot, spec.datasetTrain)))) {
+    errors.push(`dataset.train is not readable: ${spec.datasetTrain}`);
+  }
+  if (spec.workersCount && onlineWorkers < spec.workersCount) {
+    errors.push(`workers.count is ${spec.workersCount}, but only ${onlineWorkers} paired Worker(s) are online`);
+  }
+  if (errors.length > 0) {
+    const detail = [`${path.basename(specPath)} validation failed:`, ...errors.map((error) => `- ${error}`)].join("\n");
+    studio.addError("LDGCC: Project validation failed", detail);
+    throw new Error(detail);
+  }
+}
+
+async function findSpecPath(projectRoot: string): Promise<string> {
+  const yml = path.join(projectRoot, "ldgcc.yml");
+  if (await exists(yml)) {
+    return yml;
+  }
+  const yaml = path.join(projectRoot, "ldgcc.yaml");
+  if (await exists(yaml)) {
+    return yaml;
+  }
+  throw new Error("ldgcc.yml or ldgcc.yaml is required in the training project folder");
+}
+
+function parseProjectSpec(text: string): ParsedProjectSpec {
+  const spec: ParsedProjectSpec = { outputs: [] };
+  let section = "";
+  for (const rawLine of text.split(/\r?\n/)) {
+    const line = stripComment(rawLine);
+    if (!line.trim()) {
+      continue;
+    }
+    const indent = line.length - line.trimStart().length;
+    const trimmed = line.trim();
+    if (section === "outputs" && trimmed.startsWith("- ")) {
+      const value = unquote(trimmed.slice(2).trim());
+      if (value) {
+        spec.outputs.push(value);
+      }
+      continue;
+    }
+    const separator = trimmed.indexOf(":");
+    if (separator < 0) {
+      throw new Error(`invalid ldgcc.yml line: ${rawLine}`);
+    }
+    const key = trimmed.slice(0, separator).trim();
+    const value = unquote(trimmed.slice(separator + 1).trim());
+    if (indent === 0 && !value) {
+      section = key;
+      continue;
+    }
+    if (indent === 2 && section === "communication" && key === "compression" && !value) {
+      section = "communication.compression";
+      continue;
+    }
+    if (indent === 0) {
+      section = "";
+    }
+    switch (true) {
+      case section === "" && key === "entrypoint":
+        spec.entrypoint = value;
+        break;
+      case section === "dataset" && key === "train":
+        spec.datasetTrain = value;
+        break;
+      case section === "dataset" && key === "type":
+        spec.datasetType = value;
+        break;
+      case section === "workers" && key === "count": {
+        const count = Number(value);
+        if (!Number.isInteger(count)) {
+          throw new Error("workers.count must be a number");
+        }
+        spec.workersCount = count;
+        break;
+      }
+      case section === "communication" && key === "precision":
+        spec.precision = value;
+        break;
+      case section === "communication" && key === "compression":
+        spec.compressionType = value;
+        spec.errorFeedback = true;
+        break;
+      case section === "communication.compression" && key === "type":
+        spec.compressionType = value;
+        spec.errorFeedback = true;
+        break;
+      case section === "communication.compression" && key === "mode":
+        spec.compressionMode = value;
+        break;
+      case section === "communication.compression" && key === "top_k":
+        spec.topK = value;
+        break;
+      case section === "communication.compression" && key === "error_feedback":
+        spec.errorFeedback = value === "true";
+        break;
+      case section === "communication.compression" && key === "warmup_steps": {
+        const steps = Number(value);
+        if (!Number.isInteger(steps)) {
+          throw new Error("communication.compression.warmup_steps must be a number");
+        }
+        spec.warmupSteps = steps;
+        break;
+      }
+      default:
+        break;
+    }
+  }
+  return spec;
+}
+
+function stripComment(line: string): string {
+  const index = line.indexOf("#");
+  return index >= 0 ? line.slice(0, index) : line;
+}
+
+function unquote(value: string): string {
+  return value.replace(/^["']|["']$/g, "").trim();
+}
+
+function isSafeRelativePath(value: string): boolean {
+  if (!value || path.isAbsolute(value)) {
+    return false;
+  }
+  const normalized = path.normalize(value);
+  return normalized !== "." && !normalized.startsWith("..") && !path.isAbsolute(normalized);
+}
+
+function isValidPercent(value: string): boolean {
+  if (!value.endsWith("%")) {
+    return false;
+  }
+  const percent = Number(value.slice(0, -1));
+  return Number.isFinite(percent) && percent > 0 && percent <= 100;
+}
+
+async function exists(filePath: string): Promise<boolean> {
+  try {
+    await fs.access(filePath);
+    return true;
+  } catch {
+    return false;
+  }
 }
 
 function eventError(event: MasterEvent): string | undefined {

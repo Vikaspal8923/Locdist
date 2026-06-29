@@ -7,6 +7,7 @@ from locdist.models import (
     ParameterMetadata,
 )
 from locdist.indices import unpack_u32_indices
+from locdist.tensor_bytes import tensor_to_bytes
 
 
 TORCH_DTYPE_MAP = {
@@ -48,15 +49,7 @@ def extract_gradient_chunks(
 
             continue
 
-        gradient_bytes = (
-            parameter.grad
-            .detach()
-            .cpu()
-            .contiguous()
-            .view(-1)
-            .numpy()
-            .tobytes()
-        )
+        gradient_bytes = tensor_to_bytes(parameter.grad.view(-1))
 
         chunks.append(
             GradientChunk(

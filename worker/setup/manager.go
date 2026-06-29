@@ -20,6 +20,13 @@ type Runner interface {
 
 type CommandRunner struct{}
 
+var runtimeRequirements = []string{
+	"torch",
+	"grpcio",
+	"protobuf",
+	"numpy",
+}
+
 func (CommandRunner) Run(ctx context.Context, directory, logPath, name string, args ...string) error {
 	log, err := os.OpenFile(logPath, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0o600)
 	if err != nil {
@@ -116,13 +123,18 @@ func (m *Manager) run(ctx context.Context, jobID string) Result {
 		return failed(fmt.Errorf("create Python environment: %w", err), logPath)
 	}
 	log.Printf("private Python environment ready for job %q", jobID)
+	venvPython := venvPythonPath(venvPath)
+	log.Printf("installing LDGCC runtime dependencies for job %q", jobID)
+	runtimeInstallArgs := append([]string{"-m", "pip", "install"}, runtimeRequirements...)
+	if err := m.runner.Run(ctx, directory, logPath, venvPython, runtimeInstallArgs...); err != nil {
+		return failed(fmt.Errorf("install LDGCC runtime dependencies: %w", err), logPath)
+	}
 	requirements := filepath.Join(directory, "requirements.txt")
 	if _, err := os.Stat(requirements); os.IsNotExist(err) {
 		return Result{Status: gradient.JobSetupStatus_JOB_SETUP_STATUS_READY, LogPath: logPath}
 	} else if err != nil {
 		return failed(err, logPath)
 	}
-	venvPython := venvPythonPath(venvPath)
 	if err := m.runner.Run(ctx, directory, logPath, venvPython, "-m", "pip", "install", "-r", "requirements.txt"); err != nil {
 		return failed(fmt.Errorf("install requirements: %w", err), logPath)
 	}

@@ -10,6 +10,7 @@ from locdist.exceptions import ConfigError
 from locdist.gradients import apply_gradient_chunks
 from locdist.indices import unpack_u32_indices
 from locdist.models import GradientChunk, ParameterMetadata
+from locdist.tensor_bytes import tensor_to_bytes
 
 
 class TinyModel(nn.Module):
@@ -143,7 +144,7 @@ def test_sparse_response_applies_only_returned_indices():
             dtype="torch.float32",
         ),
         has_grad=True,
-        data=torch.tensor([2.0, 8.0], dtype=torch.float32).numpy().tobytes(),
+        data=tensor_to_bytes(torch.tensor([2.0, 8.0], dtype=torch.float32)),
         byte_size=8,
         data_dtype="torch.float32",
         encoding="topk",

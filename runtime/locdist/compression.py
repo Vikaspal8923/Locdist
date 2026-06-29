@@ -9,6 +9,7 @@ from locdist.models import (
     ParameterMetadata,
 )
 from locdist.indices import pack_u32_indices
+from locdist.tensor_bytes import tensor_to_bytes
 
 
 PRECISION_TO_DTYPE = {
@@ -56,7 +57,7 @@ def _extract_dense(
 
         flat = parameter.grad.detach().cpu().contiguous().view(-1)
         payload = flat.to(payload_dtype)
-        data = payload.numpy().tobytes()
+        data = tensor_to_bytes(payload)
         chunks.append(
             GradientChunk(
                 metadata=metadata,
@@ -175,7 +176,7 @@ def _sparse_chunk(
     payload_dtype: torch.dtype,
 ) -> GradientChunk:
     payload = values.to(payload_dtype).contiguous()
-    data = payload.numpy().tobytes()
+    data = tensor_to_bytes(payload)
     packed_indices = [int(value) for value in indices.tolist()]
     return GradientChunk(
         metadata=metadata,

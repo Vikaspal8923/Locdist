@@ -37,8 +37,33 @@ func TestSetupWithoutRequirementsBecomesReady(t *testing.T) {
 	if result.Status != gradient.JobSetupStatus_JOB_SETUP_STATUS_READY {
 		t.Fatalf("status = %s, error = %s", result.Status, result.ErrorMessage)
 	}
-	if len(runner.calls) != 1 || !strings.Contains(runner.calls[0], "-m venv .venv") {
+	if len(runner.calls) != 2 {
 		t.Fatalf("unexpected commands: %v", runner.calls)
+	}
+	if !strings.Contains(runner.calls[0], "-m venv .venv") {
+		t.Fatalf("venv command missing: %v", runner.calls)
+	}
+	if !strings.Contains(runner.calls[1], "pip install torch grpcio protobuf numpy") {
+		t.Fatalf("runtime dependency install missing: %v", runner.calls)
+	}
+}
+
+func TestSetupInstallsRuntimeDependenciesBeforeUserRequirements(t *testing.T) {
+	workspaceManager := preparedWorkspace(t, true)
+	runner := &fakeRunner{}
+	manager := NewWithRunner(workspaceManager, runner)
+	result := manager.Setup(context.Background(), "job-1", false)
+	if result.Status != gradient.JobSetupStatus_JOB_SETUP_STATUS_READY {
+		t.Fatalf("status = %s, error = %s", result.Status, result.ErrorMessage)
+	}
+	if len(runner.calls) != 3 {
+		t.Fatalf("unexpected commands: %v", runner.calls)
+	}
+	if !strings.Contains(runner.calls[1], "pip install torch grpcio protobuf numpy") {
+		t.Fatalf("runtime dependency install missing: %v", runner.calls)
+	}
+	if !strings.Contains(runner.calls[2], "pip install -r requirements.txt") {
+		t.Fatalf("user requirements install missing: %v", runner.calls)
 	}
 }
 
