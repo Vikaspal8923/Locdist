@@ -45,6 +45,7 @@ func TestPairReservesCredentialsForRegistration(t *testing.T) {
 	discovered := discovery.NewRegistry()
 	discovered.Upsert(
 		discovery.Worker{
+			ID:            discovery.ID("Worker-Laptop", "127.0.0.1", address.Port),
 			Instance:      "Worker-Laptop",
 			Address:       "127.0.0.1",
 			GRPCPort:      address.Port,
@@ -67,7 +68,7 @@ func TestPairReservesCredentialsForRegistration(t *testing.T) {
 
 	record, err := service.Pair(
 		context.Background(),
-		"Worker-Laptop",
+		discovery.ID("Worker-Laptop", "127.0.0.1", address.Port),
 	)
 	if err != nil {
 		t.Fatalf("pair Worker: %v", err)

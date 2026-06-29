@@ -247,16 +247,16 @@ func (c *Controller) WatchWorkers(ctx context.Context) {
 	for {
 		currentDiscovery := make(map[string]bool)
 		for _, worker := range c.Workers() {
-			currentDiscovery[worker.Instance] = true
-			if !knownDiscovery[worker.Instance] {
-				knownDiscovery[worker.Instance] = true
+			currentDiscovery[worker.ID] = true
+			if !knownDiscovery[worker.ID] {
+				knownDiscovery[worker.ID] = true
 				c.events.Publish("worker.discovered", worker)
 			}
 		}
-		for instance := range knownDiscovery {
-			if !currentDiscovery[instance] {
-				delete(knownDiscovery, instance)
-				c.events.Publish("worker.lost", map[string]string{"instance": instance})
+		for id := range knownDiscovery {
+			if !currentDiscovery[id] {
+				delete(knownDiscovery, id)
+				c.events.Publish("worker.lost", map[string]string{"id": id})
 			}
 		}
 		if backend, err := c.backendValue(); err == nil {

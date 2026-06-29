@@ -9,6 +9,7 @@ export interface MasterSession {
 }
 
 export interface DiscoveredWorker {
+  id: string;
   instance: string;
   address: string;
   pairing_status: string;

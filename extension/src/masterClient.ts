@@ -19,8 +19,8 @@ export class MasterClient {
     await this.post("/discovery/start");
   }
 
-  async pairWorker(instance: string): Promise<void> {
-    await this.post(`/workers/${encodeURIComponent(instance)}/pair`);
+  async pairWorker(id: string): Promise<void> {
+    await this.post(`/workers/${encodeURIComponent(id)}/pair`);
   }
 
   async prepareJob(projectRoot: string): Promise<void> {

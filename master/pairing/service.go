@@ -47,14 +47,14 @@ func New(
 
 func (s *Service) Pair(
 	ctx context.Context,
-	instance string,
+	id string,
 ) (Record, error) {
-	worker, ok := s.discovered.Worker(instance)
+	worker, ok := s.discovered.Worker(id)
 	if !ok {
-		return Record{}, fmt.Errorf("discovered Worker %q was not found", instance)
+		return Record{}, fmt.Errorf("discovered Worker %q was not found", id)
 	}
 	if worker.PairingStatus != "unpaired" {
-		return Record{}, fmt.Errorf("Worker %q is already paired", instance)
+		return Record{}, fmt.Errorf("Worker %q is already paired", worker.Instance)
 	}
 
 	requestID, err := randomID("pair")
@@ -80,7 +80,7 @@ func (s *Service) Pair(
 
 	record := Record{
 		WorkerID: workerID,
-		Instance: instance,
+		Instance: worker.Instance,
 		Token:    token,
 	}
 

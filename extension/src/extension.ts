@@ -79,7 +79,7 @@ async function pairWorker(node?: unknown): Promise<void> {
   if (!worker) {
     return;
   }
-  await api.pairWorker(worker.instance);
+  await api.pairWorker(worker.id);
   await refresh();
   vscode.window.showInformationMessage(`Pairing request sent to ${worker.instance}`);
 }
@@ -199,7 +199,8 @@ async function pickDiscoveredWorker(): Promise<DiscoveredWorker | undefined> {
   const picked = await vscode.window.showQuickPick(
     state.discovered_workers.map((worker) => ({
       label: worker.instance,
-      description: worker.pairing_status,
+      description: worker.address,
+      detail: worker.request_status ?? worker.pairing_status,
       worker,
     })),
     { placeHolder: "Select an LDGCC Worker to pair" },
@@ -209,7 +210,7 @@ async function pickDiscoveredWorker(): Promise<DiscoveredWorker | undefined> {
 
 function workerFromNode(value: unknown): DiscoveredWorker | undefined {
   const candidate = value as Partial<DiscoveredWorker> | undefined;
-  if (candidate?.instance) {
+  if (candidate?.id) {
     return candidate as DiscoveredWorker;
   }
   return undefined;
@@ -224,10 +225,11 @@ function resultSummaryFromNode(value: unknown): JobSummary | undefined {
 }
 
 function workerPayloadToDiscovered(payload: unknown): DiscoveredWorker | undefined {
-  const candidate = payload as { instance?: unknown } | undefined;
-  if (typeof candidate?.instance === "string") {
+  const candidate = payload as { id?: unknown } | undefined;
+  if (typeof candidate?.id === "string") {
     return {
-      instance: candidate.instance,
+      id: candidate.id,
+      instance: candidate.id,
       address: "",
       pairing_status: "",
     };

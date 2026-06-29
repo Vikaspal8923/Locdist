@@ -94,6 +94,7 @@ export class StudioViewProvider implements vscode.WebviewViewProvider {
             (worker) => {
               const status = worker.request_status ? `${worker.pairing_status} · ${worker.request_status}` : worker.pairing_status;
               const error = worker.error ? `<span class="error">${escapeHtml(worker.error)}</span>` : "";
+              const canPair = !this.busy && worker.pairing_status !== "paired" && worker.request_status !== "PENDING" && worker.request_status !== "PAIRED";
               return `
               <div class="row worker-row">
                 <div>
@@ -101,7 +102,7 @@ export class StudioViewProvider implements vscode.WebviewViewProvider {
                   <span>${escapeHtml(worker.address)} · ${escapeHtml(status)}</span>
                   ${error}
                 </div>
-                <button class="compact" data-action="pairWorker" data-instance="${escapeAttribute(worker.instance)}" ${this.busy ? "disabled" : ""}>Pair</button>
+                <button class="compact" data-action="pairWorker" data-id="${escapeAttribute(worker.id)}" ${canPair ? "" : "disabled"}>${worker.pairing_status === "paired" || worker.request_status === "PAIRED" ? "Paired" : "Pair"}</button>
               </div>`;
             },
           )
@@ -283,7 +284,7 @@ export class StudioViewProvider implements vscode.WebviewViewProvider {
     document.addEventListener("click", (event) => {
       const button = event.target.closest("button[data-action]");
       if (!button) return;
-      const payload = button.dataset.instance ? { instance: button.dataset.instance } : undefined;
+      const payload = button.dataset.id ? { id: button.dataset.id } : undefined;
       vscode.postMessage({ action: button.dataset.action, payload });
     });
   </script>

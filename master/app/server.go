@@ -139,13 +139,18 @@ func NewSecureServer(host, port, token string, controller *Controller) (*Server,
 		"POST /api/pair",
 		func(writer http.ResponseWriter, request *http.Request) {
 			var body struct {
+				ID       string `json:"id"`
 				Instance string `json:"instance"`
 			}
 			if err := json.NewDecoder(request.Body).Decode(&body); err != nil {
 				http.Error(writer, "invalid request", http.StatusBadRequest)
 				return
 			}
-			if err := controller.Pair(body.Instance); err != nil {
+			id := body.ID
+			if id == "" {
+				id = body.Instance
+			}
+			if err := controller.Pair(id); err != nil {
 				http.Error(writer, err.Error(), http.StatusConflict)
 				return
 			}
@@ -273,11 +278,11 @@ const appHTML = `<!doctype html>
   <script>
     const workers = document.querySelector("#workers");
 
-    async function pair(instance) {
+    async function pair(id) {
       await fetch("/api/pair", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ instance })
+        body: JSON.stringify({ id })
       });
       refresh();
     }
@@ -300,9 +305,9 @@ const appHTML = `<!doctype html>
         status.className = item.error ? "status error" : "status";
         status.textContent = item.error || item.request_status || item.pairing_status;
         const button = document.createElement("button");
-        button.textContent = "Connect";
-        button.disabled = item.pairing_status !== "unpaired" || item.request_status === "PENDING";
-        button.addEventListener("click", () => pair(item.instance));
+        button.textContent = item.pairing_status === "paired" || item.request_status === "PAIRED" ? "Connected" : "Connect";
+        button.disabled = item.pairing_status !== "unpaired" || item.request_status === "PENDING" || item.request_status === "PAIRED";
+        button.addEventListener("click", () => pair(item.id));
         row.append(identity, status, button);
         return row;
       }));
