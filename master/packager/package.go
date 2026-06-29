@@ -9,6 +9,8 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+
+	"github.com/Vikaspal8923/Locdist/master/project"
 )
 
 const (
@@ -17,21 +19,23 @@ const (
 )
 
 type PackageRequest struct {
-	ProjectRoot string
-	JobID       string
-	WorkerID    string
-	Entrypoint  string
-	DatasetPath string
-	ShardPath   string
-	Outputs     []string
+	ProjectRoot   string
+	JobID         string
+	WorkerID      string
+	Entrypoint    string
+	DatasetPath   string
+	ShardPath     string
+	Outputs       []string
+	Communication project.CommunicationSpec
 }
 
 type JobConfig struct {
-	JobID       string   `json:"job_id"`
-	WorkerID    string   `json:"worker_id"`
-	Entrypoint  string   `json:"entrypoint"`
-	DatasetPath string   `json:"dataset_path"`
-	Outputs     []string `json:"outputs,omitempty"`
+	JobID         string                    `json:"job_id"`
+	WorkerID      string                    `json:"worker_id"`
+	Entrypoint    string                    `json:"entrypoint"`
+	DatasetPath   string                    `json:"dataset_path"`
+	Outputs       []string                  `json:"outputs,omitempty"`
+	Communication project.CommunicationSpec `json:"communication,omitempty"`
 }
 
 func Build(request PackageRequest) ([]byte, error) {
@@ -142,11 +146,12 @@ func addFile(writer *zip.Writer, sourcePath string, archivePath string) error {
 func addJobConfig(writer *zip.Writer, request PackageRequest) error {
 	data, err := json.MarshalIndent(
 		JobConfig{
-			JobID:       request.JobID,
-			WorkerID:    request.WorkerID,
-			Entrypoint:  request.Entrypoint,
-			DatasetPath: request.DatasetPath,
-			Outputs:     request.Outputs,
+			JobID:         request.JobID,
+			WorkerID:      request.WorkerID,
+			Entrypoint:    request.Entrypoint,
+			DatasetPath:   request.DatasetPath,
+			Outputs:       request.Outputs,
+			Communication: request.Communication,
 		},
 		"",
 		"  ",

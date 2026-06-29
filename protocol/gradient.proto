@@ -33,6 +33,12 @@ message GradientChunk {
   bytes data = 3;
 
   uint64 byte_size = 4;
+
+  string data_dtype = 5;
+
+  string encoding = 6;
+
+  repeated int64 indices = 7;
 }
 
 

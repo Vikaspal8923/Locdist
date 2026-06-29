@@ -5,8 +5,12 @@ from locdist.models import (
 )
 
 from locdist.gradients import (
-    extract_gradient_chunks,
     apply_gradient_chunks,
+)
+
+from locdist.compression import (
+    CompressionState,
+    extract_compressed_gradient_chunks,
 )
 
 from locdist.transport import (
@@ -15,6 +19,7 @@ from locdist.transport import (
 
 
 _config = None
+_compression_state = CompressionState()
 
 
 def get_runtime_config():
@@ -32,8 +37,10 @@ def sync_gradients(model) -> None:
 
     config = get_runtime_config()
 
-    chunks = extract_gradient_chunks(
-        model
+    chunks = extract_compressed_gradient_chunks(
+        model,
+        config.communication,
+        _compression_state,
     )
 
     package = GradientPackage(

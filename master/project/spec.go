@@ -12,11 +12,12 @@ import (
 const DefaultSpecFile = "ldgcc.yaml"
 
 type Spec struct {
-	Job        JobSpec
-	Entrypoint string
-	Dataset    DatasetSpec
-	Workers    WorkerSpec
-	Outputs    []string
+	Job           JobSpec
+	Entrypoint    string
+	Dataset       DatasetSpec
+	Workers       WorkerSpec
+	Outputs       []string
+	Communication CommunicationSpec
 }
 
 type JobSpec struct {
@@ -29,6 +30,19 @@ type DatasetSpec struct {
 
 type WorkerSpec struct {
 	Count int
+}
+
+type CommunicationSpec struct {
+	Precision   string          `json:"precision,omitempty"`
+	Compression CompressionSpec `json:"compression,omitempty"`
+}
+
+type CompressionSpec struct {
+	Type          string `json:"type,omitempty"`
+	Mode          string `json:"mode,omitempty"`
+	TopK          string `json:"top_k,omitempty"`
+	ErrorFeedback bool   `json:"error_feedback"`
+	WarmupSteps   int    `json:"warmup_steps,omitempty"`
 }
 
 func LoadSpec(projectRoot string) (Spec, error) {
@@ -86,6 +100,38 @@ func (s Spec) Validate(projectRoot string) error {
 	if _, err := os.Stat(filepath.Join(projectRoot, s.Dataset.Train)); err != nil {
 		return fmt.Errorf("dataset.train is not readable: %w", err)
 	}
+	if err := s.Communication.Validate(); err != nil {
+		return err
+	}
+	return nil
+}
+
+func (c CommunicationSpec) Validate() error {
+	if c.Precision != "" && c.Precision != "fp32" && c.Precision != "fp16" {
+		return fmt.Errorf("communication.precision must be fp32 or fp16")
+	}
+	if c.Compression.Type == "" {
+		return nil
+	}
+	if c.Compression.Type != "none" && c.Compression.Type != "topk" {
+		return fmt.Errorf("communication.compression.type must be none or topk")
+	}
+	if c.Compression.Type == "topk" {
+		if c.Compression.Mode != "" && c.Compression.Mode != "global" && c.Compression.Mode != "per_layer" {
+			return fmt.Errorf("communication.compression.mode must be global or per_layer")
+		}
+		if c.Compression.TopK != "" {
+			if err := validatePercent(c.Compression.TopK); err != nil {
+				return err
+			}
+		}
+		if !c.Compression.ErrorFeedback {
+			return fmt.Errorf("communication.compression.error_feedback must be true for topk")
+		}
+		if c.Compression.WarmupSteps < 0 {
+			return fmt.Errorf("communication.compression.warmup_steps must be non-negative")
+		}
+	}
 	return nil
 }
 
@@ -119,6 +165,10 @@ func parse(file *os.File) (Spec, error) {
 			section = key
 			continue
 		}
+		if indent == 2 && section == "communication" && key == "compression" && value == "" {
+			section = "communication.compression"
+			continue
+		}
 		if indent == 0 {
 			section = ""
 		}
@@ -136,6 +186,30 @@ func parse(file *os.File) (Spec, error) {
 			spec.Workers.Count = count
 		case section == "outputs" && key == "outputs":
 			return Spec{}, fmt.Errorf("outputs must be a YAML list")
+		case section == "communication" && key == "precision":
+			spec.Communication.Precision = value
+		case section == "communication" && key == "compression":
+			spec.Communication.Compression.Type = value
+			spec.Communication.Compression.ErrorFeedback = true
+		case section == "communication.compression" && key == "type":
+			spec.Communication.Compression.Type = value
+			spec.Communication.Compression.ErrorFeedback = true
+		case section == "communication.compression" && key == "mode":
+			spec.Communication.Compression.Mode = value
+		case section == "communication.compression" && key == "top_k":
+			spec.Communication.Compression.TopK = value
+		case section == "communication.compression" && key == "error_feedback":
+			parsed, err := strconv.ParseBool(value)
+			if err != nil {
+				return Spec{}, fmt.Errorf("communication.compression.error_feedback must be true or false")
+			}
+			spec.Communication.Compression.ErrorFeedback = parsed
+		case section == "communication.compression" && key == "warmup_steps":
+			steps, err := strconv.Atoi(value)
+			if err != nil {
+				return Spec{}, fmt.Errorf("communication.compression.warmup_steps must be a number")
+			}
+			spec.Communication.Compression.WarmupSteps = steps
 		case section == "" && key == "entrypoint":
 			spec.Entrypoint = value
 		default:
@@ -146,6 +220,21 @@ func parse(file *os.File) (Spec, error) {
 		return Spec{}, err
 	}
 	return spec, nil
+}
+
+func validatePercent(value string) error {
+	if !strings.HasSuffix(value, "%") {
+		return fmt.Errorf("communication.compression.top_k must be a percent string")
+	}
+	number := strings.TrimSpace(strings.TrimSuffix(value, "%"))
+	percent, err := strconv.ParseFloat(number, 64)
+	if err != nil {
+		return fmt.Errorf("communication.compression.top_k must be numeric")
+	}
+	if percent <= 0 || percent > 100 {
+		return fmt.Errorf("communication.compression.top_k must be > 0%% and <= 100%%")
+	}
+	return nil
 }
 
 func stripComment(line string) string {

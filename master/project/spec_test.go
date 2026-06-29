@@ -25,6 +25,15 @@ workers:
 outputs:
   - model/model.pt
   - results/
+
+communication:
+  precision: fp16
+  compression:
+    type: topk
+    mode: per_layer
+    top_k: 5%
+    error_feedback: true
+    warmup_steps: 500
 `)
 
 	spec, err := LoadSpec(root)
@@ -45,6 +54,14 @@ outputs:
 	}
 	if len(spec.Outputs) != 2 || spec.Outputs[0] != "model/model.pt" || spec.Outputs[1] != "results/" {
 		t.Fatalf("unexpected outputs: %v", spec.Outputs)
+	}
+	if spec.Communication.Precision != "fp16" ||
+		spec.Communication.Compression.Type != "topk" ||
+		spec.Communication.Compression.Mode != "per_layer" ||
+		spec.Communication.Compression.TopK != "5%" ||
+		!spec.Communication.Compression.ErrorFeedback ||
+		spec.Communication.Compression.WarmupSteps != 500 {
+		t.Fatalf("unexpected communication config: %+v", spec.Communication)
 	}
 }
 

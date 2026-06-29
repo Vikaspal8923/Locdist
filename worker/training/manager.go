@@ -17,17 +17,19 @@ import (
 type Readiness interface{ IsReady(jobID string) bool }
 
 type jobConfig struct {
-	Entrypoint string `json:"entrypoint"`
+	Entrypoint    string          `json:"entrypoint"`
+	Communication json.RawMessage `json:"communication,omitempty"`
 }
 
 type process struct {
-	status       gradient.JobRunStatus
-	entrypoint   string
-	command      *exec.Cmd
-	done         chan struct{}
-	errorMessage string
-	logPath      string
-	exitCode     int
+	status        gradient.JobRunStatus
+	entrypoint    string
+	command       *exec.Cmd
+	done          chan struct{}
+	communication string
+	errorMessage  string
+	logPath       string
+	exitCode      int
 }
 
 type Result struct {
@@ -80,6 +82,9 @@ func (m *Manager) Arm(jobID string) Result {
 	}
 	logPath := filepath.Join(directory, "logs", "training.log")
 	m.processes[jobID] = &process{status: gradient.JobRunStatus_JOB_RUN_STATUS_ARMED, entrypoint: config.Entrypoint, logPath: logPath, exitCode: -1}
+	if len(config.Communication) > 0 {
+		m.processes[jobID].communication = string(config.Communication)
+	}
 	return Result{Status: gradient.JobRunStatus_JOB_RUN_STATUS_ARMED, LogPath: logPath}
 }
 
@@ -104,6 +109,9 @@ func (m *Manager) Release(jobID, workerID string) Result {
 	command := exec.Command(python, current.entrypoint)
 	command.Dir = directory
 	command.Env = append(os.Environ(), "LDGCC_JOB_ID="+jobID, "LDGCC_WORKER_ID="+workerID, "LDGCC_WORKER_HOST=127.0.0.1", "LDGCC_WORKER_PORT="+m.workerPort)
+	if current.communication != "" {
+		command.Env = append(command.Env, "LDGCC_COMMUNICATION="+current.communication)
+	}
 	command.Stdout, command.Stderr = log, log
 	if err := command.Start(); err != nil {
 		log.Close()

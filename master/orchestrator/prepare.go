@@ -95,6 +95,7 @@ func (p *Preparer) Prepare(projectRoot string) (*jobs.JobState, error) {
 		Entrypoint:      spec.Entrypoint,
 		DatasetPath:     spec.Dataset.Train,
 		Outputs:         append([]string(nil), spec.Outputs...),
+		Communication:   spec.Communication,
 		ExpectedWorkers: spec.Workers.Count,
 		Workers:         workersForJob,
 		Shards:          shardsForJob,

@@ -16,6 +16,23 @@ class RuntimeConfig:
 
     rpc_timeout_seconds: int
 
+    communication: "CommunicationConfig"
+
+
+@dataclass
+class CommunicationConfig:
+    precision: str = "fp32"
+
+    compression_type: str = "none"
+
+    compression_mode: str = "global"
+
+    top_k_percent: float = 5.0
+
+    error_feedback: bool = True
+
+    warmup_steps: int = 0
+
 @dataclass
 class ParameterMetadata:
     """
@@ -41,6 +58,12 @@ class GradientChunk:
     data: bytes | None
 
     byte_size: int
+
+    data_dtype: str | None = None
+
+    encoding: str = "dense"
+
+    indices: list[int] | None = None
 
 
 @dataclass

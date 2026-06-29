@@ -1929,6 +1929,82 @@ The extension contributes:
 
 ---
 
+# LDGCC Phase 16: Communication Compression
+
+Phase 16 adds the first performance-oriented gradient communication path.
+`ldgcc.yml` can now carry a `communication` block:
+
+```yaml
+communication:
+  precision: fp16
+  compression:
+    type: topk
+    mode: global
+    top_k: 5%
+    error_feedback: true
+    warmup_steps: 0
+```
+
+Master validates and packages this config into each Worker's `job_config.json`.
+Worker injects it into the training process as `LDGCC_COMMUNICATION`. Runtime
+uses it to choose dense, global top-k, or per-layer top-k communication.
+
+The protocol now marks every gradient chunk with payload dtype, encoding mode,
+and sparse indices for top-k chunks. Master aggregation reconstructs sparse
+chunks safely, checks index bounds and duplicate indices, averages in float32,
+and returns dense averaged gradients.
+
+Defaults:
+
+```text
+precision: fp32
+compression.type: none
+top-k mode default: global
+top-k default: 5%
+error feedback: required for top-k
+warmup_steps: 0
+```
+
+---
+
+# LDGCC Phase 17: Sparse Aggregated Response
+
+Phase 17 completes the top-k communication path by compressing the return trip
+from Master back to Runtime.
+
+```text
+Runtime -> Worker -> Master
+    sparse top-k upload
+
+Master -> Worker -> Runtime
+    sparse union response
+```
+
+When Workers submit top-k chunks, each Worker may send different indices. Master
+averages over the union of submitted indices and returns only that sparse union.
+Missing indices from a Worker count as zero for that round, matching the Phase
+16 dense reconstruction semantics.
+
+Dense warmup and `compression.type: none` still return dense gradients.
+
+For a 50M parameter model with `top_k: 5%` and fp16 values, the rough shape is:
+
+```text
+Before Phase 17:
+  upload   ~25 MB+
+  download ~100 MB
+
+After Phase 17:
+  upload   ~25 MB+
+  download ~25 MB+
+```
+
+Runtime applies sparse responses by creating a zero gradient tensor and filling
+only returned indices. Dropped local values remain protected by residual/error
+feedback.
+
+---
+
 # Current Status
 
 ```text
@@ -1987,6 +2063,12 @@ LDGCC Phase 13
     ✓ COMPLETE
 
 LDGCC Phase 14
+    ✓ COMPLETE
+
+LDGCC Phase 16
+    ✓ COMPLETE
+
+LDGCC Phase 17
     ✓ COMPLETE
 
 Job Spec Foundation

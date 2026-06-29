@@ -1,6 +1,8 @@
 package aggregator
 
 import (
+	"encoding/binary"
+	"math"
 	"testing"
 	"time"
 
@@ -36,4 +38,83 @@ func TestAbortJobReleasesBarrierAndResetsRound(t *testing.T) {
 	if service.CurrentRound() != 1 {
 		t.Fatalf("round = %d", service.CurrentRound())
 	}
+}
+
+func TestAggregateSparseTopKReturnsSparseUnionAverage(t *testing.T) {
+	service := New()
+	chunkA := sparseChunk([]int64{0, 2}, []float32{2, 6})
+	chunkB := sparseChunk([]int64{1, 2}, []float32{4, 10})
+
+	done := make(chan *gradient.AggregatedGradientResponse, 2)
+	errs := make(chan error, 2)
+	go func() {
+		response, err := service.Aggregate(submission("worker-a", chunkA), 2)
+		if err != nil {
+			errs <- err
+			return
+		}
+		done <- response
+	}()
+	go func() {
+		response, err := service.Aggregate(submission("worker-b", chunkB), 2)
+		if err != nil {
+			errs <- err
+			return
+		}
+		done <- response
+	}()
+
+	var response *gradient.AggregatedGradientResponse
+	for index := 0; index < 2; index++ {
+		select {
+		case err := <-errs:
+			t.Fatalf("aggregate sparse: %v", err)
+		case response = <-done:
+		case <-time.After(time.Second):
+			t.Fatal("sparse aggregation timed out")
+		}
+	}
+
+	chunk := response.GetChunks()[0]
+	if chunk.GetEncoding() != "topk" {
+		t.Fatalf("expected sparse response, got %q", chunk.GetEncoding())
+	}
+	if got, want := chunk.GetIndices(), []int64{0, 1, 2}; len(got) != len(want) || got[0] != want[0] || got[1] != want[1] || got[2] != want[2] {
+		t.Fatalf("indices = %v, expected %v", got, want)
+	}
+	values := decodeTestFloat32(chunk.GetData())
+	expected := []float32{1, 2, 8}
+	for index := range expected {
+		if values[index] != expected[index] {
+			t.Fatalf("value[%d] = %v, expected %v", index, values[index], expected[index])
+		}
+	}
+}
+
+func submission(workerID string, chunk *gradient.GradientChunk) *gradient.GradientSubmission {
+	return &gradient.GradientSubmission{RuntimeVersion: 1, JobId: "job-1", WorkerId: workerID, Chunks: []*gradient.GradientChunk{chunk}}
+}
+
+func sparseChunk(indices []int64, values []float32) *gradient.GradientChunk {
+	data := make([]byte, len(values)*4)
+	for index, value := range values {
+		binary.LittleEndian.PutUint32(data[index*4:index*4+4], math.Float32bits(value))
+	}
+	return &gradient.GradientChunk{
+		Metadata:  &gradient.ParameterMetadata{Name: "p", Shape: []int64{4}, Numel: 4, Dtype: "torch.float32"},
+		HasGrad:   true,
+		Data:      data,
+		ByteSize:  uint64(len(data)),
+		DataDtype: "torch.float32",
+		Encoding:  "topk",
+		Indices:   indices,
+	}
+}
+
+func decodeTestFloat32(data []byte) []float32 {
+	values := make([]float32, len(data)/4)
+	for index := range values {
+		values[index] = math.Float32frombits(binary.LittleEndian.Uint32(data[index*4 : index*4+4]))
+	}
+	return values
 }

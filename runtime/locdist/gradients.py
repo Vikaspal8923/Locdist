@@ -100,10 +100,18 @@ def apply_gradient_chunks(
             parameter.grad = None
             continue
 
+        if chunk.encoding == "topk":
+            parameter.grad = _sparse_chunk_to_tensor(
+                parameter,
+                chunk,
+            )
+            continue
+
         tensor = torch.frombuffer(
             bytearray(chunk.data),
             dtype=TORCH_DTYPE_MAP[
-                chunk.metadata.dtype
+                chunk.data_dtype
+                or chunk.metadata.dtype
             ],
         )
 
@@ -114,5 +122,43 @@ def apply_gradient_chunks(
         parameter.grad = (
             tensor
             .clone()
-            .to(parameter.device)
+            .to(device=parameter.device, dtype=parameter.dtype)
         )
+
+
+def _sparse_chunk_to_tensor(
+    parameter: torch.nn.Parameter,
+    chunk: GradientChunk,
+) -> torch.Tensor:
+    if chunk.data is None:
+        raise ValueError("Sparse gradient chunk has no data")
+    indices = chunk.indices or []
+    dtype = TORCH_DTYPE_MAP[
+        chunk.data_dtype
+        or chunk.metadata.dtype
+    ]
+    values = torch.frombuffer(
+        bytearray(chunk.data),
+        dtype=dtype,
+    )
+    if values.numel() != len(indices):
+        raise ValueError(
+            "Sparse gradient index/value count mismatch"
+        )
+    if len(set(indices)) != len(indices):
+        raise ValueError("Duplicate sparse gradient index")
+    if any(index < 0 or index >= chunk.metadata.numel for index in indices):
+        raise ValueError("Sparse gradient index out of bounds")
+    flat = torch.zeros(
+        chunk.metadata.numel,
+        dtype=values.dtype,
+    )
+    if indices:
+        flat[
+            torch.tensor(indices, dtype=torch.long)
+        ] = values
+    return (
+        flat
+        .reshape(chunk.metadata.shape)
+        .to(device=parameter.device, dtype=parameter.dtype)
+    )

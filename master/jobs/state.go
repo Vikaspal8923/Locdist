@@ -3,6 +3,7 @@ package jobs
 import (
 	"encoding/json"
 	gradient "github.com/Vikaspal8923/Locdist/master/generated/gradient"
+	"github.com/Vikaspal8923/Locdist/master/project"
 	"time"
 )
 
@@ -22,15 +23,16 @@ type JobState struct {
 
 	ExpectedWorkers int `json:"expected_workers"`
 
-	Name        string                 `json:"name"`
-	ProjectRoot string                 `json:"project_root"`
-	Entrypoint  string                 `json:"entrypoint"`
-	DatasetPath string                 `json:"dataset_path"`
-	Outputs     []string               `json:"outputs,omitempty"`
-	Workers     []WorkerAssignment     `json:"workers"`
-	Shards      []ShardAssignment      `json:"shards"`
-	Setup       map[string]WorkerSetup `json:"setup"`
-	Run         map[string]WorkerRun   `json:"run"`
+	Name          string                    `json:"name"`
+	ProjectRoot   string                    `json:"project_root"`
+	Entrypoint    string                    `json:"entrypoint"`
+	DatasetPath   string                    `json:"dataset_path"`
+	Outputs       []string                  `json:"outputs,omitempty"`
+	Communication project.CommunicationSpec `json:"communication,omitempty"`
+	Workers       []WorkerAssignment        `json:"workers"`
+	Shards        []ShardAssignment         `json:"shards"`
+	Setup         map[string]WorkerSetup    `json:"setup"`
+	Run           map[string]WorkerRun      `json:"run"`
 
 	Status Status `json:"status"`
 }

@@ -209,6 +209,25 @@ func averageChunks(
 	if !reference.HasGrad {
 		result.Data = nil
 		result.ByteSize = 0
+		result.Encoding = "dense"
+		result.Indices = nil
+		return result, nil
+	}
+
+	if usesCompression(chunks) {
+		averagedData, indices, err := averageSparseResponse(
+			reference.Metadata.Dtype,
+			reference.Metadata.Numel,
+			chunks,
+		)
+		if err != nil {
+			return nil, err
+		}
+		result.Data = averagedData
+		result.ByteSize = uint64(len(averagedData))
+		result.DataDtype = responseDataDtype(reference)
+		result.Encoding = "topk"
+		result.Indices = indices
 		return result, nil
 	}
 
@@ -223,8 +242,20 @@ func averageChunks(
 
 	result.Data = averagedData
 	result.ByteSize = uint64(len(averagedData))
+	if reference.GetDataDtype() != "" {
+		result.DataDtype = reference.GetDataDtype()
+	}
+	result.Encoding = "dense"
+	result.Indices = nil
 
 	return result, nil
+}
+
+func responseDataDtype(chunk *gradient.GradientChunk) string {
+	if chunk.GetDataDtype() != "" {
+		return chunk.GetDataDtype()
+	}
+	return chunk.GetMetadata().GetDtype()
 }
 
 func averageData(
@@ -232,6 +263,9 @@ func averageData(
 	numel int64,
 	chunks []*gradient.GradientChunk,
 ) ([]byte, error) {
+	if usesCompression(chunks) || chunks[0].GetDataDtype() != "" {
+		return averageCompressedData(dtype, numel, chunks)
+	}
 
 	switch dtype {
 	case "torch.float16":
@@ -248,6 +282,228 @@ func averageData(
 			dtype,
 		)
 	}
+}
+
+func usesCompression(chunks []*gradient.GradientChunk) bool {
+	for _, chunk := range chunks {
+		if chunk.GetEncoding() != "" && chunk.GetEncoding() != "dense" {
+			return true
+		}
+	}
+	return false
+}
+
+func averageCompressedData(
+	metadataDtype string,
+	numel int64,
+	chunks []*gradient.GradientChunk,
+) ([]byte, error) {
+	outputDtype := chunks[0].GetDataDtype()
+	if outputDtype == "" {
+		outputDtype = metadataDtype
+	}
+	sums := make([]float32, int(numel))
+	for _, chunk := range chunks {
+		values, err := decodeChunkFloat32(metadataDtype, numel, chunk)
+		if err != nil {
+			return nil, err
+		}
+		for index, value := range values {
+			sums[index] += value
+		}
+	}
+	for index := range sums {
+		sums[index] /= float32(len(chunks))
+	}
+	return encodeFloat32Values(outputDtype, sums)
+}
+
+func averageSparseResponse(
+	metadataDtype string,
+	numel int64,
+	chunks []*gradient.GradientChunk,
+) ([]byte, []int64, error) {
+	outputDtype := responseDataDtype(chunks[0])
+	sums := make(map[int64]float32)
+	for _, chunk := range chunks {
+		if encoding := chunk.GetEncoding(); encoding != "topk" {
+			return nil, nil, fmt.Errorf("sparse response requires topk chunks, got %q", encoding)
+		}
+		dataDtype := chunk.GetDataDtype()
+		if dataDtype == "" {
+			dataDtype = metadataDtype
+		}
+		elementSize, err := dtypeSize(dataDtype)
+		if err != nil {
+			return nil, nil, err
+		}
+		indices := chunk.GetIndices()
+		if len(chunk.GetData()) != len(indices)*elementSize || int(chunk.GetByteSize()) != len(indices)*elementSize {
+			return nil, nil, fmt.Errorf("sparse gradient data size mismatch")
+		}
+		seen := make(map[int64]struct{}, len(indices))
+		for position, rawIndex := range indices {
+			if rawIndex < 0 || rawIndex >= numel {
+				return nil, nil, fmt.Errorf("sparse gradient index out of bounds")
+			}
+			if _, exists := seen[rawIndex]; exists {
+				return nil, nil, fmt.Errorf("duplicate sparse gradient index")
+			}
+			seen[rawIndex] = struct{}{}
+			value, err := decodeFloatAt(dataDtype, chunk.GetData(), position)
+			if err != nil {
+				return nil, nil, err
+			}
+			sums[rawIndex] += value
+		}
+	}
+	indices := make([]int64, 0, len(sums))
+	for index := range sums {
+		indices = append(indices, index)
+	}
+	sort.Slice(indices, func(left, right int) bool { return indices[left] < indices[right] })
+	values := make([]float32, len(indices))
+	for position, index := range indices {
+		values[position] = sums[index] / float32(len(chunks))
+	}
+	data, err := encodeFloat32Values(outputDtype, values)
+	if err != nil {
+		return nil, nil, err
+	}
+	return data, indices, nil
+}
+
+func decodeChunkFloat32(
+	metadataDtype string,
+	numel int64,
+	chunk *gradient.GradientChunk,
+) ([]float32, error) {
+	dataDtype := chunk.GetDataDtype()
+	if dataDtype == "" {
+		dataDtype = metadataDtype
+	}
+	encoding := chunk.GetEncoding()
+	if encoding == "" {
+		encoding = "dense"
+	}
+	switch encoding {
+	case "dense":
+		return decodeDenseFloat32(dataDtype, numel, chunk)
+	case "topk":
+		return decodeSparseFloat32(dataDtype, numel, chunk)
+	default:
+		return nil, fmt.Errorf("unsupported gradient encoding %q", encoding)
+	}
+}
+
+func decodeDenseFloat32(
+	dataDtype string,
+	numel int64,
+	chunk *gradient.GradientChunk,
+) ([]float32, error) {
+	elementSize, err := dtypeSize(dataDtype)
+	if err != nil {
+		return nil, err
+	}
+	if len(chunk.GetData()) != int(numel)*elementSize || int(chunk.GetByteSize()) != int(numel)*elementSize {
+		return nil, fmt.Errorf("gradient data size mismatch")
+	}
+	values := make([]float32, int(numel))
+	for index := 0; index < int(numel); index++ {
+		value, err := decodeFloatAt(dataDtype, chunk.GetData(), index)
+		if err != nil {
+			return nil, err
+		}
+		values[index] = value
+	}
+	return values, nil
+}
+
+func decodeSparseFloat32(
+	dataDtype string,
+	numel int64,
+	chunk *gradient.GradientChunk,
+) ([]float32, error) {
+	elementSize, err := dtypeSize(dataDtype)
+	if err != nil {
+		return nil, err
+	}
+	indices := chunk.GetIndices()
+	if len(chunk.GetData()) != len(indices)*elementSize || int(chunk.GetByteSize()) != len(indices)*elementSize {
+		return nil, fmt.Errorf("sparse gradient data size mismatch")
+	}
+	values := make([]float32, int(numel))
+	seen := make(map[int64]struct{}, len(indices))
+	for position, rawIndex := range indices {
+		if rawIndex < 0 || rawIndex >= numel {
+			return nil, fmt.Errorf("sparse gradient index out of bounds")
+		}
+		if _, exists := seen[rawIndex]; exists {
+			return nil, fmt.Errorf("duplicate sparse gradient index")
+		}
+		seen[rawIndex] = struct{}{}
+		value, err := decodeFloatAt(dataDtype, chunk.GetData(), position)
+		if err != nil {
+			return nil, err
+		}
+		values[int(rawIndex)] = value
+	}
+	return values, nil
+}
+
+func dtypeSize(dtype string) (int, error) {
+	switch dtype {
+	case "torch.float16", "torch.bfloat16":
+		return 2, nil
+	case "torch.float32":
+		return 4, nil
+	case "torch.float64":
+		return 8, nil
+	default:
+		return 0, fmt.Errorf("unsupported gradient dtype %q", dtype)
+	}
+}
+
+func decodeFloatAt(dtype string, data []byte, index int) (float32, error) {
+	switch dtype {
+	case "torch.float16":
+		offset := index * 2
+		return float16ToFloat32(binary.LittleEndian.Uint16(data[offset : offset+2])), nil
+	case "torch.bfloat16":
+		offset := index * 2
+		return bfloat16ToFloat32(binary.LittleEndian.Uint16(data[offset : offset+2])), nil
+	case "torch.float32":
+		offset := index * 4
+		return math.Float32frombits(binary.LittleEndian.Uint32(data[offset : offset+4])), nil
+	case "torch.float64":
+		offset := index * 8
+		return float32(math.Float64frombits(binary.LittleEndian.Uint64(data[offset : offset+8]))), nil
+	default:
+		return 0, fmt.Errorf("unsupported gradient dtype %q", dtype)
+	}
+}
+
+func encodeFloat32Values(dtype string, values []float32) ([]byte, error) {
+	elementSize, err := dtypeSize(dtype)
+	if err != nil {
+		return nil, err
+	}
+	result := make([]byte, len(values)*elementSize)
+	for index, value := range values {
+		switch dtype {
+		case "torch.float16":
+			binary.LittleEndian.PutUint16(result[index*2:index*2+2], float32ToFloat16(value))
+		case "torch.bfloat16":
+			binary.LittleEndian.PutUint16(result[index*2:index*2+2], float32ToBFloat16(value))
+		case "torch.float32":
+			binary.LittleEndian.PutUint32(result[index*4:index*4+4], math.Float32bits(value))
+		case "torch.float64":
+			binary.LittleEndian.PutUint64(result[index*8:index*8+8], math.Float64bits(float64(value)))
+		default:
+			return nil, fmt.Errorf("unsupported gradient dtype %q", dtype)
+		}
+	}
+	return result, nil
 }
 
 func averageFloat32(

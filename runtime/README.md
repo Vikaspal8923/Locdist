@@ -701,3 +701,68 @@ fallback for manual development and testing. Runtime never receives or connects
 to the Master address directly.
 
 ---
+
+# Phase 16: Communication Compression
+
+Runtime supports LDGCC V1 communication compression from `ldgcc.yml` through the
+Worker-injected `LDGCC_COMMUNICATION` environment variable.
+
+```yaml
+communication:
+  precision: fp16
+  compression:
+    type: topk
+    mode: per_layer
+    top_k: 5%
+    error_feedback: true
+    warmup_steps: 500
+```
+
+Defaults:
+
+```text
+precision: fp32
+compression.type: none
+
+When compression.type = topk:
+  mode: global
+  top_k: 5%
+  error_feedback: true
+  warmup_steps: 0
+```
+
+Top-k mode:
+
+* `global`: choose the strongest gradients across all parameters.
+* `per_layer`: choose the strongest gradients separately for each parameter.
+* If both legacy global/per-layer values appear, per-layer wins.
+
+Runtime owns FP16/fp32 payload encoding, global and per-layer top-k selection,
+residual/error-feedback buffers, warmup dense syncs, and restoring aggregated
+gradients into the model.
+
+Master owns sparse-aware averaging and returns dense averaged chunks. Worker
+only transports `LDGCC_COMMUNICATION` and gradient messages.
+
+For top-k, `error_feedback` must be true in V1. Gradient clipping and optimizer
+momentum correction remain user training-loop responsibilities; user code must
+call `locdist.sync_gradients(model)` before `optimizer.step()`.
+
+---
+
+# Phase 17: Sparse Aggregated Response
+
+Runtime can now receive sparse top-k responses from Master. For sparse response
+chunks, Runtime creates a zero gradient tensor, fills the returned indices, and
+then writes that gradient back into the model parameter.
+
+This keeps both directions compressed:
+
+```text
+Runtime upload: sparse top-k
+Runtime download: sparse top-k union from Master
+```
+
+Dense responses are still supported for no-compression and warmup syncs.
+Runtime validates sparse response size, duplicate indices, and index bounds
+before applying gradients.

@@ -48,6 +48,18 @@ def package_to_submission_proto(
             chunk.byte_size
         )
 
+        proto_chunk.data_dtype = (
+            chunk.data_dtype or ""
+        )
+
+        proto_chunk.encoding = (
+            chunk.encoding
+        )
+
+        proto_chunk.indices.extend(
+            chunk.indices or []
+        )
+
         if chunk.data is not None:
             proto_chunk.data = chunk.data
 
@@ -80,6 +92,15 @@ def submission_proto_to_package(
                 else None
             ),
             byte_size=proto_chunk.byte_size,
+            data_dtype=(
+                proto_chunk.data_dtype
+                or None
+            ),
+            encoding=(
+                proto_chunk.encoding
+                or "dense"
+            ),
+            indices=list(proto_chunk.indices),
         )
 
         chunks.append(chunk)
@@ -118,6 +139,15 @@ def response_proto_to_package(
                 else None
             ),
             byte_size=proto_chunk.byte_size,
+            data_dtype=(
+                proto_chunk.data_dtype
+                or None
+            ),
+            encoding=(
+                proto_chunk.encoding
+                or "dense"
+            ),
+            indices=list(proto_chunk.indices),
         )
 
         chunks.append(chunk)
@@ -180,6 +210,18 @@ def package_to_response_proto(
 
         proto_chunk.byte_size = (
             chunk.byte_size
+        )
+
+        proto_chunk.data_dtype = (
+            chunk.data_dtype or ""
+        )
+
+        proto_chunk.encoding = (
+            chunk.encoding
+        )
+
+        proto_chunk.indices.extend(
+            chunk.indices or []
         )
 
         if chunk.data is not None:

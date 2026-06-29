@@ -2,7 +2,7 @@ import json
 import os
 from pathlib import Path
 
-from locdist.models import RuntimeConfig
+from locdist.models import RuntimeConfig, CommunicationConfig
 from locdist.exceptions import ConfigError
 
 
@@ -51,6 +51,13 @@ def load_config(
         if value is not None:
             data[field_name] = value
 
+    communication_env = os.environ.get("LDGCC_COMMUNICATION")
+    if communication_env:
+        try:
+            data["communication"] = json.loads(communication_env)
+        except json.JSONDecodeError as e:
+            raise ConfigError("LDGCC_COMMUNICATION must be JSON") from e
+
     if "worker_port" in data and isinstance(data["worker_port"], str):
         try:
             data["worker_port"] = int(data["worker_port"])
@@ -85,8 +92,10 @@ def load_config(
             )
         )
 
+    optional_fields = {"communication"}
+
     unknown_fields = (
-        actual_fields - required_fields
+        actual_fields - required_fields - optional_fields
     )
 
     if unknown_fields:
@@ -197,6 +206,10 @@ def load_config(
     # Build RuntimeConfig
     # --------------------------------------------------
 
+    communication = parse_communication_config(
+        data.get("communication", {})
+    )
+
     return RuntimeConfig(
         runtime_version=data["runtime_version"],
         job_id=data["job_id"],
@@ -206,4 +219,82 @@ def load_config(
         rpc_timeout_seconds=data[
             "rpc_timeout_seconds"
         ],
+        communication=communication,
     )
+
+
+def parse_communication_config(value) -> CommunicationConfig:
+    if value is None:
+        value = {}
+    if not isinstance(value, dict):
+        raise ConfigError("communication must be an object")
+
+    precision = value.get("precision", "fp32")
+    if precision not in {"fp32", "fp16"}:
+        raise ConfigError("communication.precision must be fp32 or fp16")
+
+    compression = value.get("compression", "none")
+    if isinstance(compression, str):
+        compression_data = {"type": compression}
+    elif isinstance(compression, dict):
+        compression_data = dict(compression)
+    else:
+        raise ConfigError("communication.compression must be a string or object")
+
+    compression_type = compression_data.get("type", "none")
+    if compression_type not in {"none", "topk"}:
+        raise ConfigError("communication.compression.type must be none or topk")
+
+    mode = compression_data.get("mode", "global")
+    if "per_layer_top_k" in compression_data:
+        mode = "per_layer"
+        top_k = compression_data["per_layer_top_k"]
+    elif "global_top_k" in compression_data:
+        mode = "global"
+        top_k = compression_data["global_top_k"]
+    else:
+        top_k = compression_data.get("top_k", "5%")
+
+    if mode not in {"global", "per_layer"}:
+        raise ConfigError("communication.compression.mode must be global or per_layer")
+
+    top_k_percent = parse_percent(top_k)
+
+    error_feedback = compression_data.get("error_feedback", True)
+    if not isinstance(error_feedback, bool):
+        raise ConfigError("communication.compression.error_feedback must be a boolean")
+    if compression_type == "topk" and not error_feedback:
+        raise ConfigError("communication.compression.error_feedback must be true for topk")
+
+    warmup_steps = compression_data.get("warmup_steps", 0)
+    if not isinstance(warmup_steps, int) or warmup_steps < 0:
+        raise ConfigError("communication.compression.warmup_steps must be a non-negative integer")
+
+    return CommunicationConfig(
+        precision=precision,
+        compression_type=compression_type,
+        compression_mode=mode,
+        top_k_percent=top_k_percent,
+        error_feedback=error_feedback,
+        warmup_steps=warmup_steps,
+    )
+
+
+def parse_percent(value) -> float:
+    if isinstance(value, str):
+        text = value.strip()
+        if not text.endswith("%"):
+            raise ConfigError("communication.compression.top_k must be a percent string")
+        text = text[:-1].strip()
+        try:
+            percent = float(text)
+        except ValueError as e:
+            raise ConfigError("communication.compression.top_k must be numeric") from e
+    elif isinstance(value, (int, float)):
+        percent = float(value)
+    else:
+        raise ConfigError("communication.compression.top_k must be a percent")
+
+    if percent <= 0 or percent > 100:
+        raise ConfigError("communication.compression.top_k must be > 0% and <= 100%")
+    return percent
