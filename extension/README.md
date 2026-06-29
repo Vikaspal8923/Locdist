@@ -1,10 +1,13 @@
 # LDGCC Studio Extension
 
-Phase 14 adds the VS Code control surface for LDGCC V1.
+## LDGCC Phase 14: VS Code Extension
+
+Phase 14 introduces `extension/`, the VS Code control surface for LDGCC V1.
 
 The extension runs on the Brain Laptop. It starts or reuses the local Master,
-reads `master-session.json`, authenticates with the Phase 13 localhost API, and
-drives the full job flow from the active VS Code workspace.
+reads `master-session.json`, authenticates with the Phase 13 localhost API,
+subscribes to live events, and drives the full job flow from the active VS Code
+workspace.
 
 ## User Flow
 
