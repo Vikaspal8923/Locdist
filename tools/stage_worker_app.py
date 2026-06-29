@@ -42,6 +42,7 @@ def main() -> int:
 
     write_readme(output, target)
     write_launcher(output, target)
+    write_installer(output, target)
     write_manifest(output, target)
 
     print(f"Worker App stage: {output}", flush=True)
@@ -50,7 +51,9 @@ def main() -> int:
 
 def write_readme(output: Path, target: dict) -> None:
     launcher = "run-worker-app.bat" if target["node_platform"] == "win32" else "run-worker-app.sh"
+    installer = "install-worker-app.bat" if target["node_platform"] == "win32" else "install-worker-app.sh"
     run_block = f"{launcher}" if target["node_platform"] == "win32" else f"./{launcher}"
+    install_block = f"{installer}" if target["node_platform"] == "win32" else f"./{installer}"
     default_data_dir = "%USERPROFILE%\\.ldgcc\\worker" if target["node_platform"] == "win32" else "~/.ldgcc/worker"
     override_block = (
         "set LDGCC_WORKER_DATA_DIR=C:\\\\ldgcc-worker\r\nrun-worker-app.bat"
@@ -62,7 +65,12 @@ def write_readme(output: Path, target: dict) -> None:
         "This package is for the worker laptop. It starts the local LDGCC Worker App,\n"
         "which lets the user make the machine discoverable, accept pairing, reset a\n"
         "previous Master connection, and view Worker settings.\n\n"
-        "## Run\n\n"
+        "## Install\n\n"
+        "```bash\n"
+        f"{install_block}\n"
+        "```\n\n"
+        "After install, open `LDGCC Worker` from the desktop shortcut or app menu.\n\n"
+        "## Portable Run\n\n"
         "```bash\n"
         f"{run_block}\n"
         "```\n\n"
@@ -126,6 +134,88 @@ def write_launcher(output: Path, target: dict) -> None:
     launcher.chmod(0o755)
 
 
+def write_installer(output: Path, target: dict) -> None:
+    platform_dir = target["platform_key"]
+    if target["node_platform"] == "win32":
+        installer = output / "install-worker-app.bat"
+        installer.write_text(
+            "@echo off\r\n"
+            "setlocal\r\n"
+            "set SRC_DIR=%~dp0\r\n"
+            "set INSTALL_DIR=%LOCALAPPDATA%\\LDGCC\\WorkerApp\r\n"
+            "if not exist \"%INSTALL_DIR%\" mkdir \"%INSTALL_DIR%\"\r\n"
+            "xcopy \"%SRC_DIR%bin\" \"%INSTALL_DIR%\\bin\" /E /I /Y >nul\r\n"
+            "copy \"%SRC_DIR%README.md\" \"%INSTALL_DIR%\\README.md\" >nul\r\n"
+            "copy \"%SRC_DIR%manifest.json\" \"%INSTALL_DIR%\\manifest.json\" >nul\r\n"
+            "copy \"%SRC_DIR%run-worker-app.bat\" \"%INSTALL_DIR%\\run-worker-app.bat\" >nul\r\n"
+            "powershell -NoProfile -ExecutionPolicy Bypass -Command \"$ErrorActionPreference='Stop'; "
+            "$install=$env:LOCALAPPDATA+'\\LDGCC\\WorkerApp'; "
+            "$desktop=[Environment]::GetFolderPath('Desktop'); "
+            "$start=[Environment]::GetFolderPath('StartMenu')+'\\Programs\\LDGCC'; "
+            "New-Item -ItemType Directory -Force -Path $start | Out-Null; "
+            "$shell=New-Object -ComObject WScript.Shell; "
+            "$desktopShortcut=$shell.CreateShortcut($desktop+'\\LDGCC Worker.lnk'); "
+            "$desktopShortcut.TargetPath=$install+'\\run-worker-app.bat'; "
+            "$desktopShortcut.WorkingDirectory=$install; "
+            f"$desktopShortcut.IconLocation=$install+'\\bin\\{platform_dir}\\{executable_name('ldgcc-worker-app', target)}'; "
+            "$desktopShortcut.Save(); "
+            "$menuShortcut=$shell.CreateShortcut($start+'\\LDGCC Worker.lnk'); "
+            "$menuShortcut.TargetPath=$install+'\\run-worker-app.bat'; "
+            "$menuShortcut.WorkingDirectory=$install; "
+            f"$menuShortcut.IconLocation=$install+'\\bin\\{platform_dir}\\{executable_name('ldgcc-worker-app', target)}'; "
+            "$menuShortcut.Save();\"\r\n"
+            "echo LDGCC Worker installed.\r\n"
+            "echo Open LDGCC Worker from Desktop or Start Menu.\r\n",
+            encoding="utf-8",
+        )
+        return
+
+    installer = output / "install-worker-app.sh"
+    installer.write_text(
+        "#!/usr/bin/env sh\n"
+        "set -eu\n"
+        "SRC_DIR=$(CDPATH= cd -- \"$(dirname -- \"$0\")\" && pwd)\n"
+        "INSTALL_DIR=${LDGCC_WORKER_INSTALL_DIR:-$HOME/.local/share/ldgcc-worker-app}\n"
+        "BIN_DIR=${LDGCC_WORKER_BIN_DIR:-$HOME/.local/bin}\n"
+        "APP_DIR=${XDG_DATA_HOME:-$HOME/.local/share}/applications\n"
+        "mkdir -p \"$INSTALL_DIR\" \"$BIN_DIR\" \"$APP_DIR\"\n"
+        "cp -R \"$SRC_DIR/bin\" \"$INSTALL_DIR/\"\n"
+        "cp \"$SRC_DIR/README.md\" \"$INSTALL_DIR/README.md\"\n"
+        "cp \"$SRC_DIR/manifest.json\" \"$INSTALL_DIR/manifest.json\"\n"
+        "cp \"$SRC_DIR/run-worker-app.sh\" \"$INSTALL_DIR/run-worker-app.sh\"\n"
+        "cat > \"$BIN_DIR/ldgcc-worker-app\" <<'LAUNCHER'\n"
+        "#!/usr/bin/env sh\n"
+        "set -eu\n"
+        "APP_DIR=${LDGCC_WORKER_INSTALL_DIR:-$HOME/.local/share/ldgcc-worker-app}\n"
+        "DATA_DIR=${LDGCC_WORKER_DATA_DIR:-$HOME/.ldgcc/worker}\n"
+        "CONFIG_PATH=${LDGCC_WORKER_CONFIG:-$DATA_DIR/worker_config.json}\n"
+        "mkdir -p \"$DATA_DIR\"\n"
+        f"\"$APP_DIR/bin/{platform_dir}/{executable_name('ldgcc-worker-app', target)}\" --config \"$CONFIG_PATH\" --data-dir \"$DATA_DIR\" &\n"
+        "worker_pid=$!\n"
+        "sleep 1\n"
+        "if command -v xdg-open >/dev/null 2>&1; then\n"
+        "  xdg-open http://127.0.0.1:5050 >/dev/null 2>&1 || true\n"
+        "fi\n"
+        "wait \"$worker_pid\"\n"
+        "LAUNCHER\n"
+        "chmod +x \"$BIN_DIR/ldgcc-worker-app\"\n"
+        "cat > \"$APP_DIR/ldgcc-worker.desktop\" <<DESKTOP\n"
+        "[Desktop Entry]\n"
+        "Type=Application\n"
+        "Name=LDGCC Worker\n"
+        "Comment=Start the LDGCC Worker App\n"
+        "Exec=$BIN_DIR/ldgcc-worker-app\n"
+        "Terminal=false\n"
+        "Categories=Development;Utility;\n"
+        "DESKTOP\n"
+        "chmod +x \"$APP_DIR/ldgcc-worker.desktop\"\n"
+        "echo \"LDGCC Worker installed.\"\n"
+        "echo \"Open LDGCC Worker from your application menu, or run: $BIN_DIR/ldgcc-worker-app\"\n",
+        encoding="utf-8",
+    )
+    installer.chmod(0o755)
+
+
 def write_manifest(output: Path, target: dict) -> None:
     platform_dir = target["platform_key"]
     default_data_dir = "%USERPROFILE%\\.ldgcc\\worker" if target["node_platform"] == "win32" else "~/.ldgcc/worker"
@@ -137,6 +227,7 @@ def write_manifest(output: Path, target: dict) -> None:
             "worker": f"bin/{platform_dir}/{executable_name('ldgcc-worker', target)}",
         },
         "launcher": "run-worker-app.bat" if target["node_platform"] == "win32" else "run-worker-app.sh",
+        "installer": "install-worker-app.bat" if target["node_platform"] == "win32" else "install-worker-app.sh",
         "default_data_dir": default_data_dir,
     }
     (output / "manifest.json").write_text(json.dumps(manifest, indent=2) + "\n", encoding="utf-8")

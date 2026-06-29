@@ -265,3 +265,42 @@ Stage one Worker package directly:
 python3 tools/stage_worker_app.py --target linux-x64
 python3 tools/stage_worker_app.py --target windows-x64
 ```
+
+---
+
+# LDGCC Phase 26: Worker Native Installer / Desktop Launcher
+
+Phase 26 adds install scripts to the Worker packages so users do not need to run
+the raw launcher every time.
+
+Linux Worker package:
+
+```text
+install-worker-app.sh
+    -> installs files under ~/.local/share/ldgcc-worker-app
+    -> creates ~/.local/bin/ldgcc-worker-app
+    -> creates LDGCC Worker desktop/app-menu entry
+```
+
+Windows Worker package:
+
+```text
+install-worker-app.bat
+    -> installs files under %LOCALAPPDATA%\LDGCC\WorkerApp
+    -> creates Desktop shortcut
+    -> creates Start Menu shortcut
+```
+
+User flow after this phase:
+
+```text
+Download Worker package
+    -> extract
+    -> run install script once
+    -> open LDGCC Worker like a normal app
+    -> click Start Worker
+    -> accept pairing request
+```
+
+The raw `run-worker-app.sh` and `run-worker-app.bat` files remain available as
+portable/debug launchers.

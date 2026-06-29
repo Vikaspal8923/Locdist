@@ -2044,6 +2044,33 @@ Worker 1 and Windows Worker 2 in the same LAN job.
 
 ---
 
+# LDGCC Phase 26: Worker Native Installer / Desktop Launcher
+
+Worker packages now include OS-specific install scripts.
+
+Linux package:
+
+```text
+install-worker-app.sh
+    -> installs package files to ~/.local/share/ldgcc-worker-app
+    -> creates ~/.local/bin/ldgcc-worker-app
+    -> creates an LDGCC Worker desktop/app-menu entry
+```
+
+Windows package:
+
+```text
+install-worker-app.bat
+    -> installs package files to %LOCALAPPDATA%\LDGCC\WorkerApp
+    -> creates Desktop shortcut
+    -> creates Start Menu shortcut
+```
+
+After this install step, the worker laptop user opens `LDGCC Worker` like a
+normal app, then clicks `Start Worker` and accepts the pairing request.
+
+---
+
 ## Future TODOs
 
 ### Master Phase 2

@@ -188,10 +188,11 @@ Extract:
 Run:
 
 ```text
-ldgcc-worker-app\\run-worker-app.bat
+ldgcc-worker-app\\install-worker-app.bat
 ```
 
-Open the printed local URL, usually:
+After install, open `LDGCC Worker` from the Desktop or Start Menu. The app opens
+the local Worker page, usually:
 
 ```text
 http://127.0.0.1:5050
@@ -242,10 +243,11 @@ Run:
 
 ```bash
 cd ldgcc-worker-app
-./run-worker-app.sh
+./install-worker-app.sh
 ```
 
-Open the printed local URL, usually:
+After install, open `LDGCC Worker` from the application menu. The app opens the
+local Worker page, usually:
 
 ```text
 http://127.0.0.1:5050
