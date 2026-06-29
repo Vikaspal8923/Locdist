@@ -167,13 +167,12 @@ func (m *Manager) GoingOffline(
 	) {
 		return fmt.Errorf("worker pairing credentials are invalid")
 	}
-	worker, ok := m.workers[request.GetWorkerId()]
-	if !ok {
+	if _, ok := m.workers[request.GetWorkerId()]; !ok {
 		return fmt.Errorf("worker is not registered")
 	}
-	worker.Availability = AvailabilityOffline
-	m.workers[worker.WorkerID] = worker
-	return nil
+	delete(m.workers, request.GetWorkerId())
+	delete(m.pairings, request.GetWorkerId())
+	return m.savePairings()
 }
 
 func (m *Manager) Sweep(
@@ -188,12 +187,15 @@ func (m *Manager) Sweep(
 		age := now.Sub(worker.LastSeen)
 		switch {
 		case age >= offlineAfter:
-			worker.Availability = AvailabilityOffline
+			delete(m.workers, workerID)
+			delete(m.pairings, workerID)
+			continue
 		case age >= staleAfter:
 			worker.Availability = AvailabilityStale
 		}
 		m.workers[workerID] = worker
 	}
+	_ = m.savePairings()
 }
 
 func (m *Manager) UpdateStatus(

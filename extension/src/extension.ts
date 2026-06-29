@@ -2,7 +2,7 @@ import * as vscode from "vscode";
 import { MasterClient } from "./masterClient";
 import { MasterProcess } from "./masterProcess";
 import { StudioViewProvider } from "./studioView";
-import { DiscoveredWorker, JobSummary } from "./types";
+import { DiscoveredWorker, JobSummary, MasterEvent } from "./types";
 
 let masterProcess: MasterProcess;
 let client: MasterClient | undefined;
@@ -46,7 +46,7 @@ async function startMaster(): Promise<void> {
   const session = await masterProcess.ensureStarted();
   client = new MasterClient(session);
   subscribeToEvents();
-  await refresh();
+  await loadState();
   vscode.window.showInformationMessage(`LDGCC Master ready at ${session.address}`);
 }
 
@@ -62,6 +62,19 @@ async function stopMaster(): Promise<void> {
 }
 
 async function refresh(): Promise<void> {
+  if (client) {
+    await client.shutdown().catch(() => undefined);
+    client.closeEvents();
+    client = undefined;
+  }
+  await masterProcess.resetLocalState();
+  studio.setDisconnected("Resetting LDGCC Studio...");
+  const api = await ensureClient();
+  studio.setState(await api.state());
+  vscode.window.showInformationMessage("LDGCC Studio reset");
+}
+
+async function loadState(): Promise<void> {
   const api = await ensureClient();
   studio.setState(await api.state());
 }
@@ -69,7 +82,7 @@ async function refresh(): Promise<void> {
 async function discoverWorkers(): Promise<void> {
   const api = await ensureClient();
   await api.discoverWorkers();
-  await refresh();
+  await loadState();
   vscode.window.showInformationMessage("LDGCC worker discovery started");
 }
 
@@ -80,7 +93,7 @@ async function pairWorker(node?: unknown): Promise<void> {
     return;
   }
   await api.pairWorker(worker.id);
-  await refresh();
+  await loadState();
   vscode.window.showInformationMessage(`Pairing request sent to ${worker.instance}`);
 }
 
@@ -91,35 +104,35 @@ async function prepareJob(): Promise<void> {
     throw new Error("Open the training project folder before preparing an LDGCC job");
   }
   await api.prepareJob(root);
-  await refresh();
+  await loadState();
   vscode.window.showInformationMessage("LDGCC job preparation started");
 }
 
 async function setupWorkers(): Promise<void> {
   const api = await ensureClient();
   await api.setupWorkers();
-  await refresh();
+  await loadState();
   vscode.window.showInformationMessage("Worker setup started");
 }
 
 async function retrySetup(): Promise<void> {
   const api = await ensureClient();
   await api.retrySetup();
-  await refresh();
+  await loadState();
   vscode.window.showInformationMessage("Failed worker setup retry started");
 }
 
 async function startTraining(): Promise<void> {
   const api = await ensureClient();
   await api.startTraining();
-  await refresh();
+  await loadState();
   vscode.window.showInformationMessage("Training started");
 }
 
 async function stopTraining(): Promise<void> {
   const api = await ensureClient();
   await api.stopTraining();
-  await refresh();
+  await loadState();
   vscode.window.showInformationMessage("Training stop requested");
 }
 
@@ -148,16 +161,36 @@ function subscribeToEvents(): void {
   }
   client.subscribe(
     async (event) => {
-      await refresh().catch(() => undefined);
+      await loadState().catch(() => undefined);
       if (event.type === "command.rejected" || event.type.endsWith("_failed") || event.type === "job.failed") {
-        vscode.window.showWarningMessage(`LDGCC: ${event.type}`);
+        const message = eventError(event)
+          ? `LDGCC: ${event.type} - ${eventError(event)}`
+          : `LDGCC: ${event.type}`;
+        studio.setMessage(message);
+        vscode.window.showErrorMessage(message);
       }
       if (event.type === "job.completed") {
-        vscode.window.showInformationMessage("LDGCC job completed");
+        const message = "LDGCC job completed";
+        studio.setMessage(message);
+        vscode.window.showInformationMessage(message);
       }
     },
     () => undefined,
   );
+}
+
+function eventError(event: MasterEvent): string | undefined {
+  if (!event.data || typeof event.data !== "object") {
+    return undefined;
+  }
+  const data = event.data as Record<string, unknown>;
+  if (typeof data.error === "string") {
+    return data.error;
+  }
+  if (typeof data.reason === "string") {
+    return data.reason;
+  }
+  return undefined;
 }
 
 async function handleViewAction(action: string, payload?: unknown): Promise<void> {

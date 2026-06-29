@@ -158,9 +158,25 @@ func TestWorkerHeartbeatAvailabilityLifecycle(t *testing.T) {
 	}
 
 	manager.Sweep(time.Now().Add(13*time.Second), 6*time.Second, 12*time.Second)
-	worker, _ = manager.Worker("worker-a")
-	if worker.Availability != workers.AvailabilityOffline {
-		t.Fatalf("expected offline worker, got %q", worker.Availability)
+	if _, ok := manager.Worker("worker-a"); ok {
+		t.Fatal("expected timed-out worker to be removed")
+	}
+	if _, ok := manager.Pairing("worker-a"); ok {
+		t.Fatal("expected timed-out worker pairing to be removed")
+	}
+
+	reservePairing(t, manager, "worker-a")
+	_, err = manager.Register(
+		&gradient.RegisterWorkerRequest{
+			WorkerId:     "worker-a",
+			Host:         "127.0.0.1",
+			GrpcPort:     "50051",
+			MasterId:     "master-a",
+			PairingToken: "token-a",
+		},
+	)
+	if err != nil {
+		t.Fatalf("re-register worker: %v", err)
 	}
 
 	_, err = manager.Heartbeat(
@@ -192,9 +208,11 @@ func TestWorkerHeartbeatAvailabilityLifecycle(t *testing.T) {
 	); err != nil {
 		t.Fatalf("going offline: %v", err)
 	}
-	worker, _ = manager.Worker("worker-a")
-	if worker.Availability != workers.AvailabilityOffline {
-		t.Fatalf("expected explicit offline, got %q", worker.Availability)
+	if _, ok := manager.Worker("worker-a"); ok {
+		t.Fatal("expected explicit offline worker to be removed")
+	}
+	if _, ok := manager.Pairing("worker-a"); ok {
+		t.Fatal("expected explicit offline worker pairing to be removed")
 	}
 }
 

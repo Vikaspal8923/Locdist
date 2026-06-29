@@ -78,6 +78,11 @@ export class MasterProcess {
     this.session = undefined;
   }
 
+  async resetLocalState(): Promise<void> {
+    await this.stop();
+    await fs.rm(this.dataDir(), { recursive: true, force: true });
+  }
+
   currentSession(): MasterSession | undefined {
     return this.session;
   }

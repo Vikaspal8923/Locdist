@@ -73,7 +73,18 @@ export class StudioViewProvider implements vscode.WebviewViewProvider {
     const masterStatus = this.connected ? `${state?.master.status ?? "ready"} ${state?.master.version ?? ""}`.trim() : "stopped";
     const canRunJob = this.connected && !this.busy;
     const pairedOnline = workers.filter((worker) => worker.availability === "ONLINE").length;
+    const hasJob = Boolean(job);
     const jobStatus = job?.status ?? "No job";
+    const jobPrepared = job?.status === "prepared";
+    const jobRunning = job?.status === "running";
+    const setupStatuses = job?.setup ? Object.values(job.setup) : [];
+    const anySetupFailed = setupStatuses.some((setup) => setup.status === "JOB_SETUP_STATUS_FAILED");
+    const allWorkersReady = setupStatuses.length > 0 && setupStatuses.every((setup) => setup.status === "JOB_SETUP_STATUS_READY");
+    const prepareEnabled = this.connected && !this.busy && !hasJob;
+    const setupEnabled = this.connected && !this.busy && hasJob && jobPrepared && !allWorkersReady;
+    const retrySetupEnabled = this.connected && !this.busy && hasJob && anySetupFailed;
+    const startTrainingEnabled = this.connected && !this.busy && hasJob && jobPrepared && allWorkersReady && !jobRunning;
+    const stopTrainingEnabled = this.connected && !this.busy && hasJob && jobRunning;
     const workerRows = workers.length
       ? workers
           .map(
@@ -110,12 +121,18 @@ export class StudioViewProvider implements vscode.WebviewViewProvider {
       : `<div class="empty"><strong>No Workers discovered</strong><span>Open LDGCC Worker on a worker laptop and click Discover.</span></div>`;
     const setupRows = job?.setup
       ? Object.entries(job.setup)
-          .map(([workerID, setup]) => `<div class="mini"><span>${escapeHtml(workerID)}</span><b class="badge subtle">${escapeHtml(cleanStatus(setup.status))}</b></div>`)
+          .map(([workerID, setup]) => {
+            const error = setup.error_message ? `<div class="error">${escapeHtml(setup.error_message)}</div>` : "";
+            return `<div class="mini"><span>${escapeHtml(workerID)}</span><b class="badge subtle">${escapeHtml(cleanStatus(setup.status))}</b>${error}</div>`;
+          })
           .join("")
       : "";
     const runRows = job?.run
       ? Object.entries(job.run)
-          .map(([workerID, run]) => `<div class="mini"><span>${escapeHtml(workerID)}</span><b class="badge subtle">${escapeHtml(cleanStatus(run.status))}</b></div>`)
+          .map(([workerID, run]) => {
+            const error = run.error_message ? `<div class="error">${escapeHtml(run.error_message)}</div>` : "";
+            return `<div class="mini"><span>${escapeHtml(workerID)}</span><b class="badge subtle">${escapeHtml(cleanStatus(run.status))}</b>${error}</div>`;
+          })
           .join("")
       : "";
 
@@ -232,16 +249,19 @@ export class StudioViewProvider implements vscode.WebviewViewProvider {
         <span class="badge subtle">Active folder</span>
       </div>
       <div class="workflow">
-        <button class="step" data-action="prepareJob" ${!canRunJob ? "disabled" : ""}>
+        <button class="step" data-action="prepareJob" ${prepareEnabled ? "" : "disabled"}>
           <span class="step-number">1</span><span><strong>Prepare</strong><span>Package project and shard dataset</span></span><span>Start</span>
         </button>
-        <button class="step" data-action="setupWorkers" ${!canRunJob ? "disabled" : ""}>
+        <button class="step" data-action="setupWorkers" ${setupEnabled ? "" : "disabled"}>
           <span class="step-number">2</span><span><strong>Set Up</strong><span>Create venv and install requirements</span></span><span>Run</span>
         </button>
-        <button class="step" data-action="startTraining" ${!canRunJob ? "disabled" : ""}>
+        <button class="step secondary" data-action="retrySetup" ${retrySetupEnabled ? "" : "disabled"}>
+          <span class="step-number">R</span><span><strong>Retry</strong><span>Retry failed worker setup</span></span><span>Retry</span>
+        </button>
+        <button class="step" data-action="startTraining" ${startTrainingEnabled ? "" : "disabled"}>
           <span class="step-number">3</span><span><strong>Train</strong><span>Launch workers and sync gradients</span></span><span>Go</span>
         </button>
-        <button class="step secondary" data-action="stopTraining" ${!canRunJob ? "disabled" : ""}>
+        <button class="step secondary" data-action="stopTraining" ${stopTrainingEnabled ? "" : "disabled"}>
           <span class="step-number">4</span><span><strong>Stop</strong><span>Request training stop</span></span><span>Stop</span>
         </button>
       </div>

@@ -104,3 +104,14 @@ func TestReachableHostResolvesAutoHosts(t *testing.T) {
 		}
 	}
 }
+
+func TestVirtualInterfaceNamesAreSkipped(t *testing.T) {
+	for _, name := range []string{"vboxnet0", "docker0", "br-abcd", "veth123", "vmnet8", "tun0", "tap0"} {
+		if !isVirtualInterface(name) {
+			t.Fatalf("expected %q to be treated as virtual", name)
+		}
+	}
+	if isVirtualInterface("wlp4s0") {
+		t.Fatal("expected Wi-Fi interface to be allowed")
+	}
+}
