@@ -91,7 +91,7 @@ func (s *Service) Pair(
 			RequestId:      requestID,
 			MasterId:       s.config.MasterID,
 			MasterName:     s.config.MasterName,
-			MasterHost:     s.config.Host,
+			MasterHost:     reachableHost(s.config.Host),
 			MasterGrpcPort: s.config.Port,
 			WorkerId:       workerID,
 			PairingToken:   token,

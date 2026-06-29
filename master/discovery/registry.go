@@ -20,8 +20,11 @@ func (r *Registry) Upsert(worker Worker) bool {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 
-	_, existed := r.workers[worker.Instance]
-	r.workers[worker.Instance] = worker
+	if worker.ID == "" {
+		worker.ID = ID(worker.Instance, worker.Address, worker.GRPCPort)
+	}
+	_, existed := r.workers[worker.ID]
+	r.workers[worker.ID] = worker
 	return !existed
 }
 
@@ -36,11 +39,11 @@ func (r *Registry) Workers() []Worker {
 	return workers
 }
 
-func (r *Registry) Worker(instance string) (Worker, bool) {
+func (r *Registry) Worker(id string) (Worker, bool) {
 	r.mu.RLock()
 	defer r.mu.RUnlock()
 
-	worker, ok := r.workers[instance]
+	worker, ok := r.workers[id]
 	return worker, ok
 }
 

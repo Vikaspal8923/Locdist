@@ -15,12 +15,14 @@ import (
 
 type acceptingWorker struct {
 	gradient.UnimplementedWorkerBridgeServer
+	request *gradient.PairWorkerRequest
 }
 
 func (s *acceptingWorker) PairWorker(
 	ctx context.Context,
 	request *gradient.PairWorkerRequest,
 ) (*gradient.PairWorkerResponse, error) {
+	s.request = request
 	return &gradient.PairWorkerResponse{
 		RequestId: request.GetRequestId(),
 		Decision: gradient.
@@ -34,7 +36,8 @@ func TestPairReservesCredentialsForRegistration(t *testing.T) {
 		t.Fatalf("listen: %v", err)
 	}
 	server := grpcserver.NewServer()
-	gradient.RegisterWorkerBridgeServer(server, &acceptingWorker{})
+	worker := &acceptingWorker{}
+	gradient.RegisterWorkerBridgeServer(server, worker)
 	go server.Serve(listener)
 	defer server.Stop()
 
@@ -69,6 +72,9 @@ func TestPairReservesCredentialsForRegistration(t *testing.T) {
 	if err != nil {
 		t.Fatalf("pair Worker: %v", err)
 	}
+	if worker.request.GetMasterHost() == "" {
+		t.Fatal("expected Master pairing request to include a reachable Master host")
+	}
 
 	_, err = workerManager.Register(
 		&gradient.RegisterWorkerRequest{
@@ -81,5 +87,19 @@ func TestPairReservesCredentialsForRegistration(t *testing.T) {
 	)
 	if err != nil {
 		t.Fatalf("authenticated registration failed: %v", err)
+	}
+}
+
+func TestReachableHostKeepsExplicitLANAddress(t *testing.T) {
+	if got := reachableHost("192.168.1.10"); got != "192.168.1.10" {
+		t.Fatalf("expected explicit LAN host to be preserved, got %q", got)
+	}
+}
+
+func TestReachableHostResolvesAutoHosts(t *testing.T) {
+	for _, host := range []string{"", "127.0.0.1", "localhost", "0.0.0.0"} {
+		if got := reachableHost(host); got == "" {
+			t.Fatalf("expected non-empty reachable host for %q", host)
+		}
 	}
 }

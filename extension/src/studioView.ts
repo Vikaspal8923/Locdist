@@ -91,14 +91,19 @@ export class StudioViewProvider implements vscode.WebviewViewProvider {
     const discoveredRows = discovered.length
       ? discovered
           .map(
-            (worker) => `
+            (worker) => {
+              const status = worker.request_status ? `${worker.pairing_status} · ${worker.request_status}` : worker.pairing_status;
+              const error = worker.error ? `<span class="error">${escapeHtml(worker.error)}</span>` : "";
+              return `
               <div class="row worker-row">
                 <div>
                   <strong>${escapeHtml(worker.instance)}</strong>
-                  <span>${escapeHtml(worker.address)} · ${escapeHtml(worker.pairing_status)}</span>
+                  <span>${escapeHtml(worker.address)} · ${escapeHtml(status)}</span>
+                  ${error}
                 </div>
                 <button class="compact" data-action="pairWorker" data-instance="${escapeAttribute(worker.instance)}" ${this.busy ? "disabled" : ""}>Pair</button>
-              </div>`,
+              </div>`;
+            },
           )
           .join("")
       : `<div class="empty"><strong>No Workers discovered</strong><span>Open LDGCC Worker on a worker laptop and click Discover.</span></div>`;
@@ -170,6 +175,7 @@ export class StudioViewProvider implements vscode.WebviewViewProvider {
     .row:first-of-type { border-top: 0; padding-top: 0; }
     .row strong, .row span { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
     .row span, .empty, .meta { color: var(--muted); }
+    .error { color: #f85149; white-space: normal; line-height: 1.35; margin-top: 4px; }
     .worker-row strong { margin-bottom: 3px; }
     .empty { display: grid; gap: 4px; padding: 12px; line-height: 1.45; border: 1px dashed var(--border); border-radius: 7px; background: color-mix(in srgb, var(--bg) 20%, transparent); }
     .empty strong { color: var(--fg); }

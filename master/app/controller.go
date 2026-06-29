@@ -27,6 +27,7 @@ type Backend struct {
 }
 
 type Worker struct {
+	ID            string `json:"id"`
 	Instance      string `json:"instance"`
 	Address       string `json:"address"`
 	PairingStatus string `json:"pairing_status"`
@@ -74,11 +75,12 @@ func (c *Controller) Workers() []Worker {
 
 	for _, item := range discoveredWorkers {
 		worker := Worker{
+			ID:            item.ID,
 			Instance:      item.Instance,
 			Address:       discovery.Address(item),
 			PairingStatus: item.PairingStatus,
 		}
-		if request, ok := c.requests[item.Instance]; ok {
+		if request, ok := c.requests[item.ID]; ok {
 			if request.RequestStatus != "PAIRED" {
 				worker.RequestStatus = request.RequestStatus
 				worker.Error = request.Error
@@ -89,39 +91,39 @@ func (c *Controller) Workers() []Worker {
 	return workers
 }
 
-func (c *Controller) Pair(instance string) error {
-	if instance == "" {
-		return fmt.Errorf("Worker instance is required")
+func (c *Controller) Pair(id string) error {
+	if id == "" {
+		return fmt.Errorf("Worker id is required")
 	}
 
 	c.mu.Lock()
-	if request, ok := c.requests[instance]; ok &&
+	if request, ok := c.requests[id]; ok &&
 		request.RequestStatus == "PENDING" {
 		c.mu.Unlock()
 		return fmt.Errorf("pairing request is already pending")
 	}
-	c.requests[instance] = Worker{RequestStatus: "PENDING"}
+	c.requests[id] = Worker{RequestStatus: "PENDING"}
 	c.mu.Unlock()
 
 	go func() {
-		_, err := c.pairing.Pair(context.Background(), instance)
+		_, err := c.pairing.Pair(context.Background(), id)
 
 		c.mu.Lock()
 		defer c.mu.Unlock()
 		if err != nil {
-			c.requests[instance] = Worker{
+			c.requests[id] = Worker{
 				RequestStatus: "FAILED",
 				Error:         err.Error(),
 			}
-			c.events.Publish("worker.pairing_failed", map[string]string{"instance": instance, "error": err.Error()})
+			c.events.Publish("worker.pairing_failed", map[string]string{"id": id, "error": err.Error()})
 			return
 		}
-		c.requests[instance] = Worker{
+		c.requests[id] = Worker{
 			RequestStatus: "PAIRED",
 		}
-		c.events.Publish("worker.connected", map[string]string{"instance": instance})
+		c.events.Publish("worker.connected", map[string]string{"id": id})
 	}()
-	c.events.Publish("worker.pairing_pending", map[string]string{"instance": instance})
+	c.events.Publish("worker.pairing_pending", map[string]string{"id": id})
 
 	return nil
 }

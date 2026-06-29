@@ -67,11 +67,13 @@ func workerFromEntry(entry *mdns.ServiceEntry) Worker {
 	}
 
 	address := firstAddress(entry)
+	instance := strings.TrimSuffix(
+		entry.Name,
+		"."+ServiceName+".local.",
+	)
 	return Worker{
-		Instance: strings.TrimSuffix(
-			entry.Name,
-			"."+ServiceName+".local.",
-		),
+		ID:              ID(instance, address, entry.Port),
+		Instance:        instance,
 		Host:            strings.TrimSuffix(entry.Host, "."),
 		Address:         address,
 		GRPCPort:        entry.Port,
@@ -99,4 +101,8 @@ func Address(worker Worker) string {
 		worker.Address,
 		strconv.Itoa(worker.GRPCPort),
 	)
+}
+
+func ID(instance, address string, port int) string {
+	return instance + "@" + net.JoinHostPort(address, strconv.Itoa(port))
 }

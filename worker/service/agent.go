@@ -238,10 +238,11 @@ func (a *Agent) connect(record *pairing.Record) error {
 }
 
 func (a *Agent) startAdvertisement() error {
+	host := advertisedHost(a.config.Host)
 	return a.advertiser.Start(
 		discovery.Metadata{
-			Name:            a.config.WorkerName,
-			Host:            a.config.Host,
+			Name:            advertisedName(a.config.WorkerName),
+			Host:            host,
 			Port:            a.config.Port,
 			ProtocolVersion: 1,
 			PairingStatus:   a.pairingStatus(),
@@ -370,7 +371,7 @@ func registerPairedWorker(
 	registration, err := client.Register(
 		&gradient.RegisterWorkerRequest{
 			WorkerId:     record.WorkerID,
-			Host:         cfg.Host,
+			Host:         advertisedHost(cfg.Host),
 			GrpcPort:     cfg.Port,
 			MasterId:     record.MasterID,
 			PairingToken: record.PairingToken,

@@ -3,6 +3,7 @@ package discovery
 import "time"
 
 type Worker struct {
+	ID              string
 	Instance        string
 	Host            string
 	Address         string

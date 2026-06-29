@@ -66,4 +66,33 @@ func TestUnpairedAgentBecomesDiscoverable(t *testing.T) {
 			advertiser.metadata.PairingStatus,
 		)
 	}
+	if advertiser.metadata.Host == "" {
+		t.Fatalf("expected advertised host to be set")
+	}
+}
+
+func TestAdvertisedHostKeepsExplicitLANAddress(t *testing.T) {
+	if got := advertisedHost("192.168.1.42"); got != "192.168.1.42" {
+		t.Fatalf("expected explicit LAN host to be preserved, got %q", got)
+	}
+}
+
+func TestAdvertisedHostResolvesAutoHosts(t *testing.T) {
+	for _, host := range []string{"", "127.0.0.1", "localhost", "0.0.0.0"} {
+		if got := advertisedHost(host); got == "" {
+			t.Fatalf("expected non-empty advertised host for %q", host)
+		}
+	}
+}
+
+func TestAdvertisedNameKeepsCustomName(t *testing.T) {
+	if got := advertisedName("Worker A"); got != "Worker A" {
+		t.Fatalf("expected custom Worker name to be preserved, got %q", got)
+	}
+}
+
+func TestAdvertisedNameMakesDefaultNameUnique(t *testing.T) {
+	if got := advertisedName("LDGCC Worker"); got == "" || got == "LDGCC Worker" {
+		t.Fatalf("expected default Worker name to include host identity, got %q", got)
+	}
 }
