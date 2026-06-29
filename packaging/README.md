@@ -304,3 +304,52 @@ Download Worker package
 
 The raw `run-worker-app.sh` and `run-worker-app.bat` files remain available as
 portable/debug launchers.
+
+---
+
+# LDGCC Phase 27: GitHub Release Publishing
+
+Phase 27 defines GitHub Releases as the public download location.
+
+Build local release artifacts:
+
+```bash
+python3 tools/package_release.py
+```
+
+Publish them with the GitHub CLI:
+
+```bash
+gh auth login
+python3 tools/publish_github_release.py v0.1.0 --draft
+```
+
+The release uploads:
+
+```text
+ldgcc-studio.vsix
+ldgcc-worker-app-linux-x64.zip
+ldgcc-worker-app-windows-x64.zip
+INSTALL.md
+manifest.json
+checksums.txt
+```
+
+User download mapping:
+
+```text
+Brain laptop
+    -> ldgcc-studio.vsix
+
+Linux Worker laptop
+    -> ldgcc-worker-app-linux-x64.zip
+
+Windows Worker laptop
+    -> ldgcc-worker-app-windows-x64.zip
+```
+
+Use `--skip-build` when `dist/release/` already contains the artifacts:
+
+```bash
+python3 tools/publish_github_release.py v0.1.0 --skip-build --draft
+```
