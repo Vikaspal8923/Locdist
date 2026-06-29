@@ -7,6 +7,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"runtime"
 	"sync"
 	"time"
 
@@ -74,7 +75,7 @@ func (m *Manager) Arm(jobID string) Result {
 	if err := json.Unmarshal(data, &config); err != nil || config.Entrypoint == "" {
 		return failed("job_config.json has no valid entrypoint", "")
 	}
-	for _, required := range []string{filepath.Join(directory, ".venv", "bin", "python"), filepath.Join(directory, filepath.FromSlash(config.Entrypoint))} {
+	for _, required := range []string{venvPythonPath(filepath.Join(directory, ".venv")), filepath.Join(directory, filepath.FromSlash(config.Entrypoint))} {
 		info, err := os.Stat(required)
 		if err != nil || !info.Mode().IsRegular() {
 			return failed(fmt.Sprintf("required training file %q is missing", required), "")
@@ -111,7 +112,7 @@ func (m *Manager) Release(jobID, workerID string) Result {
 		m.mu.Unlock()
 		return failed("resolve workspace path: "+err.Error(), current.logPath)
 	}
-	python := filepath.Join(absDirectory, ".venv", "bin", "python")
+	python := venvPythonPath(filepath.Join(absDirectory, ".venv"))
 	command := exec.Command(python, current.entrypoint)
 	command.Dir = absDirectory
 	command.Env = append(os.Environ(), "LDGCC_JOB_ID="+jobID, "LDGCC_WORKER_ID="+workerID, "LDGCC_WORKER_HOST=127.0.0.1", "LDGCC_WORKER_PORT="+m.workerPort)
@@ -130,6 +131,13 @@ func (m *Manager) Release(jobID, workerID string) Result {
 	m.mu.Unlock()
 	go m.wait(jobID, current, log)
 	return Result{Status: gradient.JobRunStatus_JOB_RUN_STATUS_RUNNING, LogPath: current.logPath}
+}
+
+func venvPythonPath(venvPath string) string {
+	if runtime.GOOS == "windows" {
+		return filepath.Join(venvPath, "Scripts", "python.exe")
+	}
+	return filepath.Join(venvPath, "bin", "python")
 }
 
 func (m *Manager) wait(jobID string, current *process, log *os.File) {

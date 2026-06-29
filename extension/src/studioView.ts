@@ -8,6 +8,7 @@ export class StudioViewProvider implements vscode.WebviewViewProvider {
   private connected = false;
   private state?: MasterState;
   private busy = false;
+  private actionBusy: Record<string, boolean> = {};
   private message = "Master stopped";
 
   constructor(private readonly context: vscode.ExtensionContext, private readonly onAction: ActionHandler) {}
@@ -42,6 +43,7 @@ export class StudioViewProvider implements vscode.WebviewViewProvider {
 
   private async run(action: string, payload?: unknown): Promise<void> {
     this.busy = true;
+    this.actionBusy[action] = true;
     this.message = labelForAction(action);
     this.render();
     try {
@@ -52,6 +54,7 @@ export class StudioViewProvider implements vscode.WebviewViewProvider {
       this.render();
     } finally {
       this.busy = false;
+      this.actionBusy[action] = false;
       this.render();
     }
   }
@@ -85,6 +88,11 @@ export class StudioViewProvider implements vscode.WebviewViewProvider {
     const retrySetupEnabled = this.connected && !this.busy && hasJob && anySetupFailed;
     const startTrainingEnabled = this.connected && !this.busy && hasJob && jobPrepared && allWorkersReady && !jobRunning;
     const stopTrainingEnabled = this.connected && !this.busy && hasJob && jobRunning;
+    const prepareBusy = this.actionBusy["prepareJob"] ?? false;
+    const setupBusy = this.actionBusy["setupWorkers"] ?? false;
+    const retryBusy = this.actionBusy["retrySetup"] ?? false;
+    const startBusy = this.actionBusy["startTraining"] ?? false;
+    const stopBusy = this.actionBusy["stopTraining"] ?? false;
     const workerRows = workers.length
       ? workers
           .map(
@@ -206,6 +214,8 @@ export class StudioViewProvider implements vscode.WebviewViewProvider {
     .mini { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 8px; padding: 5px 0; color: var(--muted); }
     .mini span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
     .result { display: grid; gap: 8px; }
+    .loader { display:inline-block; width:12px; height:12px; border:2px solid transparent; border-top-color:var(--accent); border-radius:50%; animation:spin 1s linear infinite; vertical-align:middle }
+    @keyframes spin { from { transform: rotate(0deg) } to { transform: rotate(360deg) } }
     @media (min-width: 560px) {
       .actions { grid-template-columns: repeat(4, minmax(0, 1fr)); }
       .workflow { grid-template-columns: repeat(2, minmax(0, 1fr)); }
@@ -250,19 +260,19 @@ export class StudioViewProvider implements vscode.WebviewViewProvider {
       </div>
       <div class="workflow">
         <button class="step" data-action="prepareJob" ${prepareEnabled ? "" : "disabled"}>
-          <span class="step-number">1</span><span><strong>Prepare</strong><span>Package project and shard dataset</span></span><span>Start</span>
+          <span class="step-number">1</span><span><strong>Prepare</strong><span>Package project and shard dataset</span></span><span>${prepareBusy ? `<span class="loader" title="Preparing"></span>` : `Start`}</span>
         </button>
         <button class="step" data-action="setupWorkers" ${setupEnabled ? "" : "disabled"}>
-          <span class="step-number">2</span><span><strong>Set Up</strong><span>Create venv and install requirements</span></span><span>Run</span>
+          <span class="step-number">2</span><span><strong>Set Up</strong><span>Create venv and install requirements</span></span><span>${setupBusy ? `<span class="loader" title="Setting up"></span>` : `Run`}</span>
         </button>
         <button class="step secondary" data-action="retrySetup" ${retrySetupEnabled ? "" : "disabled"}>
-          <span class="step-number">R</span><span><strong>Retry</strong><span>Retry failed worker setup</span></span><span>Retry</span>
+          <span class="step-number">R</span><span><strong>Retry</strong><span>Retry failed worker setup</span></span><span>${retryBusy ? `<span class="loader" title="Retrying"></span>` : `Retry`}</span>
         </button>
         <button class="step" data-action="startTraining" ${startTrainingEnabled ? "" : "disabled"}>
-          <span class="step-number">3</span><span><strong>Train</strong><span>Launch workers and sync gradients</span></span><span>Go</span>
+          <span class="step-number">3</span><span><strong>Train</strong><span>Launch workers and sync gradients</span></span><span>${startBusy ? `<span class="loader" title="Starting"></span>` : `Go`}</span>
         </button>
         <button class="step secondary" data-action="stopTraining" ${stopTrainingEnabled ? "" : "disabled"}>
-          <span class="step-number">4</span><span><strong>Stop</strong><span>Request training stop</span></span><span>Stop</span>
+          <span class="step-number">4</span><span><strong>Stop</strong><span>Request training stop</span></span><span>${stopBusy ? `<span class="loader" title="Stopping"></span>` : `Stop`}</span>
         </button>
       </div>
     </section>

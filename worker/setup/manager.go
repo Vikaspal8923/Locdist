@@ -7,6 +7,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"runtime"
 	"sync"
 
 	gradient "github.com/Vikaspal8923/Locdist/worker/generated/gradient"
@@ -121,11 +122,18 @@ func (m *Manager) run(ctx context.Context, jobID string) Result {
 	} else if err != nil {
 		return failed(err, logPath)
 	}
-	venvPython := filepath.Join(venvPath, "bin", "python")
+	venvPython := venvPythonPath(venvPath)
 	if err := m.runner.Run(ctx, directory, logPath, venvPython, "-m", "pip", "install", "-r", "requirements.txt"); err != nil {
 		return failed(fmt.Errorf("install requirements: %w", err), logPath)
 	}
 	return Result{Status: gradient.JobSetupStatus_JOB_SETUP_STATUS_READY, LogPath: logPath}
+}
+
+func venvPythonPath(venvPath string) string {
+	if runtime.GOOS == "windows" {
+		return filepath.Join(venvPath, "Scripts", "python.exe")
+	}
+	return filepath.Join(venvPath, "bin", "python")
 }
 
 func failed(err error, logPath string) Result {

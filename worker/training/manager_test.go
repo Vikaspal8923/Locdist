@@ -98,7 +98,7 @@ func preparedTrainingWorkspace(t *testing.T, pythonScript string) *workspace.Man
 	if err != nil {
 		t.Fatal(err)
 	}
-	python := filepath.Join(path, ".venv", "bin", "python")
+	python := venvPythonPath(filepath.Join(path, ".venv"))
 	if err := os.MkdirAll(filepath.Dir(python), 0o700); err != nil {
 		t.Fatal(err)
 	}
