@@ -69,6 +69,38 @@ Master binary is configured, the extension creates and uses
 directory also owns `master-session.json`, pairing state, job packages, and
 collected results.
 
+## LDGCC Phase 22: Extension Production Packaging
+
+Phase 22 lets production builds avoid manual `ldgcc.master.binaryPath`
+configuration. The extension now checks for a bundled Master binary at:
+
+```text
+bin/<node-platform>-<node-arch>/ldgcc-master
+```
+
+For example, Linux x64 uses:
+
+```text
+bin/linux-x64/ldgcc-master
+```
+
+Startup order:
+
+```text
+configured ldgcc.master.binaryPath
+    -> bundled Master binary
+    -> development fallback: go run ./cmd/master
+```
+
+Create a staged production extension folder from the repository root:
+
+```bash
+python3 tools/stage_extension.py
+```
+
+The staged folder contains compiled extension code, resources, and the bundled
+Master binary.
+
 ## Views
 
 The `LDGCC` activity bar view shows:

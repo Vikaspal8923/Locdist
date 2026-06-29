@@ -72,3 +72,45 @@ The Phase 20 local validation remains the main smoke test:
 ```bash
 python3 tools/e2e_local_validation.py
 ```
+
+---
+
+# LDGCC Phase 22: VS Code Extension Production Packaging
+
+Phase 22 stages the VS Code extension with a bundled Master binary, so a
+production extension can start Master without requiring the user to configure
+`ldgcc.master.binaryPath`.
+
+From the repository root:
+
+```bash
+python3 tools/stage_extension.py
+```
+
+This creates:
+
+```text
+dist/ldgcc-extension/
+    package.json
+    README.md
+    out/
+    resources/
+    bin/
+        linux-x64/
+            ldgcc-master
+```
+
+The platform folder uses Node's `process.platform` and `process.arch` naming.
+The extension checks the bundled binary first after any explicitly configured
+binary path.
+
+Production startup order:
+
+```text
+configured Master binary
+    -> bundled Master binary
+    -> development go run fallback
+```
+
+The next release step is turning this staged folder into a `.vsix` with VS Code
+packaging tooling.

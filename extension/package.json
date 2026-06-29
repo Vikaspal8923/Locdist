@@ -33,7 +33,7 @@
         "ldgcc.master.binaryPath": {
           "type": "string",
           "default": "",
-          "description": "Optional path to a packaged LDGCC Master binary. When empty, the extension uses go run for local development."
+          "description": "Optional path to a packaged LDGCC Master binary. When empty, the extension uses a bundled Master binary if present, otherwise go run for local development."
         },
         "ldgcc.master.sourceRoot": {
           "type": "string",
@@ -166,6 +166,7 @@
   "scripts": {
     "compile": "tsc -p ./",
     "watch": "tsc -watch -p ./",
+    "stage:production": "python3 ../tools/stage_extension.py",
     "vscode:prepublish": "npm run compile"
   },
   "devDependencies": {

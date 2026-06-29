@@ -20,7 +20,9 @@ export class MasterProcess {
 
     await fs.mkdir(this.dataDir(), { recursive: true });
     const token = randomBytes(32).toString("hex");
-    const binary = this.config("master.binaryPath");
+    const configuredBinary = this.config("master.binaryPath");
+    const bundledBinary = configuredBinary ? undefined : await this.bundledMasterBinary();
+    const binary = configuredBinary || bundledBinary;
     const repoRoot = this.repoRoot();
     const configPath = binary ? await this.ensureMasterConfig() : join(repoRoot, "master", "master_config.json");
     const args = [
@@ -140,6 +142,20 @@ export class MasterProcess {
     return path;
   }
 
+  private async bundledMasterBinary(): Promise<string | undefined> {
+    const candidate = join(this.context.extensionPath, "bin", `${process.platform}-${process.arch}`, executableName("ldgcc-master"));
+    try {
+      await fs.access(candidate);
+      return candidate;
+    } catch (error) {
+      const code = typeof error === "object" && error && "code" in error ? String(error.code) : "";
+      if (code === "ENOENT") {
+        return undefined;
+      }
+      throw error;
+    }
+  }
+
   private async isHealthy(session: MasterSession): Promise<boolean> {
     try {
       const { MasterClient } = await import("./masterClient");
@@ -153,4 +169,8 @@ export class MasterProcess {
   private config(key: string): string {
     return vscode.workspace.getConfiguration("ldgcc").get<string>(key, "").trim();
   }
+}
+
+function executableName(name: string): string {
+  return process.platform === "win32" ? `${name}.exe` : name;
 }
