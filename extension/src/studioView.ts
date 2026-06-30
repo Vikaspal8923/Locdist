@@ -333,7 +333,14 @@ export class StudioViewProvider implements vscode.WebviewViewProvider {
     </section>
 
     <section class="panel">
-      <div class="panel-head"><h2>Errors</h2><span class="badge subtle">${this.errors.length}</span></div>
+      <div class="panel-head">
+        <h2>Errors</h2>
+        ${
+          this.errors.length
+            ? `<button class="ghost compact" data-action="clearErrors">Clear</button>`
+            : `<span class="badge subtle">0</span>`
+        }
+      </div>
       ${errorRows}
     </section>
 

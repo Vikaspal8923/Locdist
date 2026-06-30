@@ -2,6 +2,7 @@ package app
 
 import (
 	"fmt"
+	"os"
 	"path/filepath"
 	"testing"
 
@@ -118,5 +119,34 @@ func TestControllerExposesStartError(t *testing.T) {
 	}
 	if controller.State().Error != "discovery unavailable" {
 		t.Fatalf("unexpected app error: %q", controller.State().Error)
+	}
+}
+
+func TestControllerExposesLatestJobLogs(t *testing.T) {
+	root := t.TempDir()
+	jobRoot := filepath.Join(root, "job-1", "logs")
+	if err := os.MkdirAll(jobRoot, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(jobRoot, "setup.log"), []byte("setup ok\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(jobRoot, "training.log"), []byte("epoch=1 step=50\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	controller := NewController(&fakeLifecycle{cfg: config.Config{WorkerName: "Test Worker", WorkspaceRoot: root}})
+
+	logs := controller.State().JobLogs
+	if logs == nil {
+		t.Fatal("expected job logs")
+	}
+	if logs.JobID != "job-1" {
+		t.Fatalf("job id = %q", logs.JobID)
+	}
+	if logs.Setup != "setup ok\n" {
+		t.Fatalf("setup log = %q", logs.Setup)
+	}
+	if logs.Training != "epoch=1 step=50\n" {
+		t.Fatalf("training log = %q", logs.Training)
 	}
 }

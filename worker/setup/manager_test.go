@@ -18,6 +18,8 @@ type fakeRunner struct {
 	calls       []string
 	failInstall bool
 	failCUDA    bool
+	failPy312   bool
+	failPy311   bool
 }
 
 func (f *fakeRunner) Run(_ context.Context, _, _ string, name string, args ...string) error {
@@ -25,6 +27,12 @@ func (f *fakeRunner) Run(_ context.Context, _, _ string, name string, args ...st
 	f.calls = append(f.calls, call)
 	if strings.Contains(call, "nvidia-smi") && f.failCUDA {
 		return fmt.Errorf("nvidia-smi not found")
+	}
+	if (strings.Contains(call, "py -3.12") || strings.Contains(call, "python3.12")) && f.failPy312 {
+		return fmt.Errorf("Python 3.12 not found")
+	}
+	if (strings.Contains(call, "py -3.11") || strings.Contains(call, "python3.11")) && f.failPy311 {
+		return fmt.Errorf("Python 3.11 not found")
 	}
 	if strings.Contains(call, "pip install") && f.failInstall {
 		f.failInstall = false
@@ -47,7 +55,7 @@ func TestSetupWithoutRequirementsBecomesReady(t *testing.T) {
 	if !strings.Contains(runner.calls[0], "nvidia-smi -L") {
 		t.Fatalf("CUDA detection missing: %v", runner.calls)
 	}
-	if !strings.Contains(runner.calls[1], "-m venv .venv") {
+	if !strings.Contains(runner.calls[1], "py -3.12 -m venv .venv") && !strings.Contains(runner.calls[1], "python3.12 -m venv .venv") {
 		t.Fatalf("venv command missing: %v", runner.calls)
 	}
 	if !strings.Contains(runner.calls[2], "pip install torch --index-url https://download.pytorch.org/whl/cu121") {
@@ -121,6 +129,20 @@ func TestSetupFailsWhenCUDADetectionFails(t *testing.T) {
 	}
 	if !strings.Contains(result.ErrorMessage, "requires an NVIDIA CUDA Worker") {
 		t.Fatalf("unexpected error: %s", result.ErrorMessage)
+	}
+}
+
+func TestSetupFallsBackToPython311WhenPython312IsMissing(t *testing.T) {
+	workspaceManager := preparedWorkspace(t, false)
+	runner := &fakeRunner{failPy312: true}
+	manager := NewWithRunner(workspaceManager, runner)
+	result := manager.Setup(context.Background(), "job-1", false)
+	if result.Status != gradient.JobSetupStatus_JOB_SETUP_STATUS_READY {
+		t.Fatalf("status = %s, error = %s", result.Status, result.ErrorMessage)
+	}
+	joined := strings.Join(runner.calls, "\n")
+	if !strings.Contains(joined, "py -3.11 -m venv .venv") && !strings.Contains(joined, "python3.11 -m venv .venv") {
+		t.Fatalf("Python 3.11 fallback missing: %v", runner.calls)
 	}
 }
 

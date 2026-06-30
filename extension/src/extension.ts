@@ -146,8 +146,12 @@ async function openResults(node?: unknown): Promise<void> {
   if (!summary) {
     throw new Error("No result summary is available yet");
   }
-  const path = await api.resultPath(summary.job_id);
-  await vscode.commands.executeCommand("vscode.openFolder", vscode.Uri.file(path), { forceNewWindow: false });
+  const resultPath = await api.resultPath(summary.job_id);
+  const summaryPath = path.join(resultPath, "summary.json");
+  if (await exists(summaryPath)) {
+    await vscode.window.showTextDocument(vscode.Uri.file(summaryPath), { preview: false });
+  }
+  await vscode.commands.executeCommand("revealFileInOS", vscode.Uri.file(resultPath));
 }
 
 async function ensureClient(): Promise<MasterClient> {
@@ -439,6 +443,9 @@ async function handleViewAction(action: string, payload?: unknown): Promise<void
       return stopTraining();
     case "openResults":
       return openResults();
+    case "clearErrors":
+      studio.clearErrors();
+      return;
     default:
       throw new Error(`Unsupported LDGCC action: ${action}`);
   }

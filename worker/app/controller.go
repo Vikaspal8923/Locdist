@@ -2,7 +2,12 @@ package app
 
 import (
 	"errors"
+	"os"
+	"path/filepath"
+	"sort"
+	"strings"
 	"sync"
+	"unicode/utf8"
 
 	gradient "github.com/Vikaspal8923/Locdist/worker/generated/gradient"
 	"github.com/Vikaspal8923/Locdist/worker/internal/config"
@@ -37,6 +42,16 @@ type State struct {
 	PairedMasterID string                  `json:"paired_master_id,omitempty"`
 	PendingPairing *PairingRequest         `json:"pending_pairing,omitempty"`
 	Error          string                  `json:"error,omitempty"`
+	JobLogs        *JobLogs                `json:"job_logs,omitempty"`
+}
+
+type JobLogs struct {
+	JobID     string `json:"job_id"`
+	Setup     string `json:"setup"`
+	Training  string `json:"training"`
+	SetupPath string `json:"setup_path,omitempty"`
+	TrainPath string `json:"training_path,omitempty"`
+	Truncated bool   `json:"truncated"`
 }
 
 type Controller struct {
@@ -102,6 +117,7 @@ func (c *Controller) State() State {
 		Config:     publicConfig(c.lifecycle.Config()),
 		Error:      c.lastError,
 	}
+	state.JobLogs = loadJobLogs(state.Config.WorkspaceRoot)
 	if record, ok := c.lifecycle.PairingRecord(); ok {
 		state.PairedMaster = record.MasterName
 		state.PairedMasterID = record.MasterID
@@ -113,6 +129,80 @@ func (c *Controller) State() State {
 		}
 	}
 	return state
+}
+
+func loadJobLogs(workspaceRoot string) *JobLogs {
+	entries, err := os.ReadDir(workspaceRoot)
+	if err != nil {
+		return nil
+	}
+	type jobEntry struct {
+		name    string
+		modTime int64
+	}
+	jobs := make([]jobEntry, 0, len(entries))
+	for _, entry := range entries {
+		if !entry.IsDir() || strings.HasPrefix(entry.Name(), ".") {
+			continue
+		}
+		info, err := entry.Info()
+		if err != nil {
+			continue
+		}
+		jobs = append(jobs, jobEntry{name: entry.Name(), modTime: info.ModTime().UnixNano()})
+	}
+	if len(jobs) == 0 {
+		return nil
+	}
+	sort.Slice(jobs, func(left, right int) bool {
+		return jobs[left].modTime > jobs[right].modTime
+	})
+	jobID := jobs[0].name
+	setupPath := filepath.Join(workspaceRoot, jobID, "logs", "setup.log")
+	trainingPath := filepath.Join(workspaceRoot, jobID, "logs", "training.log")
+	setup, setupTruncated := readLogTail(setupPath, 32<<10)
+	training, trainingTruncated := readLogTail(trainingPath, 32<<10)
+	if setup == "" && training == "" {
+		return &JobLogs{JobID: jobID}
+	}
+	return &JobLogs{
+		JobID:     jobID,
+		Setup:     setup,
+		Training:  training,
+		SetupPath: setupPath,
+		TrainPath: trainingPath,
+		Truncated: setupTruncated || trainingTruncated,
+	}
+}
+
+func readLogTail(path string, maxBytes int64) (string, bool) {
+	file, err := os.Open(path)
+	if err != nil {
+		return "", false
+	}
+	defer file.Close()
+	info, err := file.Stat()
+	if err != nil || info.IsDir() {
+		return "", false
+	}
+	offset := int64(0)
+	truncated := false
+	if info.Size() > maxBytes {
+		offset = info.Size() - maxBytes
+		truncated = true
+	}
+	data := make([]byte, info.Size()-offset)
+	if _, err := file.ReadAt(data, offset); err != nil && len(data) == 0 {
+		return "", false
+	}
+	text := string(data)
+	if truncated {
+		for len(text) > 0 && !utf8.ValidString(text) {
+			text = text[1:]
+		}
+		text = "[showing last 32 KB]\n" + strings.TrimLeft(text, "\r\n")
+	}
+	return text, truncated
 }
 
 func (c *Controller) UpdateConfig(update ConfigUpdate) error {

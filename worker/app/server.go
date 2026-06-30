@@ -189,6 +189,15 @@ const appHTML = `<!doctype html>
     input:disabled { background: #f3f5f7; color: #7a8490; }
     .form-actions { grid-column: 1 / -1; display: flex; justify-content: flex-end; }
     .form-actions button { width: auto; min-width: 120px; padding: 0 18px; }
+    .logs-head { display: flex; justify-content: space-between; gap: 12px; align-items: center; margin-bottom: 12px; }
+    .logs-head h2 { margin: 0; font-size: 16px; }
+    .job-id { color: #64707d; font-size: 12px; overflow-wrap: anywhere; text-align: right; }
+    .tabs { display: flex; gap: 8px; margin-bottom: 10px; }
+    .tab { width: auto; min-height: 34px; padding: 0 14px; background: #fff; color: #344054; border: 1px solid #cfd5dc; }
+    .tab.active { background: #1565c0; color: #fff; border-color: #1565c0; }
+    .log-box { min-height: 260px; max-height: 420px; overflow: auto; border: 1px solid #d7dee5; border-radius: 7px; background: #111827; color: #d1d5db; padding: 12px; font: 12px/1.45 ui-monospace, "Cascadia Mono", "SFMono-Regular", Consolas, monospace; white-space: pre-wrap; overflow-wrap: anywhere; }
+    .log-empty { color: #8a94a6; }
+    .log-note { margin-top: 8px; color: #64707d; font-size: 12px; }
     @media (max-width: 760px) {
       main { margin: 18px auto; }
       header, .grid, form, .facts, .actions { grid-template-columns: 1fr; display: grid; }
@@ -243,6 +252,18 @@ const appHTML = `<!doctype html>
         <div class="form-actions"><button id="save" type="submit">Save Settings</button></div>
       </form>
     </section>
+    <section class="panel wide">
+      <div class="logs-head">
+        <h2>Job Logs</h2>
+        <div id="job-id" class="job-id">No job workspace yet</div>
+      </div>
+      <div class="tabs">
+        <button id="setup-tab" class="tab active" type="button">Setup</button>
+        <button id="training-tab" class="tab" type="button">Training</button>
+      </div>
+      <pre id="log-box" class="log-box log-empty">No logs yet.</pre>
+      <div id="log-note" class="log-note"></div>
+    </section>
     </div>
   </main>
   <script>
@@ -257,6 +278,11 @@ const appHTML = `<!doctype html>
     const reject = document.querySelector("#reject");
     const reset = document.querySelector("#reset");
     const refreshButton = document.querySelector("#refresh");
+    const setupTab = document.querySelector("#setup-tab");
+    const trainingTab = document.querySelector("#training-tab");
+    const logBox = document.querySelector("#log-box");
+    const logNote = document.querySelector("#log-note");
+    const jobId = document.querySelector("#job-id");
     const settings = document.querySelector("#settings");
     const save = document.querySelector("#save");
     const fields = {
@@ -266,6 +292,7 @@ const appHTML = `<!doctype html>
       workspaceRoot: document.querySelector("#workspace-root"),
     };
     let state = { running: false, connection: "UNPAIRED" };
+    let activeLog = "setup";
 
     function render(next) {
       state = next;
@@ -296,6 +323,21 @@ const appHTML = `<!doctype html>
       fields.workspaceRoot.value = state.config.workspace_root || "";
       for (const input of Object.values(fields)) input.disabled = state.running;
       save.disabled = state.running;
+      renderLogs();
+    }
+
+    function renderLogs() {
+      const logs = state.job_logs || null;
+      const text = logs ? logs[activeLog] || "" : "";
+      jobId.textContent = logs ? logs.job_id : "No job workspace yet";
+      logBox.textContent = text || (logs ? "No " + activeLog + " log yet." : "No logs yet.");
+      logBox.classList.toggle("log-empty", !text);
+      setupTab.classList.toggle("active", activeLog === "setup");
+      trainingTab.classList.toggle("active", activeLog === "training");
+      const path = logs ? (activeLog === "setup" ? logs.setup_path : logs.training_path) : "";
+      logNote.textContent = logs && logs.truncated
+        ? "Showing the latest log tail. " + (path || "")
+        : (path || "");
     }
 
     async function refresh() {
@@ -327,6 +369,8 @@ const appHTML = `<!doctype html>
     accept.addEventListener("click", () => pairingAction("/api/pairing/accept"));
     reject.addEventListener("click", () => pairingAction("/api/pairing/reject"));
     refreshButton.addEventListener("click", refresh);
+    setupTab.addEventListener("click", () => { activeLog = "setup"; renderLogs(); });
+    trainingTab.addEventListener("click", () => { activeLog = "training"; renderLogs(); });
     settings.addEventListener("submit", async (event) => {
       event.preventDefault();
       save.disabled = true;

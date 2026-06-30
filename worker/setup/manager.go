@@ -22,6 +22,11 @@ type Runner interface {
 
 type CommandRunner struct{}
 
+type pythonCommand struct {
+	Name string
+	Args []string
+}
+
 var runtimeRequirements = []string{
 	"grpcio",
 	"protobuf",
@@ -120,13 +125,9 @@ func (m *Manager) run(ctx context.Context, jobID string) Result {
 	if err := os.RemoveAll(venvPath); err != nil {
 		return failed(err, logPath)
 	}
-	python, err := exec.LookPath("python3")
-	if err != nil {
-		return failed(fmt.Errorf("python3 is not installed"), logPath)
-	}
 	log.Printf("creating private Python environment for job %q", jobID)
-	if err := m.runner.Run(ctx, directory, logPath, python, "-m", "venv", ".venv"); err != nil {
-		return failed(fmt.Errorf("create Python environment: %w", err), logPath)
+	if err := m.createVenv(ctx, directory, logPath, venvPath); err != nil {
+		return failed(err, logPath)
 	}
 	log.Printf("private Python environment ready for job %q", jobID)
 	venvPython := venvPythonPath(venvPath)
@@ -156,6 +157,40 @@ func (m *Manager) run(ctx context.Context, jobID string) Result {
 		return failed(fmt.Errorf("install requirements: %w", err), logPath)
 	}
 	return Result{Status: gradient.JobSetupStatus_JOB_SETUP_STATUS_READY, LogPath: logPath}
+}
+
+func (m *Manager) createVenv(ctx context.Context, directory, logPath, venvPath string) error {
+	var failures []string
+	for _, candidate := range pythonCandidates() {
+		args := append(append([]string{}, candidate.Args...), "-m", "venv", ".venv")
+		if err := m.runner.Run(ctx, directory, logPath, candidate.Name, args...); err == nil {
+			return nil
+		} else {
+			failures = append(failures, fmt.Sprintf("%s %s: %v", candidate.Name, strings.Join(candidate.Args, " "), err))
+			_ = os.RemoveAll(venvPath)
+		}
+	}
+	return fmt.Errorf(
+		"create Python environment: LDGCC CUDA PyTorch requires Python 3.11 or 3.12. Install Python 3.12 on this Worker and ensure it is available via the Windows py launcher. Attempts: %s",
+		strings.Join(failures, "; "),
+	)
+}
+
+func pythonCandidates() []pythonCommand {
+	if runtime.GOOS == "windows" {
+		return []pythonCommand{
+			{Name: "py", Args: []string{"-3.12"}},
+			{Name: "py", Args: []string{"-3.11"}},
+			{Name: "python", Args: nil},
+			{Name: "python3", Args: nil},
+		}
+	}
+	return []pythonCommand{
+		{Name: "python3.12", Args: nil},
+		{Name: "python3.11", Args: nil},
+		{Name: "python3", Args: nil},
+		{Name: "python", Args: nil},
+	}
 }
 
 func venvPythonPath(venvPath string) string {
