@@ -99,6 +99,13 @@ async function pairWorker(node?: unknown): Promise<void> {
   vscode.window.showInformationMessage(`Pairing request sent to ${worker.instance}`);
 }
 
+async function checkNetwork(): Promise<void> {
+  const api = await ensureClient();
+  await api.checkNetwork();
+  await loadState();
+  vscode.window.showInformationMessage("LDGCC Worker network check completed");
+}
+
 async function prepareJob(): Promise<void> {
   const api = await ensureClient();
   const root = workspaceRoot();
@@ -431,6 +438,8 @@ async function handleViewAction(action: string, payload?: unknown): Promise<void
       return discoverWorkers();
     case "pairWorker":
       return pairWorker(workerPayloadToDiscovered(payload));
+    case "checkNetwork":
+      return checkNetwork();
     case "prepareJob":
       return prepareJob();
     case "setupWorkers":

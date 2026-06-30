@@ -27,6 +27,15 @@ export interface RegisteredWorker {
   last_seen: string;
 }
 
+export interface WorkerNetworkCheck {
+  worker_id: string;
+  latency_ms?: number;
+  mbps?: number;
+  quality: string;
+  error?: string;
+  checked_at: string;
+}
+
 export interface JobWorkerState {
   status: string;
   error_message?: string;
@@ -63,6 +72,7 @@ export interface MasterState {
   workers?: RegisteredWorker[];
   job?: JobState;
   last_summary?: JobSummary;
+  network?: Record<string, WorkerNetworkCheck>;
 }
 
 export interface MasterEvent {

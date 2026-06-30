@@ -106,6 +106,7 @@ export class StudioViewProvider implements vscode.WebviewViewProvider {
     const state = this.state;
     const discovered = state?.discovered_workers ?? [];
     const workers = state?.workers ?? [];
+    const network = state?.network ?? {};
     const job = state?.job;
     const summary = state?.last_summary;
     const masterStatus = this.connected ? `${state?.master.status ?? "ready"} ${state?.master.version ?? ""}`.trim() : "stopped";
@@ -128,6 +129,7 @@ export class StudioViewProvider implements vscode.WebviewViewProvider {
     const retryBusy = this.actionBusy["retrySetup"] ?? false;
     const startBusy = this.actionBusy["startTraining"] ?? false;
     const stopBusy = this.actionBusy["stopTraining"] ?? false;
+    const networkBusy = this.actionBusy["checkNetwork"] ?? false;
     const elapsedTraining = this.trainingStartedAt ? formatElapsed(Date.now() - this.trainingStartedAt) : "Not running";
     const errorRows = this.errors.length
       ? this.errors
@@ -174,6 +176,26 @@ export class StudioViewProvider implements vscode.WebviewViewProvider {
           )
           .join("")
       : `<div class="empty"><strong>No Workers discovered</strong><span>Open LDGCC Worker on a worker laptop and click Discover.</span></div>`;
+    const networkRows = workers.length
+      ? workers
+          .map((worker) => {
+            const check = network[worker.worker_id];
+            const quality = check?.quality ?? "not checked";
+            const latency = check?.latency_ms === undefined ? "-" : `${check.latency_ms} ms`;
+            const bandwidth = check?.mbps === undefined ? "-" : `${formatMbps(check.mbps)} Mbps`;
+            const error = check?.error ? `<div class="error">${escapeHtml(check.error)}</div>` : "";
+            return `
+              <div class="row worker-row">
+                <div>
+                  <strong>${escapeHtml(worker.worker_id)}</strong>
+                  <span>Latency ${escapeHtml(latency)} · Upload ${escapeHtml(bandwidth)} · ${escapeHtml(qualityLabel(quality))}</span>
+                  ${error}
+                </div>
+                <b class="badge ${qualityClass(quality)}">${escapeHtml(qualityLabel(quality))}</b>
+              </div>`;
+          })
+          .join("")
+      : `<div class="empty"><strong>No paired Workers</strong><span>Pair a Worker before running LAN Check.</span></div>`;
     const setupRows = job?.setup
       ? Object.entries(job.setup)
           .map(([workerID, setup]) => {
@@ -258,6 +280,7 @@ export class StudioViewProvider implements vscode.WebviewViewProvider {
     .badge { display: inline-flex; align-items: center; justify-content: center; min-height: 22px; border: 1px solid var(--border); border-radius: 999px; padding: 2px 8px; color: var(--muted); font-size: 11px; font-weight: 760; white-space: nowrap; }
     .badge.good { color: #2ea043; border-color: color-mix(in srgb, #2ea043 44%, var(--border)); background: color-mix(in srgb, #2ea043 9%, transparent); }
     .badge.attention { color: #d29922; border-color: color-mix(in srgb, #d29922 44%, var(--border)); background: color-mix(in srgb, #d29922 9%, transparent); }
+    .badge.bad { color: #f85149; border-color: color-mix(in srgb, #f85149 44%, var(--border)); background: color-mix(in srgb, #f85149 9%, transparent); }
     .badge.subtle { background: color-mix(in srgb, var(--bg) 30%, transparent); }
     .job-title { display: flex; justify-content: space-between; gap: 8px; align-items: center; margin-bottom: 8px; }
     .mini { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 8px; padding: 5px 0; color: var(--muted); }
@@ -304,8 +327,13 @@ export class StudioViewProvider implements vscode.WebviewViewProvider {
         <button data-action="startMaster" ${this.busy || this.connected ? "disabled" : ""}>Start</button>
         <button data-action="stopMaster" class="secondary" ${this.busy || !this.connected ? "disabled" : ""}>Stop</button>
         <button data-action="discoverWorkers" ${!canRunJob ? "disabled" : ""}>Discover</button>
-        <button data-action="refresh" class="ghost" ${this.busy ? "disabled" : ""}>Refresh</button>
+        <button data-action="checkNetwork" class="secondary" ${!this.connected || this.busy || workers.length === 0 ? "disabled" : ""}>${networkBusy ? `<span class="loader" title="Checking"></span>` : `LAN Check`}</button>
       </div>
+    </section>
+
+    <section class="panel">
+      <div class="panel-head"><h2>Worker Network</h2><span class="badge subtle">Mbps</span></div>
+      ${networkRows}
     </section>
 
     <section class="panel">
@@ -412,6 +440,7 @@ function labelForAction(action: string): string {
     refresh: "Refreshing cluster state...",
     discoverWorkers: "Searching for Workers on the LAN...",
     pairWorker: "Sending pairing request...",
+    checkNetwork: "Checking Worker LAN latency...",
     prepareJob: "Preparing project and dataset shards...",
     setupWorkers: "Setting up Worker environments...",
     retrySetup: "Retrying failed Worker setup...",
@@ -420,6 +449,39 @@ function labelForAction(action: string): string {
     openResults: "Opening collected results...",
   };
   return labels[action] ?? "Working...";
+}
+
+function qualityLabel(value: string): string {
+  return value
+    .replace(/_/g, " ")
+    .toLowerCase()
+    .replace(/\b\w/g, (letter) => letter.toUpperCase());
+}
+
+function qualityClass(value: string): string {
+  switch (value) {
+    case "excellent":
+    case "good":
+      return "good";
+    case "fair":
+      return "attention";
+    case "poor":
+    case "error":
+    case "offline":
+      return "bad";
+    default:
+      return "subtle";
+  }
+}
+
+function formatMbps(value: number): string {
+  if (!Number.isFinite(value)) {
+    return "-";
+  }
+  if (value >= 100) {
+    return String(Math.round(value));
+  }
+  return value.toFixed(1);
 }
 
 function actionFailedLabel(action: string): string {

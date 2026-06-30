@@ -5,6 +5,8 @@ import (
 	"fmt"
 	"io"
 	"log"
+	"os"
+	"time"
 
 	gradient "github.com/Vikaspal8923/Locdist/worker/generated/gradient"
 	"github.com/Vikaspal8923/Locdist/worker/pairing"
@@ -133,6 +135,43 @@ func (s *WorkerBridgeServer) DownloadResult(request *gradient.DownloadResultRequ
 	}
 }
 
+func (s *WorkerBridgeServer) BenchmarkUpload(stream gradient.WorkerBridge_BenchmarkUploadServer) error {
+	var workerID string
+	var masterID string
+	var token string
+	var total uint64
+	start := time.Now()
+	for {
+		chunk, err := stream.Recv()
+		if err == io.EOF {
+			duration := time.Since(start)
+			durationMillis := duration.Milliseconds()
+			if durationMillis <= 0 {
+				durationMillis = 1
+			}
+			mbps := (float64(total) * 8) / duration.Seconds() / 1_000_000
+			return stream.SendAndClose(&gradient.BenchmarkResult{
+				WorkerId:       workerID,
+				BytesReceived:  total,
+				DurationMillis: durationMillis,
+				Mbps:           mbps,
+			})
+		}
+		if err != nil {
+			return err
+		}
+		if workerID == "" {
+			workerID = chunk.GetWorkerId()
+			masterID = chunk.GetMasterId()
+			token = chunk.GetPairingToken()
+			if err := s.authenticateValues(workerID, masterID, token); err != nil {
+				return err
+			}
+		}
+		total += uint64(len(chunk.GetData()))
+	}
+}
+
 func (s *WorkerBridgeServer) authenticateCommand(request *gradient.JobCommandRequest) error {
 	if s.pairing == nil || s.training == nil {
 		return fmt.Errorf("training lifecycle is not available")
@@ -185,6 +224,79 @@ func (s *WorkerBridgeServer) PrepareWorkspace(ctx context.Context, request *grad
 		return nil, err
 	}
 	return &gradient.PrepareWorkspaceResponse{JobId: request.GetJobId(), Prepared: true, WorkspacePath: path}, nil
+}
+
+func (s *WorkerBridgeServer) UploadWorkspace(stream gradient.WorkerBridge_UploadWorkspaceServer) error {
+	if s.pairing == nil || s.workspace == nil {
+		return fmt.Errorf("workspace preparation is not available")
+	}
+	var (
+		jobID       string
+		workerID    string
+		entrypoint  string
+		datasetPath string
+		offset      uint64
+		archive     *os.File
+	)
+	cleanup := func() {
+		if archive != nil {
+			name := archive.Name()
+			archive.Close()
+			os.Remove(name)
+		}
+	}
+	defer cleanup()
+	for {
+		chunk, err := stream.Recv()
+		if err == io.EOF {
+			if archive == nil || offset == 0 {
+				return fmt.Errorf("workspace upload is empty")
+			}
+			if err := archive.Close(); err != nil {
+				return err
+			}
+			path, err := s.workspace.PrepareFile(jobID, entrypoint, datasetPath, archive.Name())
+			if err != nil {
+				return err
+			}
+			return stream.SendAndClose(&gradient.PrepareWorkspaceResponse{JobId: jobID, Prepared: true, WorkspacePath: path})
+		}
+		if err != nil {
+			return err
+		}
+		if archive == nil {
+			record, ok := s.pairing.Record()
+			if !ok || record.WorkerID != chunk.GetWorkerId() || record.MasterID != chunk.GetMasterId() || record.PairingToken != chunk.GetPairingToken() {
+				return fmt.Errorf("Master pairing credentials are invalid")
+			}
+			jobID = chunk.GetJobId()
+			workerID = chunk.GetWorkerId()
+			entrypoint = chunk.GetEntrypoint()
+			datasetPath = chunk.GetDatasetPath()
+			var createErr error
+			archive, createErr = os.CreateTemp("", "ldgcc-workspace-upload-*.zip")
+			if createErr != nil {
+				return createErr
+			}
+		}
+		if chunk.GetJobId() != jobID || chunk.GetWorkerId() != workerID || chunk.GetEntrypoint() != entrypoint || chunk.GetDatasetPath() != datasetPath {
+			return fmt.Errorf("workspace upload metadata changed during stream")
+		}
+		if chunk.GetOffset() != offset {
+			return fmt.Errorf("workspace upload offset mismatch")
+		}
+		data := chunk.GetData()
+		if len(data) == 0 {
+			return fmt.Errorf("workspace upload contains an empty chunk")
+		}
+		if offset+uint64(len(data)) > workspace.MaxPackageBytes {
+			return fmt.Errorf("workspace package size is invalid")
+		}
+		if _, err := archive.Write(data); err != nil {
+			return err
+		}
+		offset += uint64(len(data))
+	}
 }
 
 func (s *WorkerBridgeServer) SynchronizeGradients(

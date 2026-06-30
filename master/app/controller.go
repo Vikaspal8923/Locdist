@@ -3,6 +3,7 @@ package app
 import (
 	"context"
 	"fmt"
+	"net"
 	"os"
 	"path/filepath"
 	"strings"
@@ -10,10 +11,13 @@ import (
 	"time"
 
 	"github.com/Vikaspal8923/Locdist/master/discovery"
+	gradient "github.com/Vikaspal8923/Locdist/master/generated/gradient"
 	"github.com/Vikaspal8923/Locdist/master/jobs"
 	"github.com/Vikaspal8923/Locdist/master/orchestrator"
 	"github.com/Vikaspal8923/Locdist/master/pairing"
 	"github.com/Vikaspal8923/Locdist/master/workers"
+	"google.golang.org/grpc"
+	"google.golang.org/grpc/credentials/insecure"
 )
 
 type Backend struct {
@@ -45,6 +49,16 @@ type Controller struct {
 	runCancel  context.CancelFunc
 	runDone    chan struct{}
 	operation  string
+	network    map[string]NetworkCheck
+}
+
+type NetworkCheck struct {
+	WorkerID  string  `json:"worker_id"`
+	LatencyMS int64   `json:"latency_ms,omitempty"`
+	Mbps      float64 `json:"mbps,omitempty"`
+	Quality   string  `json:"quality"`
+	Error     string  `json:"error,omitempty"`
+	CheckedAt string  `json:"checked_at"`
 }
 
 func NewController(
@@ -56,6 +70,7 @@ func NewController(
 		pairing:    pairingService,
 		requests:   make(map[string]Worker),
 		events:     NewEventHub(),
+		network:    make(map[string]NetworkCheck),
 	}
 }
 
@@ -63,6 +78,113 @@ func (c *Controller) AttachBackend(backend Backend) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	c.backend = &backend
+}
+
+func (c *Controller) CheckWorkerNetwork(ctx context.Context) error {
+	backend, err := c.backendValue()
+	if err != nil {
+		return err
+	}
+	states := backend.Workers.States()
+	if len(states) == 0 {
+		return fmt.Errorf("no paired Workers are available")
+	}
+	results := make(map[string]NetworkCheck, len(states))
+	for _, worker := range states {
+		result := c.checkOneWorker(ctx, backend.Workers, worker)
+		results[worker.WorkerID] = result
+	}
+	c.mu.Lock()
+	for workerID, result := range results {
+		c.network[workerID] = result
+	}
+	c.mu.Unlock()
+	c.events.Publish("workers.network_checked", results)
+	return nil
+}
+
+func (c *Controller) checkOneWorker(ctx context.Context, manager *workers.Manager, worker workers.State) NetworkCheck {
+	checkedAt := time.Now().Format(time.RFC3339)
+	if worker.Availability != workers.AvailabilityOnline {
+		return NetworkCheck{WorkerID: worker.WorkerID, Quality: "offline", Error: "Worker is not online", CheckedAt: checkedAt}
+	}
+	pairing, ok := manager.Pairing(worker.WorkerID)
+	if !ok {
+		return NetworkCheck{WorkerID: worker.WorkerID, Quality: "error", Error: "pairing credentials are missing", CheckedAt: checkedAt}
+	}
+	dialCtx, cancel := context.WithTimeout(ctx, 5*time.Second)
+	defer cancel()
+	connection, err := grpc.DialContext(dialCtx, net.JoinHostPort(worker.Host, worker.GRPCPort), grpc.WithTransportCredentials(insecure.NewCredentials()), grpc.WithBlock())
+	if err != nil {
+		return NetworkCheck{WorkerID: worker.WorkerID, Quality: "error", Error: err.Error(), CheckedAt: checkedAt}
+	}
+	defer connection.Close()
+	requestCtx, cancel := context.WithTimeout(ctx, 20*time.Second)
+	defer cancel()
+	start := time.Now()
+	_, err = gradient.NewWorkerBridgeClient(connection).Heartbeat(requestCtx, &gradient.WorkerHeartbeat{
+		WorkerId:     worker.WorkerID,
+		MasterId:     pairing.MasterID,
+		PairingToken: pairing.Token,
+		Status:       worker.Status,
+		JobId:        worker.JobID,
+	})
+	if err != nil {
+		return NetworkCheck{WorkerID: worker.WorkerID, Quality: "error", Error: err.Error(), CheckedAt: checkedAt}
+	}
+	latency := time.Since(start).Milliseconds()
+	mbps, err := benchmarkUpload(requestCtx, gradient.NewWorkerBridgeClient(connection), worker, pairing)
+	if err != nil {
+		return NetworkCheck{WorkerID: worker.WorkerID, LatencyMS: latency, Quality: "error", Error: err.Error(), CheckedAt: checkedAt}
+	}
+	return NetworkCheck{WorkerID: worker.WorkerID, LatencyMS: latency, Mbps: mbps, Quality: networkQuality(latency, mbps), CheckedAt: checkedAt}
+}
+
+func benchmarkUpload(ctx context.Context, client gradient.WorkerBridgeClient, worker workers.State, pairing workers.Pairing) (float64, error) {
+	stream, err := client.BenchmarkUpload(ctx)
+	if err != nil {
+		return 0, err
+	}
+	chunk := make([]byte, 256<<10)
+	const totalBytes = 8 << 20
+	for sent := 0; sent < totalBytes; sent += len(chunk) {
+		size := len(chunk)
+		if remaining := totalBytes - sent; remaining < size {
+			size = remaining
+		}
+		if err := stream.Send(&gradient.BenchmarkChunk{
+			WorkerId:     worker.WorkerID,
+			MasterId:     pairing.MasterID,
+			PairingToken: pairing.Token,
+			Data:         chunk[:size],
+		}); err != nil {
+			return 0, err
+		}
+	}
+	result, err := stream.CloseAndRecv()
+	if err != nil {
+		return 0, err
+	}
+	return result.GetMbps(), nil
+}
+
+func networkQuality(latencyMS int64, mbps float64) string {
+	if mbps > 0 && mbps < 50 {
+		return "poor"
+	}
+	if mbps >= 50 && mbps < 150 {
+		return "fair"
+	}
+	switch {
+	case latencyMS <= 10:
+		return "excellent"
+	case latencyMS <= 30:
+		return "good"
+	case latencyMS <= 80:
+		return "fair"
+	default:
+		return "poor"
+	}
 }
 func (c *Controller) Events() *EventHub { return c.events }
 
@@ -304,11 +426,12 @@ func (c *Controller) Stop() error {
 }
 
 type State struct {
-	Master      map[string]any  `json:"master"`
-	Discovered  []Worker        `json:"discovered_workers"`
-	Workers     []workers.State `json:"workers"`
-	Job         *jobs.JobState  `json:"job"`
-	LastSummary *jobs.Summary   `json:"last_summary"`
+	Master      map[string]any          `json:"master"`
+	Discovered  []Worker                `json:"discovered_workers"`
+	Workers     []workers.State         `json:"workers"`
+	Job         *jobs.JobState          `json:"job"`
+	LastSummary *jobs.Summary           `json:"last_summary"`
+	Network     map[string]NetworkCheck `json:"network,omitempty"`
 }
 
 func (c *Controller) State() State {
@@ -318,6 +441,14 @@ func (c *Controller) State() State {
 		return state
 	}
 	state.Workers = backend.Workers.States()
+	c.mu.RLock()
+	if len(c.network) > 0 {
+		state.Network = make(map[string]NetworkCheck, len(c.network))
+		for workerID, result := range c.network {
+			state.Network[workerID] = result
+		}
+	}
+	c.mu.RUnlock()
 	if job, err := backend.Jobs.CurrentJob(); err == nil {
 		state.Job = job
 	}

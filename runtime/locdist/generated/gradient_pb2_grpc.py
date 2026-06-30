@@ -78,6 +78,11 @@ class WorkerBridgeStub:
                 request_serializer=gradient__pb2.PrepareWorkspaceRequest.SerializeToString,
                 response_deserializer=gradient__pb2.PrepareWorkspaceResponse.FromString,
                 _registered_method=True)
+        self.UploadWorkspace = channel.stream_unary(
+                '/locdist.v1.WorkerBridge/UploadWorkspace',
+                request_serializer=gradient__pb2.WorkspaceChunk.SerializeToString,
+                response_deserializer=gradient__pb2.PrepareWorkspaceResponse.FromString,
+                _registered_method=True)
         self.SetupJob = channel.unary_unary(
                 '/locdist.v1.WorkerBridge/SetupJob',
                 request_serializer=gradient__pb2.SetupJobRequest.SerializeToString,
@@ -117,6 +122,11 @@ class WorkerBridgeStub:
                 '/locdist.v1.WorkerBridge/DownloadResult',
                 request_serializer=gradient__pb2.DownloadResultRequest.SerializeToString,
                 response_deserializer=gradient__pb2.ResultChunk.FromString,
+                _registered_method=True)
+        self.BenchmarkUpload = channel.stream_unary(
+                '/locdist.v1.WorkerBridge/BenchmarkUpload',
+                request_serializer=gradient__pb2.BenchmarkChunk.SerializeToString,
+                response_deserializer=gradient__pb2.BenchmarkResult.FromString,
                 _registered_method=True)
 
 
@@ -175,6 +185,12 @@ class WorkerBridgeServicer:
         context.set_details('Method not implemented!')
         raise NotImplementedError('Method not implemented!')
 
+    def UploadWorkspace(self, request_iterator, context):
+        """Missing associated documentation comment in .proto file."""
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
     def SetupJob(self, request, context):
         """Missing associated documentation comment in .proto file."""
         context.set_code(grpc.StatusCode.UNIMPLEMENTED)
@@ -223,6 +239,12 @@ class WorkerBridgeServicer:
         context.set_details('Method not implemented!')
         raise NotImplementedError('Method not implemented!')
 
+    def BenchmarkUpload(self, request_iterator, context):
+        """Missing associated documentation comment in .proto file."""
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
 
 def add_WorkerBridgeServicer_to_server(servicer, server):
     rpc_method_handlers = {
@@ -266,6 +288,11 @@ def add_WorkerBridgeServicer_to_server(servicer, server):
                     request_deserializer=gradient__pb2.PrepareWorkspaceRequest.FromString,
                     response_serializer=gradient__pb2.PrepareWorkspaceResponse.SerializeToString,
             ),
+            'UploadWorkspace': grpc.stream_unary_rpc_method_handler(
+                    servicer.UploadWorkspace,
+                    request_deserializer=gradient__pb2.WorkspaceChunk.FromString,
+                    response_serializer=gradient__pb2.PrepareWorkspaceResponse.SerializeToString,
+            ),
             'SetupJob': grpc.unary_unary_rpc_method_handler(
                     servicer.SetupJob,
                     request_deserializer=gradient__pb2.SetupJobRequest.FromString,
@@ -305,6 +332,11 @@ def add_WorkerBridgeServicer_to_server(servicer, server):
                     servicer.DownloadResult,
                     request_deserializer=gradient__pb2.DownloadResultRequest.FromString,
                     response_serializer=gradient__pb2.ResultChunk.SerializeToString,
+            ),
+            'BenchmarkUpload': grpc.stream_unary_rpc_method_handler(
+                    servicer.BenchmarkUpload,
+                    request_deserializer=gradient__pb2.BenchmarkChunk.FromString,
+                    response_serializer=gradient__pb2.BenchmarkResult.SerializeToString,
             ),
     }
     generic_handler = grpc.method_handlers_generic_handler(
@@ -538,6 +570,33 @@ class WorkerBridge:
             _registered_method=True)
 
     @staticmethod
+    def UploadWorkspace(request_iterator,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.stream_unary(
+            request_iterator,
+            target,
+            '/locdist.v1.WorkerBridge/UploadWorkspace',
+            gradient__pb2.WorkspaceChunk.SerializeToString,
+            gradient__pb2.PrepareWorkspaceResponse.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
+
+    @staticmethod
     def SetupJob(request,
             target,
             options=(),
@@ -743,6 +802,33 @@ class WorkerBridge:
             '/locdist.v1.WorkerBridge/DownloadResult',
             gradient__pb2.DownloadResultRequest.SerializeToString,
             gradient__pb2.ResultChunk.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
+
+    @staticmethod
+    def BenchmarkUpload(request_iterator,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.stream_unary(
+            request_iterator,
+            target,
+            '/locdist.v1.WorkerBridge/BenchmarkUpload',
+            gradient__pb2.BenchmarkChunk.SerializeToString,
+            gradient__pb2.BenchmarkResult.FromString,
             options,
             channel_credentials,
             insecure,

@@ -23,6 +23,10 @@ export class MasterClient {
     await this.post(`/workers/${encodeURIComponent(id)}/pair`);
   }
 
+  async checkNetwork(): Promise<void> {
+    await this.post("/workers/network/check");
+  }
+
   async prepareJob(projectRoot: string): Promise<void> {
     await this.post("/jobs/prepare", { project_root: projectRoot });
   }

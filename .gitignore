@@ -237,3 +237,4 @@ debug_dumps/
 # -----------------------------------------------------
 
 benchmarks/output/
+.venv-local/

@@ -14,7 +14,7 @@ import (
 )
 
 const (
-	MaxPackageBytes = 64 << 20
+	MaxPackageBytes = 10 << 30
 	MaxRPCBytes     = MaxPackageBytes + (1 << 20)
 )
 
@@ -45,23 +45,32 @@ func Build(request PackageRequest) ([]byte, error) {
 	}
 
 	var buffer bytes.Buffer
-	writer := zip.NewWriter(&buffer)
-
-	if err := addProjectFiles(writer, request); err != nil {
-		_ = writer.Close()
+	if err := Write(&buffer, request); err != nil {
 		return nil, err
-	}
-	if err := addJobConfig(writer, request); err != nil {
-		_ = writer.Close()
-		return nil, err
-	}
-	if err := writer.Close(); err != nil {
-		return nil, fmt.Errorf("close workspace package: %w", err)
 	}
 	if buffer.Len() > MaxPackageBytes {
 		return nil, fmt.Errorf("workspace package exceeds %d bytes", MaxPackageBytes)
 	}
 	return buffer.Bytes(), nil
+}
+
+func Write(target io.Writer, request PackageRequest) error {
+	if err := validateRequest(request); err != nil {
+		return err
+	}
+	writer := zip.NewWriter(target)
+	if err := addProjectFiles(writer, request); err != nil {
+		_ = writer.Close()
+		return err
+	}
+	if err := addJobConfig(writer, request); err != nil {
+		_ = writer.Close()
+		return err
+	}
+	if err := writer.Close(); err != nil {
+		return fmt.Errorf("close workspace package: %w", err)
+	}
+	return nil
 }
 
 func validateRequest(request PackageRequest) error {

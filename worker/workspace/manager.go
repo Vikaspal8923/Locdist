@@ -11,9 +11,9 @@ import (
 )
 
 const (
-	MaxPackageBytes   = 64 << 20
-	MaxRPCBytes       = MaxPackageBytes + (1 << 20)
-	MaxExtractedBytes = 256 << 20
+	MaxPackageBytes   = 10 << 30
+	MaxRPCBytes       = 128 << 20
+	MaxExtractedBytes = 20 << 30
 )
 
 type Manager struct{ root string }
@@ -40,11 +40,31 @@ func (m *Manager) Remove(jobID string) error {
 }
 
 func (m *Manager) Prepare(jobID, entrypoint, datasetPath string, archive []byte) (string, error) {
-	if !safeID(jobID) || !safeRelative(entrypoint) || !safeRelative(datasetPath) {
-		return "", fmt.Errorf("workspace metadata contains an unsafe path")
-	}
 	if len(archive) == 0 || len(archive) > MaxPackageBytes {
 		return "", fmt.Errorf("workspace package size is invalid")
+	}
+	return m.prepare(jobID, entrypoint, datasetPath, bytes.NewReader(archive), int64(len(archive)))
+}
+
+func (m *Manager) PrepareFile(jobID, entrypoint, datasetPath, archivePath string) (string, error) {
+	info, err := os.Stat(archivePath)
+	if err != nil {
+		return "", err
+	}
+	if info.Size() <= 0 || info.Size() > MaxPackageBytes {
+		return "", fmt.Errorf("workspace package size is invalid")
+	}
+	archive, err := os.Open(archivePath)
+	if err != nil {
+		return "", err
+	}
+	defer archive.Close()
+	return m.prepare(jobID, entrypoint, datasetPath, archive, info.Size())
+}
+
+func (m *Manager) prepare(jobID, entrypoint, datasetPath string, archive io.ReaderAt, archiveSize int64) (string, error) {
+	if !safeID(jobID) || !safeRelative(entrypoint) || !safeRelative(datasetPath) {
+		return "", fmt.Errorf("workspace metadata contains an unsafe path")
 	}
 	if err := os.MkdirAll(m.root, 0o700); err != nil {
 		return "", err
@@ -72,7 +92,7 @@ func (m *Manager) Prepare(jobID, entrypoint, datasetPath string, archive []byte)
 		return "", err
 	}
 	defer os.RemoveAll(temporary)
-	if err := extract(archive, temporary); err != nil {
+	if err := extract(archive, archiveSize, temporary); err != nil {
 		return "", err
 	}
 	for _, required := range []string{entrypoint, "job_config.json"} {
@@ -95,8 +115,8 @@ func (m *Manager) Prepare(jobID, entrypoint, datasetPath string, archive []byte)
 	return destination, nil
 }
 
-func extract(data []byte, destination string) error {
-	reader, err := zip.NewReader(bytes.NewReader(data), int64(len(data)))
+func extract(archive io.ReaderAt, size int64, destination string) error {
+	reader, err := zip.NewReader(archive, size)
 	if err != nil {
 		return fmt.Errorf("open workspace package: %w", err)
 	}

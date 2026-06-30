@@ -52,6 +52,13 @@ func NewSecureServer(host, port, token string, controller *Controller) (*Server,
 		}
 		writeJSON(writer, http.StatusAccepted, map[string]string{"status": "pending"})
 	})
+	mux.HandleFunc("POST /workers/network/check", func(writer http.ResponseWriter, request *http.Request) {
+		if err := controller.CheckWorkerNetwork(request.Context()); err != nil {
+			writeError(writer, http.StatusConflict, err)
+			return
+		}
+		writeJSON(writer, http.StatusAccepted, map[string]string{"status": "checked"})
+	})
 	mux.HandleFunc("POST /jobs/prepare", func(writer http.ResponseWriter, request *http.Request) {
 		var body struct {
 			ProjectRoot string `json:"project_root"`

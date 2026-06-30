@@ -228,6 +228,25 @@ message PrepareWorkspaceResponse {
   string workspace_path = 3;
 }
 
+message WorkspaceChunk {
+
+  string job_id = 1;
+
+  string worker_id = 2;
+
+  string master_id = 3;
+
+  string pairing_token = 4;
+
+  string entrypoint = 5;
+
+  string dataset_path = 6;
+
+  bytes data = 7;
+
+  uint64 offset = 8;
+}
+
 // =====================================================
 // Worker Environment Setup
 // =====================================================
@@ -360,6 +379,28 @@ message ResultChunk {
   bytes data = 1;
 }
 
+message BenchmarkChunk {
+
+  string worker_id = 1;
+
+  string master_id = 2;
+
+  string pairing_token = 3;
+
+  bytes data = 4;
+}
+
+message BenchmarkResult {
+
+  string worker_id = 1;
+
+  uint64 bytes_received = 2;
+
+  int64 duration_millis = 3;
+
+  double mbps = 4;
+}
+
 message RegisterWorkerResponse {
 
   string worker_id = 1;
@@ -438,6 +479,12 @@ service WorkerBridge {
     PrepareWorkspaceResponse
   );
 
+  rpc UploadWorkspace(
+    stream WorkspaceChunk
+  ) returns (
+    PrepareWorkspaceResponse
+  );
+
   rpc SetupJob(
     SetupJobRequest
   ) returns (
@@ -484,5 +531,11 @@ service WorkerBridge {
     DownloadResultRequest
   ) returns (
     stream ResultChunk
+  );
+
+  rpc BenchmarkUpload(
+    stream BenchmarkChunk
+  ) returns (
+    BenchmarkResult
   );
 }

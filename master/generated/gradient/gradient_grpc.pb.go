@@ -27,6 +27,7 @@ const (
 	WorkerBridge_Heartbeat_FullMethodName            = "/locdist.v1.WorkerBridge/Heartbeat"
 	WorkerBridge_GoingOffline_FullMethodName         = "/locdist.v1.WorkerBridge/GoingOffline"
 	WorkerBridge_PrepareWorkspace_FullMethodName     = "/locdist.v1.WorkerBridge/PrepareWorkspace"
+	WorkerBridge_UploadWorkspace_FullMethodName      = "/locdist.v1.WorkerBridge/UploadWorkspace"
 	WorkerBridge_SetupJob_FullMethodName             = "/locdist.v1.WorkerBridge/SetupJob"
 	WorkerBridge_ArmJob_FullMethodName               = "/locdist.v1.WorkerBridge/ArmJob"
 	WorkerBridge_ReleaseJob_FullMethodName           = "/locdist.v1.WorkerBridge/ReleaseJob"
@@ -35,6 +36,7 @@ const (
 	WorkerBridge_CleanupJob_FullMethodName           = "/locdist.v1.WorkerBridge/CleanupJob"
 	WorkerBridge_GetResultManifest_FullMethodName    = "/locdist.v1.WorkerBridge/GetResultManifest"
 	WorkerBridge_DownloadResult_FullMethodName       = "/locdist.v1.WorkerBridge/DownloadResult"
+	WorkerBridge_BenchmarkUpload_FullMethodName      = "/locdist.v1.WorkerBridge/BenchmarkUpload"
 )
 
 // WorkerBridgeClient is the client API for WorkerBridge service.
@@ -49,6 +51,7 @@ type WorkerBridgeClient interface {
 	Heartbeat(ctx context.Context, in *WorkerHeartbeat, opts ...grpc.CallOption) (*WorkerHeartbeatResponse, error)
 	GoingOffline(ctx context.Context, in *WorkerOfflineRequest, opts ...grpc.CallOption) (*WorkerOfflineResponse, error)
 	PrepareWorkspace(ctx context.Context, in *PrepareWorkspaceRequest, opts ...grpc.CallOption) (*PrepareWorkspaceResponse, error)
+	UploadWorkspace(ctx context.Context, opts ...grpc.CallOption) (grpc.ClientStreamingClient[WorkspaceChunk, PrepareWorkspaceResponse], error)
 	SetupJob(ctx context.Context, in *SetupJobRequest, opts ...grpc.CallOption) (*SetupJobResponse, error)
 	ArmJob(ctx context.Context, in *JobCommandRequest, opts ...grpc.CallOption) (*JobCommandResponse, error)
 	ReleaseJob(ctx context.Context, in *JobCommandRequest, opts ...grpc.CallOption) (*JobCommandResponse, error)
@@ -57,6 +60,7 @@ type WorkerBridgeClient interface {
 	CleanupJob(ctx context.Context, in *JobCommandRequest, opts ...grpc.CallOption) (*JobCommandResponse, error)
 	GetResultManifest(ctx context.Context, in *JobCommandRequest, opts ...grpc.CallOption) (*ResultManifestResponse, error)
 	DownloadResult(ctx context.Context, in *DownloadResultRequest, opts ...grpc.CallOption) (grpc.ServerStreamingClient[ResultChunk], error)
+	BenchmarkUpload(ctx context.Context, opts ...grpc.CallOption) (grpc.ClientStreamingClient[BenchmarkChunk, BenchmarkResult], error)
 }
 
 type workerBridgeClient struct {
@@ -147,6 +151,19 @@ func (c *workerBridgeClient) PrepareWorkspace(ctx context.Context, in *PrepareWo
 	return out, nil
 }
 
+func (c *workerBridgeClient) UploadWorkspace(ctx context.Context, opts ...grpc.CallOption) (grpc.ClientStreamingClient[WorkspaceChunk, PrepareWorkspaceResponse], error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	stream, err := c.cc.NewStream(ctx, &WorkerBridge_ServiceDesc.Streams[0], WorkerBridge_UploadWorkspace_FullMethodName, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	x := &grpc.GenericClientStream[WorkspaceChunk, PrepareWorkspaceResponse]{ClientStream: stream}
+	return x, nil
+}
+
+// This type alias is provided for backwards compatibility with existing code that references the prior non-generic stream type by name.
+type WorkerBridge_UploadWorkspaceClient = grpc.ClientStreamingClient[WorkspaceChunk, PrepareWorkspaceResponse]
+
 func (c *workerBridgeClient) SetupJob(ctx context.Context, in *SetupJobRequest, opts ...grpc.CallOption) (*SetupJobResponse, error) {
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
 	out := new(SetupJobResponse)
@@ -219,7 +236,7 @@ func (c *workerBridgeClient) GetResultManifest(ctx context.Context, in *JobComma
 
 func (c *workerBridgeClient) DownloadResult(ctx context.Context, in *DownloadResultRequest, opts ...grpc.CallOption) (grpc.ServerStreamingClient[ResultChunk], error) {
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
-	stream, err := c.cc.NewStream(ctx, &WorkerBridge_ServiceDesc.Streams[0], WorkerBridge_DownloadResult_FullMethodName, cOpts...)
+	stream, err := c.cc.NewStream(ctx, &WorkerBridge_ServiceDesc.Streams[1], WorkerBridge_DownloadResult_FullMethodName, cOpts...)
 	if err != nil {
 		return nil, err
 	}
@@ -236,6 +253,19 @@ func (c *workerBridgeClient) DownloadResult(ctx context.Context, in *DownloadRes
 // This type alias is provided for backwards compatibility with existing code that references the prior non-generic stream type by name.
 type WorkerBridge_DownloadResultClient = grpc.ServerStreamingClient[ResultChunk]
 
+func (c *workerBridgeClient) BenchmarkUpload(ctx context.Context, opts ...grpc.CallOption) (grpc.ClientStreamingClient[BenchmarkChunk, BenchmarkResult], error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	stream, err := c.cc.NewStream(ctx, &WorkerBridge_ServiceDesc.Streams[2], WorkerBridge_BenchmarkUpload_FullMethodName, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	x := &grpc.GenericClientStream[BenchmarkChunk, BenchmarkResult]{ClientStream: stream}
+	return x, nil
+}
+
+// This type alias is provided for backwards compatibility with existing code that references the prior non-generic stream type by name.
+type WorkerBridge_BenchmarkUploadClient = grpc.ClientStreamingClient[BenchmarkChunk, BenchmarkResult]
+
 // WorkerBridgeServer is the server API for WorkerBridge service.
 // All implementations must embed UnimplementedWorkerBridgeServer
 // for forward compatibility.
@@ -248,6 +278,7 @@ type WorkerBridgeServer interface {
 	Heartbeat(context.Context, *WorkerHeartbeat) (*WorkerHeartbeatResponse, error)
 	GoingOffline(context.Context, *WorkerOfflineRequest) (*WorkerOfflineResponse, error)
 	PrepareWorkspace(context.Context, *PrepareWorkspaceRequest) (*PrepareWorkspaceResponse, error)
+	UploadWorkspace(grpc.ClientStreamingServer[WorkspaceChunk, PrepareWorkspaceResponse]) error
 	SetupJob(context.Context, *SetupJobRequest) (*SetupJobResponse, error)
 	ArmJob(context.Context, *JobCommandRequest) (*JobCommandResponse, error)
 	ReleaseJob(context.Context, *JobCommandRequest) (*JobCommandResponse, error)
@@ -256,6 +287,7 @@ type WorkerBridgeServer interface {
 	CleanupJob(context.Context, *JobCommandRequest) (*JobCommandResponse, error)
 	GetResultManifest(context.Context, *JobCommandRequest) (*ResultManifestResponse, error)
 	DownloadResult(*DownloadResultRequest, grpc.ServerStreamingServer[ResultChunk]) error
+	BenchmarkUpload(grpc.ClientStreamingServer[BenchmarkChunk, BenchmarkResult]) error
 	mustEmbedUnimplementedWorkerBridgeServer()
 }
 
@@ -290,6 +322,9 @@ func (UnimplementedWorkerBridgeServer) GoingOffline(context.Context, *WorkerOffl
 func (UnimplementedWorkerBridgeServer) PrepareWorkspace(context.Context, *PrepareWorkspaceRequest) (*PrepareWorkspaceResponse, error) {
 	return nil, status.Error(codes.Unimplemented, "method PrepareWorkspace not implemented")
 }
+func (UnimplementedWorkerBridgeServer) UploadWorkspace(grpc.ClientStreamingServer[WorkspaceChunk, PrepareWorkspaceResponse]) error {
+	return status.Error(codes.Unimplemented, "method UploadWorkspace not implemented")
+}
 func (UnimplementedWorkerBridgeServer) SetupJob(context.Context, *SetupJobRequest) (*SetupJobResponse, error) {
 	return nil, status.Error(codes.Unimplemented, "method SetupJob not implemented")
 }
@@ -313,6 +348,9 @@ func (UnimplementedWorkerBridgeServer) GetResultManifest(context.Context, *JobCo
 }
 func (UnimplementedWorkerBridgeServer) DownloadResult(*DownloadResultRequest, grpc.ServerStreamingServer[ResultChunk]) error {
 	return status.Error(codes.Unimplemented, "method DownloadResult not implemented")
+}
+func (UnimplementedWorkerBridgeServer) BenchmarkUpload(grpc.ClientStreamingServer[BenchmarkChunk, BenchmarkResult]) error {
+	return status.Error(codes.Unimplemented, "method BenchmarkUpload not implemented")
 }
 func (UnimplementedWorkerBridgeServer) mustEmbedUnimplementedWorkerBridgeServer() {}
 func (UnimplementedWorkerBridgeServer) testEmbeddedByValue()                      {}
@@ -479,6 +517,13 @@ func _WorkerBridge_PrepareWorkspace_Handler(srv interface{}, ctx context.Context
 	return interceptor(ctx, in, info, handler)
 }
 
+func _WorkerBridge_UploadWorkspace_Handler(srv interface{}, stream grpc.ServerStream) error {
+	return srv.(WorkerBridgeServer).UploadWorkspace(&grpc.GenericServerStream[WorkspaceChunk, PrepareWorkspaceResponse]{ServerStream: stream})
+}
+
+// This type alias is provided for backwards compatibility with existing code that references the prior non-generic stream type by name.
+type WorkerBridge_UploadWorkspaceServer = grpc.ClientStreamingServer[WorkspaceChunk, PrepareWorkspaceResponse]
+
 func _WorkerBridge_SetupJob_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
 	in := new(SetupJobRequest)
 	if err := dec(in); err != nil {
@@ -616,6 +661,13 @@ func _WorkerBridge_DownloadResult_Handler(srv interface{}, stream grpc.ServerStr
 // This type alias is provided for backwards compatibility with existing code that references the prior non-generic stream type by name.
 type WorkerBridge_DownloadResultServer = grpc.ServerStreamingServer[ResultChunk]
 
+func _WorkerBridge_BenchmarkUpload_Handler(srv interface{}, stream grpc.ServerStream) error {
+	return srv.(WorkerBridgeServer).BenchmarkUpload(&grpc.GenericServerStream[BenchmarkChunk, BenchmarkResult]{ServerStream: stream})
+}
+
+// This type alias is provided for backwards compatibility with existing code that references the prior non-generic stream type by name.
+type WorkerBridge_BenchmarkUploadServer = grpc.ClientStreamingServer[BenchmarkChunk, BenchmarkResult]
+
 // WorkerBridge_ServiceDesc is the grpc.ServiceDesc for WorkerBridge service.
 // It's only intended for direct use with grpc.RegisterService,
 // and not to be introspected or modified (even as a copy)
@@ -686,9 +738,19 @@ var WorkerBridge_ServiceDesc = grpc.ServiceDesc{
 	},
 	Streams: []grpc.StreamDesc{
 		{
+			StreamName:    "UploadWorkspace",
+			Handler:       _WorkerBridge_UploadWorkspace_Handler,
+			ClientStreams: true,
+		},
+		{
 			StreamName:    "DownloadResult",
 			Handler:       _WorkerBridge_DownloadResult_Handler,
 			ServerStreams: true,
+		},
+		{
+			StreamName:    "BenchmarkUpload",
+			Handler:       _WorkerBridge_BenchmarkUpload_Handler,
+			ClientStreams: true,
 		},
 	},
 	Metadata: "gradient.proto",
