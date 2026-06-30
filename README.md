@@ -60,6 +60,7 @@ Worker laptops:
     Linux x64 Worker package
     Windows x64 Worker package
     Mixed Linux + Windows Workers in the same job
+    NVIDIA CUDA GPU Workers only
 
 Dataset types:
     JSONL line-based datasets
@@ -430,8 +431,21 @@ Each Worker pairs with one Master at a time. Use `Reset Previous Connection` in
 the Worker App before pairing with a different Brain laptop.
 
 Worker setup creates a private `.venv` for each job. LDGCC installs its runtime
-dependencies automatically. If the project contains `requirements.txt`, Workers
-also install it for the user's training code.
+dependencies automatically:
+
+```text
+torch
+grpcio
+protobuf
+numpy
+```
+
+LDGCC V1 requires an NVIDIA CUDA Worker. If a Worker has no CUDA GPU or
+`nvidia-smi` is not available, setup fails clearly before training starts.
+
+If the project contains `requirements.txt`, Workers also install it for the
+user's training code. LDGCC filters its own packages from `requirements.txt` so
+the user file does not overwrite the LDGCC CUDA PyTorch runtime.
 
 Every new job sends a fresh project package and dataset shard. This matters when
 the user changes code or data between runs.

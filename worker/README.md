@@ -1848,9 +1848,14 @@ validated filesystem boundary that execution will use.
 # LDGCC Phase 9: Environment Setup and Readiness
 
 After Phase 8 creates `workspaces/<job_id>`, the paired Master can call the
-authenticated `SetupJob` RPC. The Worker creates `.venv`, installs
-LDGCC runtime dependencies, installs `requirements.txt` when it exists, and
-writes command output to `logs/setup.log`.
+authenticated `SetupJob` RPC. The Worker verifies an NVIDIA CUDA GPU with
+`nvidia-smi`, creates `.venv`, installs LDGCC-owned runtime dependencies,
+installs filtered user `requirements.txt` when it exists, and writes command
+output to `logs/setup.log`.
+
+LDGCC-owned packages are `torch`, `grpcio`, `protobuf`, and `numpy`. They are
+installed by Worker setup and removed from the user requirements install list so
+the project cannot accidentally replace the LDGCC CUDA PyTorch runtime.
 
 ```text
 WORKSPACE_RECEIVED -> SETTING_UP -> READY

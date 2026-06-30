@@ -17,11 +17,15 @@ import (
 type fakeRunner struct {
 	calls       []string
 	failInstall bool
+	failCUDA    bool
 }
 
 func (f *fakeRunner) Run(_ context.Context, _, _ string, name string, args ...string) error {
 	call := name + " " + strings.Join(args, " ")
 	f.calls = append(f.calls, call)
+	if strings.Contains(call, "nvidia-smi") && f.failCUDA {
+		return fmt.Errorf("nvidia-smi not found")
+	}
 	if strings.Contains(call, "pip install") && f.failInstall {
 		f.failInstall = false
 		return fmt.Errorf("dependency error")
@@ -37,13 +41,19 @@ func TestSetupWithoutRequirementsBecomesReady(t *testing.T) {
 	if result.Status != gradient.JobSetupStatus_JOB_SETUP_STATUS_READY {
 		t.Fatalf("status = %s, error = %s", result.Status, result.ErrorMessage)
 	}
-	if len(runner.calls) != 2 {
+	if len(runner.calls) != 4 {
 		t.Fatalf("unexpected commands: %v", runner.calls)
 	}
-	if !strings.Contains(runner.calls[0], "-m venv .venv") {
+	if !strings.Contains(runner.calls[0], "nvidia-smi -L") {
+		t.Fatalf("CUDA detection missing: %v", runner.calls)
+	}
+	if !strings.Contains(runner.calls[1], "-m venv .venv") {
 		t.Fatalf("venv command missing: %v", runner.calls)
 	}
-	if !strings.Contains(runner.calls[1], "pip install torch grpcio protobuf numpy") {
+	if !strings.Contains(runner.calls[2], "pip install torch --index-url https://download.pytorch.org/whl/cu121") {
+		t.Fatalf("CUDA torch install missing: %v", runner.calls)
+	}
+	if !strings.Contains(runner.calls[3], "pip install grpcio protobuf numpy") {
 		t.Fatalf("runtime dependency install missing: %v", runner.calls)
 	}
 }
@@ -56,14 +66,61 @@ func TestSetupInstallsRuntimeDependenciesBeforeUserRequirements(t *testing.T) {
 	if result.Status != gradient.JobSetupStatus_JOB_SETUP_STATUS_READY {
 		t.Fatalf("status = %s, error = %s", result.Status, result.ErrorMessage)
 	}
-	if len(runner.calls) != 3 {
+	if len(runner.calls) != 5 {
 		t.Fatalf("unexpected commands: %v", runner.calls)
 	}
-	if !strings.Contains(runner.calls[1], "pip install torch grpcio protobuf numpy") {
+	if !strings.Contains(runner.calls[2], "pip install torch --index-url https://download.pytorch.org/whl/cu121") {
+		t.Fatalf("CUDA torch install missing: %v", runner.calls)
+	}
+	if !strings.Contains(runner.calls[3], "pip install grpcio protobuf numpy") {
 		t.Fatalf("runtime dependency install missing: %v", runner.calls)
 	}
-	if !strings.Contains(runner.calls[2], "pip install -r requirements.txt") {
+	if !strings.Contains(runner.calls[4], "pip install -r .ldgcc-user-requirements.txt") {
 		t.Fatalf("user requirements install missing: %v", runner.calls)
+	}
+}
+
+func TestSetupFiltersLDGCCOwnedPackagesFromUserRequirements(t *testing.T) {
+	workspaceManager := preparedWorkspaceWithRequirements(t, "torch\nnumpy>=1.26\ngrpcio\nprotobuf\npandas==2.0\n")
+	runner := &fakeRunner{}
+	manager := NewWithRunner(workspaceManager, runner)
+	result := manager.Setup(context.Background(), "job-1", false)
+	if result.Status != gradient.JobSetupStatus_JOB_SETUP_STATUS_READY {
+		t.Fatalf("status = %s, error = %s", result.Status, result.ErrorMessage)
+	}
+	path, _ := workspaceManager.Path("job-1")
+	filtered, err := os.ReadFile(filepath.Join(path, ".ldgcc-user-requirements.txt"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(filtered) != "pandas==2.0\n" {
+		t.Fatalf("filtered requirements = %q", string(filtered))
+	}
+}
+
+func TestSetupSkipsUserInstallWhenOnlyLDGCCOwnedPackagesExist(t *testing.T) {
+	workspaceManager := preparedWorkspaceWithRequirements(t, "torch\ngrpcio\nprotobuf\nnumpy\n")
+	runner := &fakeRunner{}
+	manager := NewWithRunner(workspaceManager, runner)
+	result := manager.Setup(context.Background(), "job-1", false)
+	if result.Status != gradient.JobSetupStatus_JOB_SETUP_STATUS_READY {
+		t.Fatalf("status = %s, error = %s", result.Status, result.ErrorMessage)
+	}
+	if len(runner.calls) != 4 {
+		t.Fatalf("unexpected commands: %v", runner.calls)
+	}
+}
+
+func TestSetupFailsWhenCUDADetectionFails(t *testing.T) {
+	workspaceManager := preparedWorkspace(t, false)
+	runner := &fakeRunner{failCUDA: true}
+	manager := NewWithRunner(workspaceManager, runner)
+	result := manager.Setup(context.Background(), "job-1", false)
+	if result.Status != gradient.JobSetupStatus_JOB_SETUP_STATUS_FAILED {
+		t.Fatalf("status = %s", result.Status)
+	}
+	if !strings.Contains(result.ErrorMessage, "requires an NVIDIA CUDA Worker") {
+		t.Fatalf("unexpected error: %s", result.ErrorMessage)
 	}
 }
 
@@ -87,10 +144,19 @@ func TestFailedDependencySetupCanRetryWithoutDeletingProject(t *testing.T) {
 
 func preparedWorkspace(t *testing.T, requirements bool) *workspace.Manager {
 	t.Helper()
+	requirementsText := ""
+	if requirements {
+		requirementsText = "example==1.0\n"
+	}
+	return preparedWorkspaceWithRequirements(t, requirementsText)
+}
+
+func preparedWorkspaceWithRequirements(t *testing.T, requirementsText string) *workspace.Manager {
+	t.Helper()
 	manager := workspace.New(filepath.Join(t.TempDir(), "workspaces"))
 	files := map[string]string{"train.py": "print('ok')", "dataset/train.jsonl": "one\n", "job_config.json": "{}"}
-	if requirements {
-		files["requirements.txt"] = "example==1.0\n"
+	if requirementsText != "" {
+		files["requirements.txt"] = requirementsText
 	}
 	var buffer bytes.Buffer
 	writer := zip.NewWriter(&buffer)
