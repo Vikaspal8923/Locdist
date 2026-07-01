@@ -1,4 +1,5 @@
 from typing import List
+import math
 
 import torch
 
@@ -16,6 +17,19 @@ TORCH_DTYPE_MAP = {
     "torch.float64": torch.float64,
     "torch.bfloat16": torch.bfloat16,
 }
+
+
+def _expected_dtype_size(dtype: torch.dtype) -> int:
+    return torch.empty((), dtype=dtype).element_size()
+
+
+def _validate_shape(metadata: ParameterMetadata) -> None:
+    expected = math.prod(metadata.shape)
+    if expected != metadata.numel:
+        raise ValueError(
+            f"Gradient metadata shape/numel mismatch for {metadata.name}: "
+            f"{metadata.shape} != {metadata.numel}"
+        )
 
 
 def extract_gradient_chunks(
@@ -89,6 +103,7 @@ def apply_gradient_chunks(
                 f"Parameter mismatch: "
                 f"{name} != {chunk.metadata.name}"
             )
+        _validate_shape(chunk.metadata)
 
         if not chunk.has_grad:
             parameter.grad = None
@@ -101,12 +116,20 @@ def apply_gradient_chunks(
             )
             continue
 
+        dtype = TORCH_DTYPE_MAP[
+            chunk.data_dtype
+            or chunk.metadata.dtype
+        ]
+        expected_bytes = chunk.metadata.numel * _expected_dtype_size(dtype)
+        actual_bytes = len(chunk.data or b"")
+        if chunk.byte_size != actual_bytes:
+            raise ValueError("Dense gradient byte_size does not match data length")
+        if actual_bytes != expected_bytes:
+            raise ValueError("Dense gradient data size mismatch")
+
         tensor = torch.frombuffer(
             bytearray(chunk.data),
-            dtype=TORCH_DTYPE_MAP[
-                chunk.data_dtype
-                or chunk.metadata.dtype
-            ],
+            dtype=dtype,
         )
 
         tensor = tensor.reshape(
@@ -135,6 +158,18 @@ def _sparse_chunk_to_tensor(
         chunk.data_dtype
         or chunk.metadata.dtype
     ]
+    expected_bytes = len(indices) * _expected_dtype_size(dtype)
+    actual_bytes = len(chunk.data)
+    if chunk.byte_size != actual_bytes:
+        raise ValueError("Sparse gradient byte_size does not match data length")
+    if actual_bytes != expected_bytes:
+        raise ValueError("Sparse gradient data size mismatch")
+    if not indices and not chunk.data:
+        return torch.zeros(
+            chunk.metadata.shape,
+            device=parameter.device,
+            dtype=parameter.dtype,
+        )
     values = torch.frombuffer(
         bytearray(chunk.data),
         dtype=dtype,
