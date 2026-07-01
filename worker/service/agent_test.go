@@ -86,7 +86,7 @@ func TestAdvertisedHostResolvesAutoHosts(t *testing.T) {
 }
 
 func TestVirtualInterfaceNamesAreSkipped(t *testing.T) {
-	for _, name := range []string{"vboxnet0", "docker0", "br-abcd", "veth123", "vmnet8", "tun0", "tap0"} {
+	for _, name := range []string{"vboxnet0", "docker0", "br-abcd", "veth123", "vmnet8", "tun0", "tap0", "VirtualBox Host-Only Network", "VMware Network Adapter VMnet8", "vEthernet (WSL)", "Npcap Loopback Adapter"} {
 		if !isVirtualInterface(name) {
 			t.Fatalf("expected %q to be treated as virtual", name)
 		}

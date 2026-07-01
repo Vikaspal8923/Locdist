@@ -140,5 +140,11 @@ func isVirtualInterface(name string) bool {
 			return true
 		}
 	}
+	virtualMarkers := []string{"virtualbox", "vmware", "hyper-v", "wsl", "npcap", "loopback", "host-only"}
+	for _, marker := range virtualMarkers {
+		if strings.Contains(normalized, marker) {
+			return true
+		}
+	}
 	return false
 }
