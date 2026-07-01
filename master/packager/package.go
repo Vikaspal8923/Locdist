@@ -8,6 +8,7 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 
 	"github.com/Vikaspal8923/Locdist/master/project"
@@ -27,6 +28,7 @@ type PackageRequest struct {
 	ShardPath     string
 	ShardKind     string
 	Outputs       []string
+	RuntimePath   string
 	Communication project.CommunicationSpec
 }
 
@@ -60,6 +62,10 @@ func Write(target io.Writer, request PackageRequest) error {
 	}
 	writer := zip.NewWriter(target)
 	if err := addProjectFiles(writer, request); err != nil {
+		_ = writer.Close()
+		return err
+	}
+	if err := addRuntimeFiles(writer, request); err != nil {
 		_ = writer.Close()
 		return err
 	}
@@ -145,11 +151,73 @@ func addDirectory(writer *zip.Writer, sourceRoot string, archiveRoot string) err
 	})
 }
 
+func addRuntimeFiles(writer *zip.Writer, request PackageRequest) error {
+	runtimePath, err := resolveRuntimePath(request.RuntimePath)
+	if err != nil {
+		return err
+	}
+	return filepath.WalkDir(runtimePath, func(path string, entry os.DirEntry, err error) error {
+		if err != nil {
+			return err
+		}
+		relative, err := filepath.Rel(runtimePath, path)
+		if err != nil {
+			return err
+		}
+		if relative == "." {
+			return nil
+		}
+		relative = filepath.ToSlash(relative)
+		if shouldSkip(relative, entry) {
+			if entry.IsDir() {
+				return filepath.SkipDir
+			}
+			return nil
+		}
+		if entry.IsDir() {
+			return nil
+		}
+		if entry.Type()&os.ModeSymlink != 0 {
+			return nil
+		}
+		return addFile(writer, path, filepath.ToSlash(filepath.Join("locdist", relative)))
+	})
+}
+
+func resolveRuntimePath(configured string) (string, error) {
+	candidates := []string{}
+	if configured != "" {
+		candidates = append(candidates, configured)
+	}
+	if executable, err := os.Executable(); err == nil {
+		binDir := filepath.Dir(executable)
+		candidates = append(candidates,
+			filepath.Join(binDir, "runtime", "locdist"),
+			filepath.Join(binDir, "..", "runtime", "locdist"),
+			filepath.Join(binDir, "..", "..", "runtime", "locdist"),
+		)
+	}
+	_, sourceFile, _, ok := runtime.Caller(0)
+	if ok {
+		candidates = append(candidates, filepath.Clean(filepath.Join(filepath.Dir(sourceFile), "..", "..", "runtime", "locdist")))
+	}
+	for _, candidate := range candidates {
+		if candidate == "" {
+			continue
+		}
+		info, err := os.Stat(candidate)
+		if err == nil && info.IsDir() {
+			return candidate, nil
+		}
+	}
+	return "", fmt.Errorf("LDGCC runtime files were not found")
+}
+
 func shouldSkip(relativePath string, entry os.DirEntry) bool {
 	parts := strings.Split(relativePath, "/")
 	for _, part := range parts {
 		switch part {
-		case ".git", ".venv", "venv", "__pycache__", ".pytest_cache", ".ldgcc", "ldgcc_jobs":
+		case ".git", ".venv", "venv", "__pycache__", ".pytest_cache", ".ldgcc", "ldgcc_jobs", "locdist":
 			return true
 		}
 	}

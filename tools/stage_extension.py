@@ -48,6 +48,12 @@ def main() -> int:
         go_env["GOARCH"] = goarch
         go_env.setdefault("CGO_ENABLED", "0")
         subprocess.run(["go", "build", "-o", str(master_binary), "./cmd/master"], cwd=ROOT / "master", check=True, env=go_env)
+        runtime_target = bin_dir / "runtime" / "locdist"
+        shutil.copytree(
+            ROOT / "runtime" / "locdist",
+            runtime_target,
+            ignore=shutil.ignore_patterns("__pycache__", "*.pyc"),
+        )
 
     print(f"extension stage: {output}", flush=True)
     return 0
