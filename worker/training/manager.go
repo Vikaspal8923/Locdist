@@ -8,6 +8,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"runtime"
+	"strings"
 	"sync"
 	"time"
 
@@ -75,7 +76,11 @@ func (m *Manager) Arm(jobID string) Result {
 	if err := json.Unmarshal(data, &config); err != nil || config.Entrypoint == "" {
 		return failed("job_config.json has no valid entrypoint", "")
 	}
-	for _, required := range []string{venvPythonPath(filepath.Join(directory, ".venv")), filepath.Join(directory, filepath.FromSlash(config.Entrypoint))} {
+	python, err := pythonPath(directory)
+	if err != nil {
+		return failed(err.Error(), "")
+	}
+	for _, required := range []string{python, filepath.Join(directory, filepath.FromSlash(config.Entrypoint))} {
 		info, err := os.Stat(required)
 		if err != nil || !info.Mode().IsRegular() {
 			return failed(fmt.Sprintf("required training file %q is missing", required), "")
@@ -112,7 +117,12 @@ func (m *Manager) Release(jobID, workerID string) Result {
 		m.mu.Unlock()
 		return failed("resolve workspace path: "+err.Error(), current.logPath)
 	}
-	python := venvPythonPath(filepath.Join(absDirectory, ".venv"))
+	python, err := pythonPath(absDirectory)
+	if err != nil {
+		log.Close()
+		m.mu.Unlock()
+		return failed(err.Error(), current.logPath)
+	}
 	command := exec.Command(python, current.entrypoint)
 	command.Dir = absDirectory
 	command.Env = append(os.Environ(), "LDGCC_JOB_ID="+jobID, "LDGCC_WORKER_ID="+workerID, "LDGCC_WORKER_HOST=127.0.0.1", "LDGCC_WORKER_PORT="+m.workerPort)
@@ -138,6 +148,23 @@ func venvPythonPath(venvPath string) string {
 		return filepath.Join(venvPath, "Scripts", "python.exe")
 	}
 	return filepath.Join(venvPath, "bin", "python")
+}
+
+func pythonPath(workspacePath string) (string, error) {
+	marker := filepath.Join(workspacePath, ".ldgcc-venv-path")
+	if data, err := os.ReadFile(marker); err == nil {
+		venvPath := strings.TrimSpace(string(data))
+		if venvPath == "" {
+			return "", fmt.Errorf("cached Python environment marker is empty")
+		}
+		if !filepath.IsAbs(venvPath) {
+			return "", fmt.Errorf("cached Python environment path is not absolute")
+		}
+		return venvPythonPath(venvPath), nil
+	} else if !os.IsNotExist(err) {
+		return "", fmt.Errorf("read cached Python environment marker: %w", err)
+	}
+	return venvPythonPath(filepath.Join(workspacePath, ".venv")), nil
 }
 
 func (m *Manager) wait(jobID string, current *process, log *os.File) {

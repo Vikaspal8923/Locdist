@@ -3,6 +3,8 @@ package setup
 import (
 	"bufio"
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"fmt"
 	"log"
 	"os"
@@ -34,6 +36,8 @@ var runtimeRequirements = []string{
 }
 
 const cudaTorchIndexURL = "https://download.pytorch.org/whl/cu121"
+const venvMarkerFile = ".ldgcc-venv-path"
+const cacheReadyFile = "READY"
 
 func (CommandRunner) Run(ctx context.Context, directory, logPath, name string, args ...string) error {
 	log, err := os.OpenFile(logPath, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0o600)
@@ -121,40 +125,72 @@ func (m *Manager) run(ctx context.Context, jobID string) Result {
 	if err := m.runner.Run(ctx, directory, logPath, "nvidia-smi", "-L"); err != nil {
 		return failed(fmt.Errorf("LDGCC V1 requires an NVIDIA CUDA Worker. No CUDA GPU was detected on this Worker: %w", err), logPath)
 	}
-	venvPath := filepath.Join(directory, ".venv")
-	if err := os.RemoveAll(venvPath); err != nil {
+	requirements := filepath.Join(directory, "requirements.txt")
+	filteredRequirements := ""
+	hasUserRequirements := false
+	torchRequirements := []string{"torch"}
+	if _, err := os.Stat(requirements); err == nil {
+		filtered, hasUser, requestedTorch, err := filterUserRequirements(requirements)
+		if err != nil {
+			return failed(err, logPath)
+		}
+		filteredRequirements = filtered
+		hasUserRequirements = hasUser
+		torchRequirements = mergeTorchRequirements(torchRequirements, requestedTorch)
+	} else if !os.IsNotExist(err) {
 		return failed(err, logPath)
 	}
-	log.Printf("creating private Python environment for job %q", jobID)
-	if err := m.createVenv(ctx, directory, logPath, venvPath); err != nil {
+	fingerprint, err := dependencyFingerprint(directory, filteredRequirements, hasUserRequirements, torchRequirements)
+	if err != nil {
 		return failed(err, logPath)
 	}
-	log.Printf("private Python environment ready for job %q", jobID)
-	venvPython := venvPythonPath(venvPath)
+	cacheEnvPath := filepath.Join(dependencyCacheRoot(directory), fingerprint, "venv")
+	if cacheReady(cacheEnvPath) {
+		log.Printf("reusing cached LDGCC Python environment for job %q", jobID)
+		if err := writeVenvMarker(directory, cacheEnvPath); err != nil {
+			return failed(err, logPath)
+		}
+		return Result{Status: gradient.JobSetupStatus_JOB_SETUP_STATUS_READY, LogPath: logPath}
+	}
+	if err := os.RemoveAll(cacheEnvPath); err != nil {
+		return failed(err, logPath)
+	}
+	if err := os.Remove(filepath.Join(directory, venvMarkerFile)); err != nil && !os.IsNotExist(err) {
+		return failed(err, logPath)
+	}
+	log.Printf("creating cached Python environment for job %q", jobID)
+	if err := m.createVenv(ctx, directory, logPath, cacheEnvPath); err != nil {
+		return failed(err, logPath)
+	}
+	if err := os.MkdirAll(cacheEnvPath, 0o700); err != nil {
+		return failed(err, logPath)
+	}
+	log.Printf("cached Python environment ready for job %q", jobID)
+	venvPython := venvPythonPath(cacheEnvPath)
 	log.Printf("installing LDGCC CUDA PyTorch runtime for job %q", jobID)
-	if err := m.runner.Run(ctx, directory, logPath, venvPython, "-m", "pip", "install", "torch", "--index-url", cudaTorchIndexURL); err != nil {
+	cudaTorchInstallArgs := append([]string{"-m", "pip", "install"}, torchRequirements...)
+	cudaTorchInstallArgs = append(cudaTorchInstallArgs, "--index-url", cudaTorchIndexURL)
+	if err := m.runner.Run(ctx, directory, logPath, venvPython, cudaTorchInstallArgs...); err != nil {
+		_ = os.RemoveAll(filepath.Dir(cacheEnvPath))
 		return failed(fmt.Errorf("install LDGCC CUDA PyTorch runtime: %w", err), logPath)
 	}
 	log.Printf("installing LDGCC Python runtime dependencies for job %q", jobID)
 	runtimeInstallArgs := append([]string{"-m", "pip", "install"}, runtimeRequirements...)
 	if err := m.runner.Run(ctx, directory, logPath, venvPython, runtimeInstallArgs...); err != nil {
+		_ = os.RemoveAll(filepath.Dir(cacheEnvPath))
 		return failed(fmt.Errorf("install LDGCC runtime dependencies: %w", err), logPath)
 	}
-	requirements := filepath.Join(directory, "requirements.txt")
-	if _, err := os.Stat(requirements); os.IsNotExist(err) {
-		return Result{Status: gradient.JobSetupStatus_JOB_SETUP_STATUS_READY, LogPath: logPath}
-	} else if err != nil {
+	if hasUserRequirements {
+		if err := m.runner.Run(ctx, directory, logPath, venvPython, "-m", "pip", "install", "-r", filteredRequirements); err != nil {
+			_ = os.RemoveAll(filepath.Dir(cacheEnvPath))
+			return failed(fmt.Errorf("install requirements: %w", err), logPath)
+		}
+	}
+	if err := os.WriteFile(filepath.Join(filepath.Dir(cacheEnvPath), cacheReadyFile), []byte("ready\n"), 0o600); err != nil {
 		return failed(err, logPath)
 	}
-	filteredRequirements, hasUserRequirements, err := filterUserRequirements(requirements)
-	if err != nil {
+	if err := writeVenvMarker(directory, cacheEnvPath); err != nil {
 		return failed(err, logPath)
-	}
-	if !hasUserRequirements {
-		return Result{Status: gradient.JobSetupStatus_JOB_SETUP_STATUS_READY, LogPath: logPath}
-	}
-	if err := m.runner.Run(ctx, directory, logPath, venvPython, "-m", "pip", "install", "-r", filteredRequirements); err != nil {
-		return failed(fmt.Errorf("install requirements: %w", err), logPath)
 	}
 	return Result{Status: gradient.JobSetupStatus_JOB_SETUP_STATUS_READY, LogPath: logPath}
 }
@@ -162,7 +198,7 @@ func (m *Manager) run(ctx context.Context, jobID string) Result {
 func (m *Manager) createVenv(ctx context.Context, directory, logPath, venvPath string) error {
 	var failures []string
 	for _, candidate := range pythonCandidates() {
-		args := append(append([]string{}, candidate.Args...), "-m", "venv", ".venv")
+		args := append(append([]string{}, candidate.Args...), "-m", "venv", venvPath)
 		if err := m.runner.Run(ctx, directory, logPath, candidate.Name, args...); err == nil {
 			return nil
 		} else {
@@ -174,6 +210,42 @@ func (m *Manager) createVenv(ctx context.Context, directory, logPath, venvPath s
 		"create Python environment: LDGCC CUDA PyTorch requires Python 3.11 or 3.12. Install Python 3.12 on this Worker and ensure it is available via the Windows py launcher. Attempts: %s",
 		strings.Join(failures, "; "),
 	)
+}
+
+func dependencyCacheRoot(workspacePath string) string {
+	workspacesRoot := filepath.Dir(workspacePath)
+	workerRoot := filepath.Dir(workspacesRoot)
+	return filepath.Join(workerRoot, "env-cache")
+}
+
+func dependencyFingerprint(directory, filteredRequirements string, hasUserRequirements bool, torchRequirements []string) (string, error) {
+	hash := sha256.New()
+	_, _ = fmt.Fprintf(hash, "goos=%s\narch=%s\ncuda_index=%s\n", runtime.GOOS, runtime.GOARCH, cudaTorchIndexURL)
+	_, _ = fmt.Fprintf(hash, "torch=%s\n", strings.Join(torchRequirements, "\n"))
+	_, _ = fmt.Fprintf(hash, "runtime=%s\n", strings.Join(runtimeRequirements, "\n"))
+	if hasUserRequirements {
+		data, err := os.ReadFile(filepath.Join(directory, filteredRequirements))
+		if err != nil {
+			return "", err
+		}
+		_, _ = hash.Write(data)
+	}
+	return hex.EncodeToString(hash.Sum(nil))[:32], nil
+}
+
+func cacheReady(venvPath string) bool {
+	if _, err := os.Stat(filepath.Join(filepath.Dir(venvPath), cacheReadyFile)); err != nil {
+		return false
+	}
+	info, err := os.Stat(venvPythonPath(venvPath))
+	return err == nil && info.Mode().IsRegular()
+}
+
+func writeVenvMarker(directory, venvPath string) error {
+	if err := os.RemoveAll(filepath.Join(directory, ".venv")); err != nil {
+		return err
+	}
+	return os.WriteFile(filepath.Join(directory, venvMarkerFile), []byte(venvPath+"\n"), 0o600)
 }
 
 func pythonCandidates() []pythonCommand {
@@ -204,25 +276,36 @@ func failed(err error, logPath string) Result {
 	return Result{Status: gradient.JobSetupStatus_JOB_SETUP_STATUS_FAILED, ErrorMessage: err.Error(), LogPath: logPath}
 }
 
-func filterUserRequirements(requirementsPath string) (string, bool, error) {
+func filterUserRequirements(requirementsPath string) (string, bool, []string, error) {
 	file, err := os.Open(requirementsPath)
 	if err != nil {
-		return "", false, err
+		return "", false, nil, err
 	}
 	defer file.Close()
 
 	owned := map[string]struct{}{
-		"torch":    {},
-		"grpcio":   {},
-		"protobuf": {},
-		"numpy":    {},
+		"torch":       {},
+		"torchvision": {},
+		"grpcio":      {},
+		"protobuf":    {},
+		"numpy":       {},
+		"torchaudio":  {},
+	}
+	torchFamily := map[string]struct{}{
+		"torch":       {},
+		"torchvision": {},
+		"torchaudio":  {},
 	}
 	var kept []string
+	var requestedTorch []string
 	scanner := bufio.NewScanner(file)
 	for scanner.Scan() {
 		line := scanner.Text()
 		if packageName, ok := requirementPackageName(line); ok {
 			if _, exists := owned[packageName]; exists {
+				if _, isTorchFamily := torchFamily[packageName]; isTorchFamily {
+					requestedTorch = append(requestedTorch, packageName)
+				}
 				continue
 			}
 		}
@@ -231,16 +314,29 @@ func filterUserRequirements(requirementsPath string) (string, bool, error) {
 		}
 	}
 	if err := scanner.Err(); err != nil {
-		return "", false, err
+		return "", false, nil, err
 	}
 	if len(kept) == 0 {
-		return "", false, nil
+		return "", false, requestedTorch, nil
 	}
 	filteredPath := filepath.Join(filepath.Dir(requirementsPath), ".ldgcc-user-requirements.txt")
 	if err := os.WriteFile(filteredPath, []byte(strings.Join(kept, "\n")+"\n"), 0o600); err != nil {
-		return "", false, err
+		return "", false, nil, err
 	}
-	return filepath.Base(filteredPath), true, nil
+	return filepath.Base(filteredPath), true, requestedTorch, nil
+}
+
+func mergeTorchRequirements(base []string, requested []string) []string {
+	seen := make(map[string]struct{}, len(base)+len(requested))
+	var result []string
+	for _, requirement := range append(base, requested...) {
+		if _, ok := seen[requirement]; ok {
+			continue
+		}
+		seen[requirement] = struct{}{}
+		result = append(result, requirement)
+	}
+	return result
 }
 
 func requirementPackageName(line string) (string, bool) {

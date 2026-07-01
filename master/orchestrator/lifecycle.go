@@ -143,6 +143,16 @@ func (c *LifecycleCoordinator) finalize(ctx context.Context, job *jobs.JobState,
 		reason = "result collection failed: " + err.Error()
 		_ = c.results.Collect(ctx, job, false)
 	}
+	if status == jobs.StatusFailed && preservesRetryableWorkspace(snapshots) {
+		summary := jobs.Summary{JobID: job.JobID, Status: status, Reason: reason, FinishedAt: time.Now(), Workers: finalResultsFromSnapshots(job, snapshots)}
+		if err := c.jobs.ReturnToPrepared(job.JobID, summary); err != nil {
+			return nil, err
+		}
+		if err := c.results.WriteSummary(summary); err != nil {
+			return &summary, fmt.Errorf("write result summary: %w", err)
+		}
+		return &summary, nil
+	}
 	results := make(map[string]jobs.WorkerFinalResult, len(job.Workers))
 	var cleanupErrors []error
 	for _, assignment := range job.Workers {
@@ -178,4 +188,26 @@ func (c *LifecycleCoordinator) finalize(ctx context.Context, job *jobs.JobState,
 		return &summary, fmt.Errorf("job finalized with cleanup errors: %v", cleanupErrors)
 	}
 	return &summary, nil
+}
+
+func preservesRetryableWorkspace(snapshots map[string]*gradient.JobCommandResponse) bool {
+	for _, response := range snapshots {
+		if response.GetStatus() == gradient.JobRunStatus_JOB_RUN_STATUS_FAILED {
+			return true
+		}
+	}
+	return false
+}
+
+func finalResultsFromSnapshots(job *jobs.JobState, snapshots map[string]*gradient.JobCommandResponse) map[string]jobs.WorkerFinalResult {
+	results := make(map[string]jobs.WorkerFinalResult, len(job.Workers))
+	for _, assignment := range job.Workers {
+		response := snapshots[assignment.WorkerID]
+		if response == nil {
+			results[assignment.WorkerID] = jobs.WorkerFinalResult{Status: gradient.JobRunStatus_JOB_RUN_STATUS_FAILED, ErrorMessage: "Worker did not return final training status", ExitCode: -1}
+			continue
+		}
+		results[assignment.WorkerID] = jobs.WorkerFinalResult{Status: response.GetStatus(), ErrorMessage: response.GetErrorMessage(), ExitCode: response.GetExitCode(), LogTail: string(response.GetLogTail())}
+	}
+	return results
 }

@@ -119,6 +119,20 @@ func (m *Manager) SetStatus(jobID string, status Status) error {
 	return nil
 }
 
+func (m *Manager) ReturnToPrepared(jobID string, summary Summary) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	if m.currentJob == nil || m.currentJob.JobID != jobID {
+		return fmt.Errorf("job %q is not active", jobID)
+	}
+	m.currentJob.Status = StatusPrepared
+	for _, worker := range m.currentJob.Workers {
+		m.currentJob.Run[worker.WorkerID] = WorkerRun{Status: gradient.JobRunStatus_JOB_RUN_STATUS_UNKNOWN}
+	}
+	m.lastSummary = copySummary(summary)
+	return nil
+}
+
 func (m *Manager) UpdateSetup(jobID, workerID string, setup WorkerSetup) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
@@ -152,12 +166,7 @@ func (m *Manager) ArchiveAndReset(summary Summary) error {
 	if m.currentJob == nil || m.currentJob.JobID != summary.JobID {
 		return fmt.Errorf("job %q is not active", summary.JobID)
 	}
-	copy := summary
-	copy.Workers = make(map[string]WorkerFinalResult, len(summary.Workers))
-	for workerID, result := range summary.Workers {
-		copy.Workers[workerID] = result
-	}
-	m.lastSummary = &copy
+	m.lastSummary = copySummary(summary)
 	m.currentJob = nil
 	return nil
 }
@@ -174,4 +183,13 @@ func (m *Manager) LastSummary() (*Summary, bool) {
 		copy.Workers[workerID] = result
 	}
 	return &copy, true
+}
+
+func copySummary(summary Summary) *Summary {
+	copy := summary
+	copy.Workers = make(map[string]WorkerFinalResult, len(summary.Workers))
+	for workerID, result := range summary.Workers {
+		copy.Workers[workerID] = result
+	}
+	return &copy
 }

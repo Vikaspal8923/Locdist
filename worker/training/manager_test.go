@@ -69,6 +69,35 @@ func TestFailedProcessReportsExitCode(t *testing.T) {
 	}
 }
 
+func TestReleaseUsesCachedVenvMarker(t *testing.T) {
+	workspaceManager := preparedTrainingWorkspace(t, "#!/bin/sh\nexit 99\n")
+	path, _ := workspaceManager.Path("job-1")
+	cachedRoot := filepath.Join(filepath.Dir(filepath.Dir(path)), "env-cache", "test", "venv")
+	cachedPython := venvPythonPath(cachedRoot)
+	if err := os.MkdirAll(filepath.Dir(cachedPython), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(cachedPython, []byte("#!/bin/sh\necho cached-python\nexit 0\n"), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(path, ".ldgcc-venv-path"), []byte(cachedRoot+"\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	manager := New(workspaceManager, readiness(true), "50051")
+	if result := manager.Arm("job-1"); result.Status != gradient.JobRunStatus_JOB_RUN_STATUS_ARMED {
+		t.Fatal(result.ErrorMessage)
+	}
+	manager.Release("job-1", "worker-1")
+	waitForStatus(t, manager, gradient.JobRunStatus_JOB_RUN_STATUS_COMPLETED)
+	log, err := os.ReadFile(filepath.Join(path, "logs", "training.log"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(log), "cached-python") {
+		t.Fatalf("cached python was not used: %q", log)
+	}
+}
+
 func TestStopCancelsRunningProcess(t *testing.T) {
 	manager := New(preparedTrainingWorkspace(t, "#!/bin/sh\nsleep 30\n"), readiness(true), "50051")
 	if result := manager.Arm("job-1"); result.Status != gradient.JobRunStatus_JOB_RUN_STATUS_ARMED {

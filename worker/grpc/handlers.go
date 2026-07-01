@@ -53,6 +53,16 @@ func (s *WorkerBridgeServer) SetSetupManager(manager *workersetup.Manager) {
 func (s *WorkerBridgeServer) SetTrainingManager(manager *training.Manager)    { s.training = manager }
 func (s *WorkerBridgeServer) SetResultManager(manager *workerresults.Manager) { s.results = manager }
 
+func (s *WorkerBridgeServer) Heartbeat(ctx context.Context, request *gradient.WorkerHeartbeat) (*gradient.WorkerHeartbeatResponse, error) {
+	if err := s.authenticateValues(request.GetWorkerId(), request.GetMasterId(), request.GetPairingToken()); err != nil {
+		return nil, err
+	}
+	return &gradient.WorkerHeartbeatResponse{
+		Accepted:       true,
+		ServerUnixTime: time.Now().Unix(),
+	}, nil
+}
+
 func (s *WorkerBridgeServer) ArmJob(ctx context.Context, request *gradient.JobCommandRequest) (*gradient.JobCommandResponse, error) {
 	if err := s.authenticateCommand(request); err != nil {
 		return nil, err

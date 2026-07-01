@@ -206,7 +206,11 @@ func (c *ResultCollector) WriteSummary(summary jobs.Summary) error {
 	if err := temporary.Close(); err != nil {
 		return err
 	}
-	return os.Rename(temporaryPath, filepath.Join(directory, "summary.json"))
+	target := filepath.Join(directory, "summary.json")
+	if err := os.Remove(target); err != nil && !os.IsNotExist(err) {
+		return err
+	}
+	return os.Rename(temporaryPath, target)
 }
 
 func resultTarget(root, workerID string, file *gradient.ResultFile) string {
