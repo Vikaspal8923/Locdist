@@ -6,6 +6,7 @@ import (
 	"io"
 	"net"
 	"os"
+	"sync"
 	"time"
 
 	gradient "github.com/Vikaspal8923/Locdist/master/generated/gradient"
@@ -42,52 +43,80 @@ func (d *Distributor) Distribute(ctx context.Context, job *jobs.JobState) ([]Wor
 	}
 	results := make([]WorkspaceResult, 0, len(job.Workers))
 	for _, worker := range job.Workers {
-		shard, ok := shards[worker.WorkerID]
+		_, ok := shards[worker.WorkerID]
 		if !ok {
 			return nil, fmt.Errorf("worker %q has no dataset shard", worker.WorkerID)
 		}
-		pairing, ok := d.workers.Pairing(worker.WorkerID)
-		if !ok {
-			return nil, fmt.Errorf("worker %q has no pairing credentials", worker.WorkerID)
-		}
-		packageFile, err := os.CreateTemp("", "ldgcc-workspace-*.zip")
+	}
+
+	results = make([]WorkspaceResult, len(job.Workers))
+	errors := make(chan error, len(job.Workers))
+	var wait sync.WaitGroup
+	for index, worker := range job.Workers {
+		index := index
+		worker := worker
+		shard := shards[worker.WorkerID]
+		wait.Add(1)
+		go func() {
+			defer wait.Done()
+			result, err := d.distributeWorker(ctx, job, worker, shard)
+			if err != nil {
+				errors <- err
+				return
+			}
+			results[index] = result
+		}()
+	}
+	wait.Wait()
+	close(errors)
+	for err := range errors {
 		if err != nil {
-			return nil, fmt.Errorf("create workspace package for worker %q: %w", worker.WorkerID, err)
+			return nil, err
 		}
-		packagePath := packageFile.Name()
-		defer os.Remove(packagePath)
-		request := packager.PackageRequest{
-			ProjectRoot: job.ProjectRoot, JobID: job.JobID, WorkerID: worker.WorkerID,
-			Entrypoint: job.Entrypoint, DatasetPath: job.DatasetPath, ShardPath: shard.Path, ShardKind: shard.Kind,
-			Outputs:       job.Outputs,
-			Communication: job.Communication,
-		}
-		if err := packager.Write(packageFile, request); err != nil {
-			packageFile.Close()
-			return nil, fmt.Errorf("package worker %q: %w", worker.WorkerID, err)
-		}
-		if err := packageFile.Close(); err != nil {
-			return nil, fmt.Errorf("close package worker %q: %w", worker.WorkerID, err)
-		}
-		requestCtx, cancel := context.WithTimeout(ctx, d.timeout)
-		address := net.JoinHostPort(worker.Host, worker.GRPCPort)
-		connection, err := grpc.DialContext(requestCtx, address, grpc.WithTransportCredentials(insecure.NewCredentials()), grpc.WithBlock())
-		if err != nil {
-			cancel()
-			return nil, fmt.Errorf("connect to worker %q: %w", worker.WorkerID, err)
-		}
-		response, callErr := uploadWorkspace(requestCtx, gradient.NewWorkerBridgeClient(connection), packagePath, job, worker, pairing)
-		connection.Close()
-		cancel()
-		if callErr != nil {
-			return nil, fmt.Errorf("prepare worker %q: %w", worker.WorkerID, callErr)
-		}
-		if !response.GetPrepared() {
-			return nil, fmt.Errorf("worker %q did not prepare its workspace", worker.WorkerID)
-		}
-		results = append(results, WorkspaceResult{WorkerID: worker.WorkerID, WorkspacePath: response.GetWorkspacePath()})
 	}
 	return results, nil
+}
+
+func (d *Distributor) distributeWorker(ctx context.Context, job *jobs.JobState, worker jobs.WorkerAssignment, shard jobs.ShardAssignment) (WorkspaceResult, error) {
+	pairing, ok := d.workers.Pairing(worker.WorkerID)
+	if !ok {
+		return WorkspaceResult{}, fmt.Errorf("worker %q has no pairing credentials", worker.WorkerID)
+	}
+	packageFile, err := os.CreateTemp("", "ldgcc-workspace-*.zip")
+	if err != nil {
+		return WorkspaceResult{}, fmt.Errorf("create workspace package for worker %q: %w", worker.WorkerID, err)
+	}
+	packagePath := packageFile.Name()
+	defer os.Remove(packagePath)
+	request := packager.PackageRequest{
+		ProjectRoot: job.ProjectRoot, JobID: job.JobID, WorkerID: worker.WorkerID,
+		Entrypoint: job.Entrypoint, DatasetPath: job.DatasetPath, ShardPath: shard.Path, ShardKind: shard.Kind,
+		Outputs:       job.Outputs,
+		Communication: job.Communication,
+	}
+	if err := packager.Write(packageFile, request); err != nil {
+		packageFile.Close()
+		return WorkspaceResult{}, fmt.Errorf("package worker %q: %w", worker.WorkerID, err)
+	}
+	if err := packageFile.Close(); err != nil {
+		return WorkspaceResult{}, fmt.Errorf("close package worker %q: %w", worker.WorkerID, err)
+	}
+	requestCtx, cancel := context.WithTimeout(ctx, d.timeout)
+	defer cancel()
+	address := net.JoinHostPort(worker.Host, worker.GRPCPort)
+	connection, err := grpc.DialContext(requestCtx, address, grpc.WithTransportCredentials(insecure.NewCredentials()), grpc.WithBlock())
+	if err != nil {
+		return WorkspaceResult{}, fmt.Errorf("connect to worker %q: %w", worker.WorkerID, err)
+	}
+	defer connection.Close()
+	response, err := uploadWorkspace(requestCtx, gradient.NewWorkerBridgeClient(connection), packagePath, job, worker, pairing)
+	if err != nil {
+		return WorkspaceResult{}, fmt.Errorf("prepare worker %q: %w", worker.WorkerID, err)
+	}
+	if !response.GetPrepared() {
+		return WorkspaceResult{}, fmt.Errorf("worker %q did not prepare its workspace", worker.WorkerID)
+	}
+	return WorkspaceResult{WorkerID: worker.WorkerID, WorkspacePath: response.GetWorkspacePath()}, nil
 }
 
 func uploadWorkspace(

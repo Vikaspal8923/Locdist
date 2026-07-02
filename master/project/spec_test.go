@@ -79,6 +79,53 @@ func TestLoadSpecRejectsUnsafeOutput(t *testing.T) {
 	}
 }
 
+func TestLoadSpecNormalizesWindowsStyleRelativePaths(t *testing.T) {
+	root := t.TempDir()
+	writeFile(t, filepath.Join(root, "src", "train.py"), "print('train')\n")
+	writeFile(t, filepath.Join(root, "dataset", "train", "class", "1.jpg"), "image\n")
+	writeFile(t, filepath.Join(root, DefaultSpecFile), `
+entrypoint: src\train.py
+dataset:
+  train: dataset\train
+  type: image_folder
+workers:
+  count: 1
+outputs:
+  - outputs\metrics.json
+`)
+
+	spec, err := LoadSpec(root)
+	if err != nil {
+		t.Fatalf("load spec: %v", err)
+	}
+	if spec.Entrypoint != "src/train.py" {
+		t.Fatalf("entrypoint was not normalized: %q", spec.Entrypoint)
+	}
+	if spec.Dataset.Train != "dataset/train" {
+		t.Fatalf("dataset path was not normalized: %q", spec.Dataset.Train)
+	}
+	if len(spec.Outputs) != 1 || spec.Outputs[0] != "outputs/metrics.json" {
+		t.Fatalf("outputs were not normalized: %v", spec.Outputs)
+	}
+}
+
+func TestLoadSpecRejectsWindowsAbsolutePath(t *testing.T) {
+	root := t.TempDir()
+	writeFile(t, filepath.Join(root, "train.py"), "x")
+	writeFile(t, filepath.Join(root, "dataset", "train.jsonl"), "{}\n")
+	writeFile(t, filepath.Join(root, DefaultSpecFile), `
+entrypoint: C:\Users\me\train.py
+dataset:
+  train: dataset/train.jsonl
+workers:
+  count: 1
+`)
+
+	if _, err := LoadSpec(root); err == nil {
+		t.Fatal("expected Windows absolute entrypoint to fail")
+	}
+}
+
 func TestLoadSpecRejectsMissingWorkerCount(t *testing.T) {
 	root := t.TempDir()
 	writeFile(t, filepath.Join(root, "train.py"), "print('train')\n")

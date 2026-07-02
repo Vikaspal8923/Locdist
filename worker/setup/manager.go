@@ -122,6 +122,7 @@ func (m *Manager) run(ctx context.Context, jobID string) Result {
 	if err := os.WriteFile(logPath, nil, 0o600); err != nil {
 		return failed(err, logPath)
 	}
+	appendSetupLog(logPath, "LDGCC setup started for job "+jobID)
 	if err := m.runner.Run(ctx, directory, logPath, "nvidia-smi", "-L"); err != nil {
 		return failed(fmt.Errorf("LDGCC V1 requires an NVIDIA CUDA Worker. No CUDA GPU was detected on this Worker: %w", err), logPath)
 	}
@@ -147,9 +148,11 @@ func (m *Manager) run(ctx context.Context, jobID string) Result {
 	cacheEnvPath := filepath.Join(dependencyCacheRoot(directory), fingerprint, "venv")
 	if cacheReady(cacheEnvPath) {
 		log.Printf("reusing cached LDGCC Python environment for job %q", jobID)
+		appendSetupLog(logPath, "reusing cached LDGCC Python environment")
 		if err := writeVenvMarker(directory, cacheEnvPath); err != nil {
 			return failed(err, logPath)
 		}
+		appendSetupLog(logPath, "LDGCC setup ready")
 		return Result{Status: gradient.JobSetupStatus_JOB_SETUP_STATUS_READY, LogPath: logPath}
 	}
 	if err := os.RemoveAll(cacheEnvPath); err != nil {
@@ -159,6 +162,7 @@ func (m *Manager) run(ctx context.Context, jobID string) Result {
 		return failed(err, logPath)
 	}
 	log.Printf("creating cached Python environment for job %q", jobID)
+	appendSetupLog(logPath, "creating cached Python environment")
 	if err := m.createVenv(ctx, directory, logPath, cacheEnvPath); err != nil {
 		return failed(err, logPath)
 	}
@@ -168,6 +172,7 @@ func (m *Manager) run(ctx context.Context, jobID string) Result {
 	log.Printf("cached Python environment ready for job %q", jobID)
 	venvPython := venvPythonPath(cacheEnvPath)
 	log.Printf("installing LDGCC CUDA PyTorch runtime for job %q", jobID)
+	appendSetupLog(logPath, "installing LDGCC CUDA PyTorch runtime")
 	cudaTorchInstallArgs := append([]string{"-m", "pip", "install"}, torchRequirements...)
 	cudaTorchInstallArgs = append(cudaTorchInstallArgs, "--index-url", cudaTorchIndexURL)
 	if err := m.runner.Run(ctx, directory, logPath, venvPython, cudaTorchInstallArgs...); err != nil {
@@ -175,12 +180,14 @@ func (m *Manager) run(ctx context.Context, jobID string) Result {
 		return failed(fmt.Errorf("install LDGCC CUDA PyTorch runtime: %w", err), logPath)
 	}
 	log.Printf("installing LDGCC Python runtime dependencies for job %q", jobID)
+	appendSetupLog(logPath, "installing LDGCC Python runtime dependencies")
 	runtimeInstallArgs := append([]string{"-m", "pip", "install"}, runtimeRequirements...)
 	if err := m.runner.Run(ctx, directory, logPath, venvPython, runtimeInstallArgs...); err != nil {
 		_ = os.RemoveAll(filepath.Dir(cacheEnvPath))
 		return failed(fmt.Errorf("install LDGCC runtime dependencies: %w", err), logPath)
 	}
 	if hasUserRequirements {
+		appendSetupLog(logPath, "installing project requirements")
 		if err := m.runner.Run(ctx, directory, logPath, venvPython, "-m", "pip", "install", "-r", filteredRequirements); err != nil {
 			_ = os.RemoveAll(filepath.Dir(cacheEnvPath))
 			return failed(fmt.Errorf("install requirements: %w", err), logPath)
@@ -192,7 +199,17 @@ func (m *Manager) run(ctx context.Context, jobID string) Result {
 	if err := writeVenvMarker(directory, cacheEnvPath); err != nil {
 		return failed(err, logPath)
 	}
+	appendSetupLog(logPath, "LDGCC setup ready")
 	return Result{Status: gradient.JobSetupStatus_JOB_SETUP_STATUS_READY, LogPath: logPath}
+}
+
+func appendSetupLog(logPath, message string) {
+	file, err := os.OpenFile(logPath, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0o600)
+	if err != nil {
+		return
+	}
+	defer file.Close()
+	_, _ = fmt.Fprintln(file, message)
 }
 
 func (m *Manager) createVenv(ctx context.Context, directory, logPath, venvPath string) error {

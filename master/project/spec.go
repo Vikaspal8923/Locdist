@@ -61,10 +61,19 @@ func LoadSpec(projectRoot string) (Spec, error) {
 	if err != nil {
 		return Spec{}, fmt.Errorf("parse %s: %w", specPath, err)
 	}
+	spec.NormalizePaths()
 	if err := spec.Validate(projectRoot); err != nil {
 		return Spec{}, err
 	}
 	return spec, nil
+}
+
+func (s *Spec) NormalizePaths() {
+	s.Entrypoint = normalizeSpecPath(s.Entrypoint)
+	s.Dataset.Train = normalizeSpecPath(s.Dataset.Train)
+	for index, output := range s.Outputs {
+		s.Outputs[index] = normalizeSpecPath(output)
+	}
 }
 
 func (s Spec) Validate(projectRoot string) error {
@@ -84,12 +93,12 @@ func (s Spec) Validate(projectRoot string) error {
 	if s.Workers.Count <= 0 {
 		return fmt.Errorf("workers.count must be greater than zero")
 	}
-	if filepath.IsAbs(s.Entrypoint) || filepath.IsAbs(s.Dataset.Train) {
+	if !isPortableRelativePath(s.Entrypoint) || !isPortableRelativePath(s.Dataset.Train) {
 		return fmt.Errorf("entrypoint and dataset paths must be relative")
 	}
 	seenOutputs := make(map[string]struct{}, len(s.Outputs))
 	for _, output := range s.Outputs {
-		if strings.TrimSpace(output) == "" || filepath.IsAbs(output) || !withinProject(projectRoot, output) {
+		if !isPortableRelativePath(output) || !withinProject(projectRoot, output) {
 			return fmt.Errorf("output paths must be relative and stay inside project")
 		}
 		clean := filepath.ToSlash(filepath.Clean(output))
@@ -264,6 +273,23 @@ func splitKeyValue(line string) (string, string, bool) {
 	key = strings.TrimSpace(key)
 	value = strings.Trim(strings.TrimSpace(value), `"'`)
 	return key, value, key != ""
+}
+
+func normalizeSpecPath(value string) string {
+	return strings.ReplaceAll(strings.TrimSpace(value), "\\", "/")
+}
+
+func isPortableRelativePath(value string) bool {
+	value = strings.TrimSpace(value)
+	if value == "" || filepath.IsAbs(value) || strings.Contains(value, "\\") || hasWindowsVolume(value) {
+		return false
+	}
+	clean := filepath.ToSlash(filepath.Clean(value))
+	return clean != "." && clean != ".." && !strings.HasPrefix(clean, "../")
+}
+
+func hasWindowsVolume(value string) bool {
+	return len(value) >= 2 && ((value[0] >= 'A' && value[0] <= 'Z') || (value[0] >= 'a' && value[0] <= 'z')) && value[1] == ':'
 }
 
 func withinProject(projectRoot string, relativePath string) bool {
