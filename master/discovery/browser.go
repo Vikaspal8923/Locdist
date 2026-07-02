@@ -47,7 +47,11 @@ func (b *MDNSBrowser) Scan(ctx context.Context) ([]Worker, error) {
 		if !isWorkerEntry(entry) {
 			continue
 		}
-		workers = append(workers, workerFromEntry(entry))
+		worker := workerFromEntry(entry)
+		if worker.Address == "" {
+			continue
+		}
+		workers = append(workers, worker)
 	}
 
 	err := <-queryDone
@@ -88,16 +92,48 @@ func workerFromEntry(entry *mdns.ServiceEntry) Worker {
 }
 
 func firstAddress(entry *mdns.ServiceEntry) string {
-	if entry.AddrV4 != nil {
+	if entry.AddrV4 != nil && isUsableDiscoveryIP(entry.AddrV4) {
 		return entry.AddrV4.String()
 	}
-	if entry.AddrV6IPAddr != nil {
+	if ip := resolveEntryHost(entry.Host); ip != "" {
+		return ip
+	}
+	if entry.AddrV6IPAddr != nil && isUsableDiscoveryIP(entry.AddrV6IPAddr.IP) {
 		return entry.AddrV6IPAddr.String()
 	}
 	if entry.AddrV6 != nil {
-		return net.IP(entry.AddrV6).String()
+		ip := net.IP(entry.AddrV6)
+		if isUsableDiscoveryIP(ip) {
+			return ip.String()
+		}
 	}
 	return ""
+}
+
+func resolveEntryHost(host string) string {
+	host = strings.TrimSuffix(strings.TrimSpace(host), ".")
+	if host == "" {
+		return ""
+	}
+	ips, err := net.LookupIP(host)
+	if err != nil {
+		return ""
+	}
+	for _, ip := range ips {
+		if ipv4 := ip.To4(); ipv4 != nil && isUsableDiscoveryIP(ipv4) {
+			return ipv4.String()
+		}
+	}
+	for _, ip := range ips {
+		if isUsableDiscoveryIP(ip) {
+			return ip.String()
+		}
+	}
+	return ""
+}
+
+func isUsableDiscoveryIP(ip net.IP) bool {
+	return ip != nil && !ip.IsLoopback() && !ip.IsUnspecified() && !ip.IsLinkLocalUnicast()
 }
 
 func Address(worker Worker) string {

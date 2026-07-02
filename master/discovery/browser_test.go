@@ -1,6 +1,7 @@
 package discovery
 
 import (
+	"net"
 	"testing"
 
 	"github.com/hashicorp/mdns"
@@ -41,6 +42,30 @@ func TestLocalWorkerFromState(t *testing.T) {
 	}
 	if worker.PairingStatus != "paired" {
 		t.Fatalf("expected paired local Worker, got %q", worker.PairingStatus)
+	}
+}
+
+func TestFirstAddressResolvesHostWhenAddrV4Missing(t *testing.T) {
+	worker := workerFromEntry(&mdns.ServiceEntry{
+		Name: "Desk._ldgcc-worker._tcp.local.",
+		Host: "localhost.",
+		Port: 50051,
+	})
+
+	if worker.Address != "" {
+		t.Fatalf("loopback host should not be used for LAN discovery: %q", worker.Address)
+	}
+}
+
+func TestFirstAddressRejectsLinkLocalAddress(t *testing.T) {
+	address := firstAddress(&mdns.ServiceEntry{
+		Name:   "Desk._ldgcc-worker._tcp.local.",
+		AddrV4: net.ParseIP("169.254.10.20"),
+		Port:   50051,
+	})
+
+	if address != "" {
+		t.Fatalf("link-local address should not be used for LAN discovery: %q", address)
 	}
 }
 
