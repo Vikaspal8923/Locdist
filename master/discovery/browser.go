@@ -2,9 +2,11 @@ package discovery
 
 import (
 	"context"
+	"encoding/json"
 	"io"
 	"log"
 	"net"
+	"net/http"
 	"strconv"
 	"strings"
 	"time"
@@ -13,6 +15,7 @@ import (
 )
 
 const ServiceName = "_ldgcc-worker._tcp"
+const localWorkerAppPort = 5050
 
 type Browser interface {
 	Scan(ctx context.Context) ([]Worker, error)
@@ -47,7 +50,8 @@ func (b *MDNSBrowser) Scan(ctx context.Context) ([]Worker, error) {
 		workers = append(workers, workerFromEntry(entry))
 	}
 
-	return workers, <-queryDone
+	err := <-queryDone
+	return mergeWorkers(workers, localWorkerFallback(ctx)...), err
 }
 
 func isWorkerEntry(entry *mdns.ServiceEntry) bool {
@@ -105,4 +109,96 @@ func Address(worker Worker) string {
 
 func ID(instance, address string, port int) string {
 	return instance + "@" + net.JoinHostPort(address, strconv.Itoa(port))
+}
+
+type localWorkerAppState struct {
+	Running    bool   `json:"running"`
+	Connection string `json:"connection"`
+	Config     struct {
+		WorkerName string `json:"worker_name"`
+		GRPCPort   string `json:"grpc_port"`
+	} `json:"config"`
+}
+
+func localWorkerFallback(ctx context.Context) []Worker {
+	worker, ok := localWorkerFromApp(ctx, "127.0.0.1", localWorkerAppPort)
+	if !ok {
+		return nil
+	}
+	return []Worker{worker}
+}
+
+func localWorkerFromApp(ctx context.Context, host string, appPort int) (Worker, bool) {
+	requestCtx, cancel := context.WithTimeout(ctx, 250*time.Millisecond)
+	defer cancel()
+
+	url := "http://" + net.JoinHostPort(host, strconv.Itoa(appPort)) + "/api/state"
+	request, err := http.NewRequestWithContext(requestCtx, http.MethodGet, url, nil)
+	if err != nil {
+		return Worker{}, false
+	}
+
+	response, err := (&http.Client{Timeout: 300 * time.Millisecond}).Do(request)
+	if err != nil {
+		return Worker{}, false
+	}
+	defer response.Body.Close()
+	if response.StatusCode != http.StatusOK {
+		return Worker{}, false
+	}
+
+	var state localWorkerAppState
+	if err := json.NewDecoder(response.Body).Decode(&state); err != nil {
+		return Worker{}, false
+	}
+	return localWorkerFromState(state, host)
+}
+
+func localWorkerFromState(state localWorkerAppState, host string) (Worker, bool) {
+	if !state.Running {
+		return Worker{}, false
+	}
+	port, err := strconv.Atoi(strings.TrimSpace(state.Config.GRPCPort))
+	if err != nil || port <= 0 || port > 65535 {
+		return Worker{}, false
+	}
+	instance := strings.TrimSpace(state.Config.WorkerName)
+	if instance == "" {
+		instance = "LDGCC Local Worker"
+	}
+	return Worker{
+		ID:            ID(instance, host, port),
+		Instance:      instance,
+		Host:          "localhost",
+		Address:       host,
+		GRPCPort:      port,
+		PairingStatus: localPairingStatus(state.Connection),
+		LastSeen:      time.Now(),
+	}, true
+}
+
+func localPairingStatus(connection string) string {
+	if strings.HasPrefix(connection, "PAIRED_") {
+		return "paired"
+	}
+	return "unpaired"
+}
+
+func mergeWorkers(workers []Worker, extras ...Worker) []Worker {
+	seen := make(map[string]struct{}, len(workers)+len(extras))
+	merged := make([]Worker, 0, len(workers)+len(extras))
+	for _, worker := range workers {
+		key := worker.Instance + "|" + strconv.Itoa(worker.GRPCPort)
+		seen[key] = struct{}{}
+		merged = append(merged, worker)
+	}
+	for _, worker := range extras {
+		key := worker.Instance + "|" + strconv.Itoa(worker.GRPCPort)
+		if _, ok := seen[key]; ok {
+			continue
+		}
+		seen[key] = struct{}{}
+		merged = append(merged, worker)
+	}
+	return merged
 }

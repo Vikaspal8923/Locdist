@@ -11,6 +11,7 @@ export class MasterProcess {
   private session?: MasterSession;
   private startupOutput = "";
   private startupFailure?: Error;
+  private exitWaiter?: Promise<void>;
 
   constructor(private readonly context: vscode.ExtensionContext) {}
 
@@ -66,6 +67,9 @@ export class MasterProcess {
       this.child = undefined;
       this.session = undefined;
     });
+    this.exitWaiter = new Promise((resolveExit) => {
+      this.child?.once("exit", () => resolveExit());
+    });
 
     const session = await this.waitForSession();
     this.session = session;
@@ -73,8 +77,19 @@ export class MasterProcess {
   }
 
   async stop(): Promise<void> {
-    this.child?.kill();
+    const child = this.child;
+    const exitWaiter = this.exitWaiter;
+    if (child && child.exitCode === null && !child.killed) {
+      child.kill();
+      if (exitWaiter) {
+        await Promise.race([
+          exitWaiter,
+          new Promise((resolveWait) => setTimeout(resolveWait, 5_000)),
+        ]);
+      }
+    }
     this.child = undefined;
+    this.exitWaiter = undefined;
     this.session = undefined;
   }
 
