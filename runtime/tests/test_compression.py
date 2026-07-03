@@ -173,8 +173,12 @@ def test_topk_defaults_and_rejects_disabled_error_feedback():
         {"compression": {"type": "topk", "error_feedback": True}}
     )
 
-    assert config.compression_mode == "global"
+    assert config.compression_mode == "per_layer"
     assert config.top_k_percent == 5.0
+    assert config.selection == "exact"
+    assert config.sample_rate_percent == 1.0
+    assert config.max_payload_factor == 1.5
+    assert config.device == "auto"
 
     try:
         parse_communication_config(
@@ -183,6 +187,65 @@ def test_topk_defaults_and_rejects_disabled_error_feedback():
     except ConfigError:
         return
     raise AssertionError("expected disabled error feedback to be rejected")
+
+
+def test_sampled_threshold_config_and_exact_fallback():
+    model = TinyModel()
+    model.a.grad = torch.tensor([1.0, -4.0, 2.0, 3.0])
+    model.b.grad = torch.tensor([0.5, -0.1, 7.0, 0.2])
+    config = parse_communication_config(
+        {
+            "precision": "fp16",
+            "compression": {
+                "type": "topk",
+                "mode": "per_layer",
+                "top_k": "25%",
+                "selection": "sampled_threshold",
+                "sample_rate": "100%",
+                "max_payload_factor": 1.5,
+                "device": "auto",
+                "error_feedback": True,
+            },
+        }
+    )
+    state = CompressionState()
+
+    chunks = extract_compressed_gradient_chunks(model, config, state)
+
+    assert config.selection == "sampled_threshold"
+    assert config.sample_rate_percent == 100.0
+    assert unpack_u32_indices(chunks[0].indices_u32) == [1]
+    assert unpack_u32_indices(chunks[1].indices_u32) == [2]
+    assert state.last_metrics["compression_path"] == "per_layer_topk"
+    assert state.last_metrics["selection_fallback_count"] == 2
+    assert state.last_metrics["selected_value_count"] == 2
+
+
+def test_sampled_threshold_keeps_error_feedback():
+    model = TinyModel()
+    state = CompressionState()
+    config = parse_communication_config(
+        {
+            "compression": {
+                "type": "topk",
+                "mode": "per_layer",
+                "top_k": "25%",
+                "selection": "sampled_threshold",
+                "sample_rate": "100%",
+                "error_feedback": True,
+            },
+        }
+    )
+
+    model.a.grad = torch.tensor([1.0, 4.0, 2.0, 3.0])
+    model.b.grad = torch.zeros(4)
+    extract_compressed_gradient_chunks(model, config, state)
+
+    model.a.grad = torch.zeros(4)
+    model.b.grad = torch.zeros(4)
+    chunks = extract_compressed_gradient_chunks(model, config, state)
+
+    assert unpack_u32_indices(chunks[0].indices_u32) == [3]
 
 
 def test_sparse_response_applies_only_returned_indices():
@@ -414,6 +477,8 @@ def main():
     test_error_feedback_reuses_dropped_values()
     test_warmup_sends_dense_before_topk()
     test_topk_defaults_and_rejects_disabled_error_feedback()
+    test_sampled_threshold_config_and_exact_fallback()
+    test_sampled_threshold_keeps_error_feedback()
     test_sparse_response_applies_only_returned_indices()
     test_sparse_response_allows_empty_topk_chunk()
     test_sparse_response_uses_packed_u32_indices()

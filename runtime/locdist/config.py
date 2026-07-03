@@ -245,7 +245,7 @@ def parse_communication_config(value) -> CommunicationConfig:
     if compression_type not in {"none", "topk"}:
         raise ConfigError("communication.compression.type must be none or topk")
 
-    mode = compression_data.get("mode", "global")
+    mode = compression_data.get("mode", "per_layer")
     if "per_layer_top_k" in compression_data:
         mode = "per_layer"
         top_k = compression_data["per_layer_top_k"]
@@ -259,6 +259,28 @@ def parse_communication_config(value) -> CommunicationConfig:
         raise ConfigError("communication.compression.mode must be global or per_layer")
 
     top_k_percent = parse_percent(top_k)
+
+    selection = compression_data.get("selection", "exact")
+    if selection not in {"exact", "sampled_threshold"}:
+        raise ConfigError(
+            "communication.compression.selection must be exact or sampled_threshold"
+        )
+
+    sample_rate_percent = parse_percent(
+        compression_data.get("sample_rate", "1%"),
+        field_name="communication.compression.sample_rate",
+    )
+
+    max_payload_factor = compression_data.get("max_payload_factor", 1.5)
+    if not isinstance(max_payload_factor, (int, float)):
+        raise ConfigError("communication.compression.max_payload_factor must be numeric")
+    max_payload_factor = float(max_payload_factor)
+    if max_payload_factor < 1.0:
+        raise ConfigError("communication.compression.max_payload_factor must be >= 1.0")
+
+    device = compression_data.get("device", "auto")
+    if device not in {"auto", "cpu", "gpu"}:
+        raise ConfigError("communication.compression.device must be auto, cpu, or gpu")
 
     error_feedback = compression_data.get("error_feedback", True)
     if not isinstance(error_feedback, bool):
@@ -275,26 +297,30 @@ def parse_communication_config(value) -> CommunicationConfig:
         compression_type=compression_type,
         compression_mode=mode,
         top_k_percent=top_k_percent,
+        selection=selection,
+        sample_rate_percent=sample_rate_percent,
+        max_payload_factor=max_payload_factor,
+        device=device,
         error_feedback=error_feedback,
         warmup_steps=warmup_steps,
     )
 
 
-def parse_percent(value) -> float:
+def parse_percent(value, field_name: str = "communication.compression.top_k") -> float:
     if isinstance(value, str):
         text = value.strip()
         if not text.endswith("%"):
-            raise ConfigError("communication.compression.top_k must be a percent string")
+            raise ConfigError(f"{field_name} must be a percent string")
         text = text[:-1].strip()
         try:
             percent = float(text)
         except ValueError as e:
-            raise ConfigError("communication.compression.top_k must be numeric") from e
+            raise ConfigError(f"{field_name} must be numeric") from e
     elif isinstance(value, (int, float)):
         percent = float(value)
     else:
-        raise ConfigError("communication.compression.top_k must be a percent")
+        raise ConfigError(f"{field_name} must be a percent")
 
     if percent <= 0 or percent > 100:
-        raise ConfigError("communication.compression.top_k must be > 0% and <= 100%")
+        raise ConfigError(f"{field_name} must be > 0% and <= 100%")
     return percent

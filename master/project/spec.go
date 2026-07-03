@@ -39,11 +39,15 @@ type CommunicationSpec struct {
 }
 
 type CompressionSpec struct {
-	Type          string `json:"type,omitempty"`
-	Mode          string `json:"mode,omitempty"`
-	TopK          string `json:"top_k,omitempty"`
-	ErrorFeedback bool   `json:"error_feedback"`
-	WarmupSteps   int    `json:"warmup_steps,omitempty"`
+	Type             string  `json:"type,omitempty"`
+	Mode             string  `json:"mode,omitempty"`
+	TopK             string  `json:"top_k,omitempty"`
+	Selection        string  `json:"selection,omitempty"`
+	SampleRate       string  `json:"sample_rate,omitempty"`
+	MaxPayloadFactor float64 `json:"max_payload_factor,omitempty"`
+	Device           string  `json:"device,omitempty"`
+	ErrorFeedback    bool    `json:"error_feedback"`
+	WarmupSteps      int     `json:"warmup_steps,omitempty"`
 }
 
 func LoadSpec(projectRoot string) (Spec, error) {
@@ -137,10 +141,24 @@ func (c CommunicationSpec) Validate() error {
 		if c.Compression.Mode != "" && c.Compression.Mode != "global" && c.Compression.Mode != "per_layer" {
 			return fmt.Errorf("communication.compression.mode must be global or per_layer")
 		}
+		if c.Compression.Selection != "" && c.Compression.Selection != "exact" && c.Compression.Selection != "sampled_threshold" {
+			return fmt.Errorf("communication.compression.selection must be exact or sampled_threshold")
+		}
 		if c.Compression.TopK != "" {
 			if err := validatePercent(c.Compression.TopK); err != nil {
 				return err
 			}
+		}
+		if c.Compression.SampleRate != "" {
+			if err := validatePercentField(c.Compression.SampleRate, "communication.compression.sample_rate"); err != nil {
+				return err
+			}
+		}
+		if c.Compression.MaxPayloadFactor != 0 && c.Compression.MaxPayloadFactor < 1.0 {
+			return fmt.Errorf("communication.compression.max_payload_factor must be >= 1.0")
+		}
+		if c.Compression.Device != "" && c.Compression.Device != "auto" && c.Compression.Device != "cpu" && c.Compression.Device != "gpu" {
+			return fmt.Errorf("communication.compression.device must be auto, cpu, or gpu")
 		}
 		if !c.Compression.ErrorFeedback {
 			return fmt.Errorf("communication.compression.error_feedback must be true for topk")
@@ -217,6 +235,18 @@ func parse(file *os.File) (Spec, error) {
 			spec.Communication.Compression.Mode = value
 		case section == "communication.compression" && key == "top_k":
 			spec.Communication.Compression.TopK = value
+		case section == "communication.compression" && key == "selection":
+			spec.Communication.Compression.Selection = value
+		case section == "communication.compression" && key == "sample_rate":
+			spec.Communication.Compression.SampleRate = value
+		case section == "communication.compression" && key == "max_payload_factor":
+			factor, err := strconv.ParseFloat(value, 64)
+			if err != nil {
+				return Spec{}, fmt.Errorf("communication.compression.max_payload_factor must be numeric")
+			}
+			spec.Communication.Compression.MaxPayloadFactor = factor
+		case section == "communication.compression" && key == "device":
+			spec.Communication.Compression.Device = value
 		case section == "communication.compression" && key == "error_feedback":
 			parsed, err := strconv.ParseBool(value)
 			if err != nil {
@@ -242,16 +272,20 @@ func parse(file *os.File) (Spec, error) {
 }
 
 func validatePercent(value string) error {
+	return validatePercentField(value, "communication.compression.top_k")
+}
+
+func validatePercentField(value string, fieldName string) error {
 	if !strings.HasSuffix(value, "%") {
-		return fmt.Errorf("communication.compression.top_k must be a percent string")
+		return fmt.Errorf("%s must be a percent string", fieldName)
 	}
 	number := strings.TrimSpace(strings.TrimSuffix(value, "%"))
 	percent, err := strconv.ParseFloat(number, 64)
 	if err != nil {
-		return fmt.Errorf("communication.compression.top_k must be numeric")
+		return fmt.Errorf("%s must be numeric", fieldName)
 	}
 	if percent <= 0 || percent > 100 {
-		return fmt.Errorf("communication.compression.top_k must be > 0%% and <= 100%%")
+		return fmt.Errorf("%s must be > 0%% and <= 100%%", fieldName)
 	}
 	return nil
 }

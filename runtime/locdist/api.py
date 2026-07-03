@@ -86,6 +86,7 @@ def sync_gradients(model) -> None:
             "transport_call_ms": transport_done_ms - package_done_ms,
             "apply_gradients_ms": apply_done_ms - transport_done_ms,
             "chunk_count": len(chunks),
+            **_compression_state.last_metrics,
             **getattr(transport, "last_metrics", {}),
         },
     )

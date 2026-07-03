@@ -25,9 +25,17 @@ class CommunicationConfig:
 
     compression_type: str = "none"
 
-    compression_mode: str = "global"
+    compression_mode: str = "per_layer"
 
     top_k_percent: float = 5.0
+
+    selection: str = "exact"
+
+    sample_rate_percent: float = 1.0
+
+    max_payload_factor: float = 1.5
+
+    device: str = "auto"
 
     error_feedback: bool = True
 

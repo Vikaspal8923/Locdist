@@ -33,6 +33,10 @@ communication:
     type: topk
     mode: per_layer
     top_k: 5%
+    selection: sampled_threshold
+    sample_rate: 1%
+    max_payload_factor: 1.5
+    device: auto
     error_feedback: true
     warmup_steps: 500
 `)
@@ -63,6 +67,10 @@ communication:
 		spec.Communication.Compression.Type != "topk" ||
 		spec.Communication.Compression.Mode != "per_layer" ||
 		spec.Communication.Compression.TopK != "5%" ||
+		spec.Communication.Compression.Selection != "sampled_threshold" ||
+		spec.Communication.Compression.SampleRate != "1%" ||
+		spec.Communication.Compression.MaxPayloadFactor != 1.5 ||
+		spec.Communication.Compression.Device != "auto" ||
 		!spec.Communication.Compression.ErrorFeedback ||
 		spec.Communication.Compression.WarmupSteps != 500 {
 		t.Fatalf("unexpected communication config: %+v", spec.Communication)
