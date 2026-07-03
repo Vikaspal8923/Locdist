@@ -78,7 +78,12 @@ func (m *Manager) Manifest(jobID string) ([]*gradient.ResultFile, []string, []st
 		files[normalized] = &gradient.ResultFile{Path: normalized, Size: uint64(info.Size()), Sha256: digest, LogFile: logFile}
 		return nil
 	}
-	for _, logPath := range []string{"logs/setup.log", "logs/training.log"} {
+	for _, logPath := range []string{
+		"logs/setup.log",
+		"logs/training.log",
+		"logs/ldgcc_runtime_sync_metrics.jsonl",
+		"logs/ldgcc_worker_sync_metrics.jsonl",
+	} {
 		if _, err := os.Stat(filepath.Join(root, filepath.FromSlash(logPath))); err == nil {
 			if err := add(logPath, true); err != nil {
 				return nil, nil, nil, err

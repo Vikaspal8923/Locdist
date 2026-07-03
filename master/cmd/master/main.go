@@ -79,6 +79,7 @@ func main() {
 	}
 
 	aggregatorService := aggregator.New()
+	aggregatorService.SetMetricsPath(filepath.Join(dataRoot, "ldgcc_master_sync_metrics.jsonl"))
 
 	jobManager := jobs.New()
 

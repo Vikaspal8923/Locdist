@@ -5,9 +5,11 @@ import (
 	"fmt"
 	"math"
 	"sort"
+	"time"
 
 	gradient "github.com/Vikaspal8923/Locdist/master/generated/gradient"
 	internalerrors "github.com/Vikaspal8923/Locdist/master/internal/errors"
+	"github.com/Vikaspal8923/Locdist/master/metrics"
 
 	"google.golang.org/protobuf/proto"
 )
@@ -18,6 +20,7 @@ func (s *Service) Aggregate(
 	request *gradient.GradientSubmission,
 	expectedWorkers int,
 ) (*gradient.AggregatedGradientResponse, error) {
+	totalStart := time.Now()
 
 	if request.RuntimeVersion == 0 {
 		return nil, internalerrors.ErrInvalidRuntimeVersion
@@ -42,28 +45,36 @@ func (s *Service) Aggregate(
 	}
 
 	s.mutex.Lock()
-	defer s.mutex.Unlock()
 
+	lockAcquired := time.Now()
 	for s.currentRound.Response != nil ||
 		s.currentRound.Err != nil {
 
 		s.cond.Wait()
 	}
+	previousRoundWaitDone := time.Now()
 
 	round := s.currentRound
+	roundNumber := round.Round
 	round.WaitingReceivers++
 
 	s.StoreGradient(request)
+	storedAt := time.Now()
 
+	aggregateDuration := time.Duration(0)
+	aggregatedByWorker := false
 	if s.BarrierReached(expectedWorkers) &&
 		round.Response == nil &&
 		round.Err == nil {
 
+		aggregateStart := time.Now()
 		round.Response, round.Err = s.averageRoundLocked(
 			request.RuntimeVersion,
 			request.JobId,
 			expectedWorkers,
 		)
+		aggregateDuration = time.Since(aggregateStart)
+		aggregatedByWorker = true
 
 		s.cond.Broadcast()
 	}
@@ -71,6 +82,7 @@ func (s *Service) Aggregate(
 	for round.Response == nil && round.Err == nil {
 		s.cond.Wait()
 	}
+	barrierReleased := time.Now()
 
 	response := round.Response
 	err := round.Err
@@ -83,10 +95,41 @@ func (s *Service) Aggregate(
 	}
 
 	if err != nil {
+		s.mutex.Unlock()
 		return nil, err
 	}
 
-	return proto.Clone(response).(*gradient.AggregatedGradientResponse), nil
+	cloned := proto.Clone(response).(*gradient.AggregatedGradientResponse)
+	done := time.Now()
+	metricsPath := s.metricsPath
+	event := map[string]any{
+		"component":                       "master",
+		"job_id":                          request.GetJobId(),
+		"worker_id":                       request.GetWorkerId(),
+		"round":                           roundNumber,
+		"expected_workers":                expectedWorkers,
+		"received_workers_at_arrival":     len(round.Gradients),
+		"aggregated_by_this_worker":       aggregatedByWorker,
+		"total_ms":                        ms(done.Sub(totalStart)),
+		"lock_wait_ms":                    ms(lockAcquired.Sub(totalStart)),
+		"previous_round_wait_ms":          ms(previousRoundWaitDone.Sub(lockAcquired)),
+		"store_submission_ms":             ms(storedAt.Sub(previousRoundWaitDone)),
+		"barrier_wait_ms":                 ms(barrierReleased.Sub(storedAt) - aggregateDuration),
+		"aggregate_ms":                    ms(aggregateDuration),
+		"response_clone_ms":               ms(done.Sub(barrierReleased)),
+		"bytes_from_worker":               metrics.ProtoBytes(request),
+		"bytes_to_worker":                 metrics.ProtoBytes(cloned),
+		"aggregation_round_from_response": cloned.GetAggregationRound(),
+	}
+	s.mutex.Unlock()
+
+	metrics.AppendJSONL(metricsPath, event)
+
+	return cloned, nil
+}
+
+func ms(duration time.Duration) float64 {
+	return float64(duration.Microseconds()) / 1000.0
 }
 
 func (s *Service) averageRoundLocked(

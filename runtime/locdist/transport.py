@@ -21,6 +21,8 @@ from locdist.wire import (
     response_proto_to_package,
 )
 
+from locdist.metrics import now_ms
+
 
 _transport = None
 
@@ -30,6 +32,7 @@ class TransportClient:
     def __init__(self):
 
         self.config = load_config()
+        self.last_metrics = {}
 
         self.address = (
             f"{self.config.worker_host}:"
@@ -60,11 +63,13 @@ class TransportClient:
 
         try:
 
+            start_ms = now_ms()
             request = (
                 package_to_submission_proto(
                     package
                 )
             )
+            proto_build_ms = now_ms()
 
             response = (
                 self.stub.SynchronizeGradients(
@@ -75,12 +80,25 @@ class TransportClient:
                     ),
                 )
             )
+            rpc_done_ms = now_ms()
 
-            return (
+            aggregated = (
                 response_proto_to_package(
                     response
                 )
             )
+            decode_done_ms = now_ms()
+
+            self.last_metrics = {
+                "transport_total_ms": decode_done_ms - start_ms,
+                "runtime_to_worker_proto_build_ms": proto_build_ms - start_ms,
+                "runtime_to_worker_rpc_ms": rpc_done_ms - proto_build_ms,
+                "runtime_response_decode_ms": decode_done_ms - rpc_done_ms,
+                "runtime_bytes_up": request.ByteSize(),
+                "runtime_bytes_down": response.ByteSize(),
+            }
+
+            return aggregated
 
         except grpc.RpcError as e:
 

@@ -1,6 +1,7 @@
 package orchestrator
 
 import (
+	"bufio"
 	"context"
 	"crypto/sha256"
 	"encoding/hex"
@@ -69,6 +70,53 @@ func (c *ResultCollector) Collect(ctx context.Context, job *jobs.JobState, stric
 	}
 	if err := os.Rename(temporary, destination); err != nil {
 		return err
+	}
+	if err := c.collectMasterMetrics(job.JobID, destination); err != nil {
+		return err
+	}
+	return nil
+}
+
+func (c *ResultCollector) collectMasterMetrics(jobID, destination string) error {
+	sourcePath := filepath.Join(filepath.Dir(filepath.Clean(c.root)), "ldgcc_master_sync_metrics.jsonl")
+	source, err := os.Open(sourcePath)
+	if os.IsNotExist(err) {
+		return nil
+	}
+	if err != nil {
+		return err
+	}
+	defer source.Close()
+
+	targetPath := filepath.Join(destination, "logs", "master", "ldgcc_master_sync_metrics.jsonl")
+	if err := os.MkdirAll(filepath.Dir(targetPath), 0o700); err != nil {
+		return err
+	}
+	target, err := os.OpenFile(targetPath, os.O_CREATE|os.O_WRONLY|os.O_EXCL, 0o600)
+	if err != nil {
+		return err
+	}
+	defer target.Close()
+
+	scanner := bufio.NewScanner(source)
+	wrote := false
+	for scanner.Scan() {
+		line := scanner.Bytes()
+		var event struct {
+			JobID string `json:"job_id"`
+		}
+		if err := json.Unmarshal(line, &event); err == nil && event.JobID == jobID {
+			if _, err := target.Write(append(append([]byte(nil), line...), '\n')); err != nil {
+				return err
+			}
+			wrote = true
+		}
+	}
+	if err := scanner.Err(); err != nil {
+		return err
+	}
+	if !wrote {
+		return os.Remove(targetPath)
 	}
 	return nil
 }

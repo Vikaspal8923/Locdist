@@ -20,6 +20,8 @@ type Manager struct{ root string }
 
 func New(root string) *Manager { return &Manager{root: root} }
 
+func (m *Manager) Root() string { return m.root }
+
 func (m *Manager) Path(jobID string) (string, error) {
 	if !safeID(jobID) {
 		return "", fmt.Errorf("job_id is unsafe")

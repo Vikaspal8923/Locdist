@@ -9,6 +9,7 @@ import (
 	"time"
 
 	gradient "github.com/Vikaspal8923/Locdist/worker/generated/gradient"
+	"github.com/Vikaspal8923/Locdist/worker/metrics"
 	"github.com/Vikaspal8923/Locdist/worker/pairing"
 	workerresults "github.com/Vikaspal8923/Locdist/worker/results"
 	"github.com/Vikaspal8923/Locdist/worker/runtimebridge"
@@ -314,7 +315,26 @@ func (s *WorkerBridgeServer) SynchronizeGradients(
 	request *gradient.GradientSubmission,
 ) (*gradient.AggregatedGradientResponse, error) {
 
-	response, err := s.runtimeBridge.Synchronize(request)
+	start := time.Now()
+	response, stageMetrics, err := s.runtimeBridge.SynchronizeWithMetrics(request)
+	done := time.Now()
+	if s.workspace != nil {
+		event := map[string]any{
+			"component":          "worker",
+			"job_id":             request.GetJobId(),
+			"worker_id":          request.GetWorkerId(),
+			"total_ms":           float64(done.Sub(start).Microseconds()) / 1000.0,
+			"bytes_from_runtime": metrics.ProtoBytes(request),
+			"bytes_to_runtime":   metrics.ProtoBytes(response),
+		}
+		for key, value := range stageMetrics {
+			event[key] = value
+		}
+		metrics.AppendJSONL(
+			metrics.SyncMetricsPath(s.workspace.Root(), request.GetJobId(), "ldgcc_worker_sync_metrics.jsonl"),
+			event,
+		)
+	}
 	if err != nil {
 		return nil, err
 	}

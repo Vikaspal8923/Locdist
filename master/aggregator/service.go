@@ -13,6 +13,8 @@ type Service struct {
 
 	mutex sync.Mutex
 	cond  *sync.Cond
+
+	metricsPath string
 }
 
 func New() *Service {
@@ -29,6 +31,12 @@ func New() *Service {
 	service.cond = sync.NewCond(&service.mutex)
 
 	return service
+}
+
+func (s *Service) SetMetricsPath(path string) {
+	s.mutex.Lock()
+	defer s.mutex.Unlock()
+	s.metricsPath = path
 }
 
 func (s *Service) StoreGradient(
