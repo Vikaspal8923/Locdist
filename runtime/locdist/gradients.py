@@ -165,11 +165,7 @@ def _sparse_chunk_to_tensor(
     if actual_bytes != expected_bytes:
         raise ValueError("Sparse gradient data size mismatch")
     if not indices and not chunk.data:
-        return torch.zeros(
-            chunk.metadata.shape,
-            device=parameter.device,
-            dtype=parameter.dtype,
-        )
+        return _zero_sparse_gradient(parameter, chunk)
     values = torch.frombuffer(
         bytearray(chunk.data),
         dtype=dtype,
@@ -182,16 +178,39 @@ def _sparse_chunk_to_tensor(
         raise ValueError("Duplicate sparse gradient index")
     if any(index < 0 or index >= chunk.metadata.numel for index in indices):
         raise ValueError("Sparse gradient index out of bounds")
-    flat = torch.zeros(
-        chunk.metadata.numel,
-        dtype=values.dtype,
-    )
+
+    gradient = _zero_sparse_gradient(parameter, chunk)
+
     if indices:
-        flat[
-            torch.tensor(indices, dtype=torch.long)
-        ] = values
-    return (
-        flat
-        .reshape(chunk.metadata.shape)
-        .to(device=parameter.device, dtype=parameter.dtype)
+        device_indices = torch.tensor(
+            indices,
+            dtype=torch.long,
+            device=parameter.device,
+        )
+        device_values = values.to(
+            device=parameter.device,
+            dtype=parameter.dtype,
+        )
+        gradient.view(-1).index_copy_(0, device_indices, device_values)
+
+    return gradient
+
+
+def _zero_sparse_gradient(
+    parameter: torch.nn.Parameter,
+    chunk: GradientChunk,
+) -> torch.Tensor:
+    if (
+        parameter.grad is not None
+        and tuple(parameter.grad.shape) == tuple(chunk.metadata.shape)
+        and parameter.grad.device == parameter.device
+        and parameter.grad.dtype == parameter.dtype
+    ):
+        parameter.grad.zero_()
+        return parameter.grad
+
+    return torch.zeros(
+        chunk.metadata.shape,
+        device=parameter.device,
+        dtype=parameter.dtype,
     )

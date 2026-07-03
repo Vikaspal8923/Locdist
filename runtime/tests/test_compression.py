@@ -363,6 +363,45 @@ def test_sparse_response_uses_packed_u32_indices():
     )
 
 
+def test_sparse_response_reuses_existing_gradient_storage():
+    model = TinyModel()
+    existing = torch.tensor([9.0, 9.0, 9.0, 9.0])
+    model.a.grad = existing
+    chunk = GradientChunk(
+        metadata=ParameterMetadata(
+            name="a",
+            shape=(4,),
+            numel=4,
+            dtype="torch.float32",
+        ),
+        has_grad=True,
+        data=tensor_to_bytes(torch.tensor([2.0, -3.0], dtype=torch.float16)),
+        byte_size=4,
+        data_dtype="torch.float16",
+        encoding="topk",
+        indices=[1, 3],
+    )
+    empty = GradientChunk(
+        metadata=ParameterMetadata(
+            name="b",
+            shape=(4,),
+            numel=4,
+            dtype="torch.float32",
+        ),
+        has_grad=False,
+        data=None,
+        byte_size=0,
+    )
+
+    apply_gradient_chunks(model, [chunk, empty])
+
+    assert model.a.grad is existing
+    assert torch.equal(
+        model.a.grad,
+        torch.tensor([0.0, 2.0, 0.0, -3.0]),
+    )
+
+
 def test_sparse_response_rejects_data_index_mismatch():
     model = TinyModel()
     chunk = GradientChunk(
@@ -482,6 +521,7 @@ def main():
     test_sparse_response_applies_only_returned_indices()
     test_sparse_response_allows_empty_topk_chunk()
     test_sparse_response_uses_packed_u32_indices()
+    test_sparse_response_reuses_existing_gradient_storage()
     test_sparse_response_rejects_data_index_mismatch()
     test_dense_response_rejects_data_size_mismatch()
     test_response_rejects_shape_numel_mismatch()
