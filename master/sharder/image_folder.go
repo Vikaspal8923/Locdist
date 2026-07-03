@@ -49,10 +49,18 @@ func ShardImageFolder(
 		starts[workerID] = index + 1
 	}
 
+	targetPerWorker := totalSamples / len(workerIDs)
+	if targetPerWorker == 0 {
+		return nil, fmt.Errorf("dataset has %d image samples but %d workers were selected", totalSamples, len(workerIDs))
+	}
+
 	for _, className := range sortedClassNames(samplesByClass) {
 		samples := samplesByClass[className]
 		for sampleIndex, sample := range samples {
-			workerID := workerIDs[sampleIndex%len(workerIDs)]
+			workerID, ok := nextImageWorker(workerIDs, counts, sampleIndex, targetPerWorker)
+			if !ok {
+				continue
+			}
 			counts[workerID]++
 			targetRoot := filepath.Join(outputRoot, workerID, relativeDatasetPath)
 			targetPath := filepath.Join(targetRoot, filepath.FromSlash(sample.relative))
@@ -65,11 +73,24 @@ func ShardImageFolder(
 	for index := range assignments {
 		assignment := &assignments[index]
 		assignment.Count = counts[assignment.WorkerID]
+		if assignment.Count != targetPerWorker {
+			return nil, fmt.Errorf("image_folder sharding could not balance %s: got %d samples, expected %d", assignment.WorkerID, assignment.Count, targetPerWorker)
+		}
 		assignment.Start = starts[assignment.WorkerID]
 		assignment.End = assignment.Start + assignment.Count - 1
 		assignment.Path = filepath.Join(outputRoot, assignment.WorkerID, relativeDatasetPath)
 	}
 	return assignments, nil
+}
+
+func nextImageWorker(workerIDs []string, counts map[string]int, sampleIndex int, targetPerWorker int) (string, bool) {
+	for offset := 0; offset < len(workerIDs); offset++ {
+		workerID := workerIDs[(sampleIndex+offset)%len(workerIDs)]
+		if counts[workerID] < targetPerWorker {
+			return workerID, true
+		}
+	}
+	return "", false
 }
 
 func listImageFolderSamples(sourcePath string) (map[string][]imageSample, int, error) {

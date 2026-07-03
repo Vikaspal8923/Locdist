@@ -187,12 +187,6 @@ func (s *Service) averageRoundLocked(
 				)
 			}
 
-			if referenceChunk.HasGrad != chunk.HasGrad {
-				return nil, fmt.Errorf(
-					"gradient presence mismatch",
-				)
-			}
-
 			chunks = append(chunks, chunk)
 		}
 
@@ -245,7 +239,10 @@ func averageChunks(
 	chunks []*gradient.GradientChunk,
 ) (*gradient.GradientChunk, error) {
 
-	reference := chunks[0]
+	reference := firstGradientChunk(chunks)
+	if reference == nil {
+		reference = chunks[0]
+	}
 
 	result := proto.Clone(
 		reference,
@@ -308,12 +305,21 @@ func responseDataDtype(chunk *gradient.GradientChunk) string {
 	return chunk.GetMetadata().GetDtype()
 }
 
+func firstGradientChunk(chunks []*gradient.GradientChunk) *gradient.GradientChunk {
+	for _, chunk := range chunks {
+		if chunk.GetHasGrad() {
+			return chunk
+		}
+	}
+	return nil
+}
+
 func averageData(
 	dtype string,
 	numel int64,
 	chunks []*gradient.GradientChunk,
 ) ([]byte, error) {
-	if usesCompression(chunks) || chunks[0].GetDataDtype() != "" {
+	if usesCompression(chunks) || hasMissingGradient(chunks) || chunks[0].GetDataDtype() != "" {
 		return averageCompressedData(dtype, numel, chunks)
 	}
 
@@ -337,6 +343,15 @@ func averageData(
 func usesCompression(chunks []*gradient.GradientChunk) bool {
 	for _, chunk := range chunks {
 		if chunk.GetEncoding() != "" && chunk.GetEncoding() != "dense" {
+			return true
+		}
+	}
+	return false
+}
+
+func hasMissingGradient(chunks []*gradient.GradientChunk) bool {
+	for _, chunk := range chunks {
+		if !chunk.GetHasGrad() {
 			return true
 		}
 	}
@@ -373,9 +388,16 @@ func averageSparseResponse(
 	numel int64,
 	chunks []*gradient.GradientChunk,
 ) ([]byte, []int64, error) {
-	outputDtype := responseDataDtype(chunks[0])
+	reference := firstGradientChunk(chunks)
+	if reference == nil {
+		return nil, nil, nil
+	}
+	outputDtype := responseDataDtype(reference)
 	sums := make(map[int64]float32)
 	for _, chunk := range chunks {
+		if !chunk.GetHasGrad() {
+			continue
+		}
 		if encoding := chunk.GetEncoding(); encoding != "topk" {
 			return nil, nil, fmt.Errorf("sparse response requires topk chunks, got %q", encoding)
 		}
@@ -431,6 +453,9 @@ func decodeChunkFloat32(
 	numel int64,
 	chunk *gradient.GradientChunk,
 ) ([]float32, error) {
+	if !chunk.GetHasGrad() {
+		return make([]float32, int(numel)), nil
+	}
 	dataDtype := chunk.GetDataDtype()
 	if dataDtype == "" {
 		dataDtype = metadataDtype

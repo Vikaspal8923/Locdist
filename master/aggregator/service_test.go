@@ -98,6 +98,77 @@ func TestAggregateSparseTopKReturnsSparseUnionAverage(t *testing.T) {
 	}
 }
 
+func TestAggregateSparseTopKTreatsMissingGradientAsZero(t *testing.T) {
+	service := New()
+	chunkA := sparseChunk([]int64{1}, []float32{8})
+	chunkB := missingChunk()
+
+	done := make(chan *gradient.AggregatedGradientResponse, 2)
+	errs := make(chan error, 2)
+	go func() {
+		response, err := service.Aggregate(submission("worker-a", chunkA), 2)
+		if err != nil {
+			errs <- err
+			return
+		}
+		done <- response
+	}()
+	go func() {
+		response, err := service.Aggregate(submission("worker-b", chunkB), 2)
+		if err != nil {
+			errs <- err
+			return
+		}
+		done <- response
+	}()
+
+	var response *gradient.AggregatedGradientResponse
+	for index := 0; index < 2; index++ {
+		select {
+		case err := <-errs:
+			t.Fatalf("aggregate sparse with missing gradient: %v", err)
+		case response = <-done:
+		case <-time.After(time.Second):
+			t.Fatal("sparse aggregation timed out")
+		}
+	}
+
+	chunk := response.GetChunks()[0]
+	indices, err := chunkIndices(chunk)
+	if err != nil {
+		t.Fatalf("decode response indices: %v", err)
+	}
+	if len(indices) != 1 || indices[0] != 1 {
+		t.Fatalf("indices = %v, expected [1]", indices)
+	}
+	values := decodeTestFloat32(chunk.GetData())
+	if len(values) != 1 || values[0] != 4 {
+		t.Fatalf("values = %v, expected [4]", values)
+	}
+}
+
+func TestAverageDenseTreatsMissingGradientAsZero(t *testing.T) {
+	chunkA := denseFloat32Chunk([]float32{2, 6})
+	chunkB := &gradient.GradientChunk{
+		Metadata: &gradient.ParameterMetadata{
+			Name:  "linear.weight",
+			Shape: []int64{2},
+			Numel: 2,
+			Dtype: "torch.float32",
+		},
+		HasGrad: false,
+	}
+
+	chunk, err := averageChunks([]*gradient.GradientChunk{chunkA, chunkB})
+	if err != nil {
+		t.Fatalf("average dense with missing gradient: %v", err)
+	}
+	values := decodeTestFloat32(chunk.GetData())
+	if values[0] != 1 || values[1] != 3 {
+		t.Fatalf("values = %v, expected [1 3]", values)
+	}
+}
+
 func submission(workerID string, chunk *gradient.GradientChunk) *gradient.GradientSubmission {
 	return &gradient.GradientSubmission{RuntimeVersion: 1, JobId: "job-1", WorkerId: workerID, Chunks: []*gradient.GradientChunk{chunk}}
 }
@@ -115,6 +186,31 @@ func sparseChunk(indices []int64, values []float32) *gradient.GradientChunk {
 		DataDtype: "torch.float32",
 		Encoding:  "topk",
 		Indices:   indices,
+	}
+}
+
+func denseFloat32Chunk(values []float32) *gradient.GradientChunk {
+	data := make([]byte, len(values)*4)
+	for index, value := range values {
+		binary.LittleEndian.PutUint32(data[index*4:index*4+4], math.Float32bits(value))
+	}
+	return &gradient.GradientChunk{
+		Metadata: &gradient.ParameterMetadata{
+			Name:  "linear.weight",
+			Shape: []int64{int64(len(values))},
+			Numel: int64(len(values)),
+			Dtype: "torch.float32",
+		},
+		HasGrad:  true,
+		Data:     data,
+		ByteSize: uint64(len(data)),
+	}
+}
+
+func missingChunk() *gradient.GradientChunk {
+	return &gradient.GradientChunk{
+		Metadata: &gradient.ParameterMetadata{Name: "p", Shape: []int64{4}, Numel: 4, Dtype: "torch.float32"},
+		HasGrad:  false,
 	}
 }
 
