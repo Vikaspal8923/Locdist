@@ -51,6 +51,7 @@ class ParameterMetadata:
     shape: tuple
     numel: int
     dtype: str
+    layer_order: int = 0
 
 
 @dataclass
@@ -75,6 +76,8 @@ class GradientChunk:
 
     indices_u32: bytes | None = None
 
+    sync_round: int = 0
+
 
 @dataclass
 class GradientPackage:
@@ -85,6 +88,17 @@ class GradientPackage:
     worker_id: str
 
     chunks: List[GradientChunk]
+
+
+@dataclass
+class GradientChunkPackage:
+    runtime_version: int
+
+    job_id: str
+
+    worker_id: str
+
+    chunk: GradientChunk
 
 
 @dataclass
@@ -99,3 +113,16 @@ class AggregatedGradientPackage:
     aggregation_round: int
 
     chunks: list[GradientChunk]
+
+
+@dataclass
+class AggregatedGradientChunkPackage:
+    runtime_version: int
+
+    job_id: str
+
+    participating_workers: int
+
+    aggregation_round: int
+
+    chunk: GradientChunk

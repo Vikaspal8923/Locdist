@@ -19,24 +19,27 @@ import (
 const _ = grpc.SupportPackageIsVersion9
 
 const (
-	WorkerBridge_SynchronizeGradients_FullMethodName = "/locdist.v1.WorkerBridge/SynchronizeGradients"
-	WorkerBridge_RegisterWorker_FullMethodName       = "/locdist.v1.WorkerBridge/RegisterWorker"
-	WorkerBridge_UpdateWorkerStatus_FullMethodName   = "/locdist.v1.WorkerBridge/UpdateWorkerStatus"
-	WorkerBridge_PairWorker_FullMethodName           = "/locdist.v1.WorkerBridge/PairWorker"
-	WorkerBridge_UnpairWorker_FullMethodName         = "/locdist.v1.WorkerBridge/UnpairWorker"
-	WorkerBridge_Heartbeat_FullMethodName            = "/locdist.v1.WorkerBridge/Heartbeat"
-	WorkerBridge_GoingOffline_FullMethodName         = "/locdist.v1.WorkerBridge/GoingOffline"
-	WorkerBridge_PrepareWorkspace_FullMethodName     = "/locdist.v1.WorkerBridge/PrepareWorkspace"
-	WorkerBridge_UploadWorkspace_FullMethodName      = "/locdist.v1.WorkerBridge/UploadWorkspace"
-	WorkerBridge_SetupJob_FullMethodName             = "/locdist.v1.WorkerBridge/SetupJob"
-	WorkerBridge_ArmJob_FullMethodName               = "/locdist.v1.WorkerBridge/ArmJob"
-	WorkerBridge_ReleaseJob_FullMethodName           = "/locdist.v1.WorkerBridge/ReleaseJob"
-	WorkerBridge_StopJob_FullMethodName              = "/locdist.v1.WorkerBridge/StopJob"
-	WorkerBridge_GetJobStatus_FullMethodName         = "/locdist.v1.WorkerBridge/GetJobStatus"
-	WorkerBridge_CleanupJob_FullMethodName           = "/locdist.v1.WorkerBridge/CleanupJob"
-	WorkerBridge_GetResultManifest_FullMethodName    = "/locdist.v1.WorkerBridge/GetResultManifest"
-	WorkerBridge_DownloadResult_FullMethodName       = "/locdist.v1.WorkerBridge/DownloadResult"
-	WorkerBridge_BenchmarkUpload_FullMethodName      = "/locdist.v1.WorkerBridge/BenchmarkUpload"
+	WorkerBridge_SynchronizeGradients_FullMethodName           = "/locdist.v1.WorkerBridge/SynchronizeGradients"
+	WorkerBridge_SynchronizeGradientChunk_FullMethodName       = "/locdist.v1.WorkerBridge/SynchronizeGradientChunk"
+	WorkerBridge_SynchronizeGradientBatch_FullMethodName       = "/locdist.v1.WorkerBridge/SynchronizeGradientBatch"
+	WorkerBridge_SynchronizeGradientBatchStream_FullMethodName = "/locdist.v1.WorkerBridge/SynchronizeGradientBatchStream"
+	WorkerBridge_RegisterWorker_FullMethodName                 = "/locdist.v1.WorkerBridge/RegisterWorker"
+	WorkerBridge_UpdateWorkerStatus_FullMethodName             = "/locdist.v1.WorkerBridge/UpdateWorkerStatus"
+	WorkerBridge_PairWorker_FullMethodName                     = "/locdist.v1.WorkerBridge/PairWorker"
+	WorkerBridge_UnpairWorker_FullMethodName                   = "/locdist.v1.WorkerBridge/UnpairWorker"
+	WorkerBridge_Heartbeat_FullMethodName                      = "/locdist.v1.WorkerBridge/Heartbeat"
+	WorkerBridge_GoingOffline_FullMethodName                   = "/locdist.v1.WorkerBridge/GoingOffline"
+	WorkerBridge_PrepareWorkspace_FullMethodName               = "/locdist.v1.WorkerBridge/PrepareWorkspace"
+	WorkerBridge_UploadWorkspace_FullMethodName                = "/locdist.v1.WorkerBridge/UploadWorkspace"
+	WorkerBridge_SetupJob_FullMethodName                       = "/locdist.v1.WorkerBridge/SetupJob"
+	WorkerBridge_ArmJob_FullMethodName                         = "/locdist.v1.WorkerBridge/ArmJob"
+	WorkerBridge_ReleaseJob_FullMethodName                     = "/locdist.v1.WorkerBridge/ReleaseJob"
+	WorkerBridge_StopJob_FullMethodName                        = "/locdist.v1.WorkerBridge/StopJob"
+	WorkerBridge_GetJobStatus_FullMethodName                   = "/locdist.v1.WorkerBridge/GetJobStatus"
+	WorkerBridge_CleanupJob_FullMethodName                     = "/locdist.v1.WorkerBridge/CleanupJob"
+	WorkerBridge_GetResultManifest_FullMethodName              = "/locdist.v1.WorkerBridge/GetResultManifest"
+	WorkerBridge_DownloadResult_FullMethodName                 = "/locdist.v1.WorkerBridge/DownloadResult"
+	WorkerBridge_BenchmarkUpload_FullMethodName                = "/locdist.v1.WorkerBridge/BenchmarkUpload"
 )
 
 // WorkerBridgeClient is the client API for WorkerBridge service.
@@ -44,6 +47,9 @@ const (
 // For semantics around ctx use and closing/ending streaming RPCs, please refer to https://pkg.go.dev/google.golang.org/grpc/?tab=doc#ClientConn.NewStream.
 type WorkerBridgeClient interface {
 	SynchronizeGradients(ctx context.Context, in *GradientSubmission, opts ...grpc.CallOption) (*AggregatedGradientResponse, error)
+	SynchronizeGradientChunk(ctx context.Context, in *GradientChunkSubmission, opts ...grpc.CallOption) (*AggregatedGradientChunkResponse, error)
+	SynchronizeGradientBatch(ctx context.Context, in *GradientSubmission, opts ...grpc.CallOption) (*AggregatedGradientResponse, error)
+	SynchronizeGradientBatchStream(ctx context.Context, in *GradientSubmission, opts ...grpc.CallOption) (grpc.ServerStreamingClient[AggregatedGradientChunkResponse], error)
 	RegisterWorker(ctx context.Context, in *RegisterWorkerRequest, opts ...grpc.CallOption) (*RegisterWorkerResponse, error)
 	UpdateWorkerStatus(ctx context.Context, in *WorkerStatusUpdate, opts ...grpc.CallOption) (*WorkerStatusResponse, error)
 	PairWorker(ctx context.Context, in *PairWorkerRequest, opts ...grpc.CallOption) (*PairWorkerResponse, error)
@@ -80,6 +86,45 @@ func (c *workerBridgeClient) SynchronizeGradients(ctx context.Context, in *Gradi
 	}
 	return out, nil
 }
+
+func (c *workerBridgeClient) SynchronizeGradientChunk(ctx context.Context, in *GradientChunkSubmission, opts ...grpc.CallOption) (*AggregatedGradientChunkResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(AggregatedGradientChunkResponse)
+	err := c.cc.Invoke(ctx, WorkerBridge_SynchronizeGradientChunk_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *workerBridgeClient) SynchronizeGradientBatch(ctx context.Context, in *GradientSubmission, opts ...grpc.CallOption) (*AggregatedGradientResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(AggregatedGradientResponse)
+	err := c.cc.Invoke(ctx, WorkerBridge_SynchronizeGradientBatch_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *workerBridgeClient) SynchronizeGradientBatchStream(ctx context.Context, in *GradientSubmission, opts ...grpc.CallOption) (grpc.ServerStreamingClient[AggregatedGradientChunkResponse], error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	stream, err := c.cc.NewStream(ctx, &WorkerBridge_ServiceDesc.Streams[0], WorkerBridge_SynchronizeGradientBatchStream_FullMethodName, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	x := &grpc.GenericClientStream[GradientSubmission, AggregatedGradientChunkResponse]{ClientStream: stream}
+	if err := x.ClientStream.SendMsg(in); err != nil {
+		return nil, err
+	}
+	if err := x.ClientStream.CloseSend(); err != nil {
+		return nil, err
+	}
+	return x, nil
+}
+
+// This type alias is provided for backwards compatibility with existing code that references the prior non-generic stream type by name.
+type WorkerBridge_SynchronizeGradientBatchStreamClient = grpc.ServerStreamingClient[AggregatedGradientChunkResponse]
 
 func (c *workerBridgeClient) RegisterWorker(ctx context.Context, in *RegisterWorkerRequest, opts ...grpc.CallOption) (*RegisterWorkerResponse, error) {
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
@@ -153,7 +198,7 @@ func (c *workerBridgeClient) PrepareWorkspace(ctx context.Context, in *PrepareWo
 
 func (c *workerBridgeClient) UploadWorkspace(ctx context.Context, opts ...grpc.CallOption) (grpc.ClientStreamingClient[WorkspaceChunk, PrepareWorkspaceResponse], error) {
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
-	stream, err := c.cc.NewStream(ctx, &WorkerBridge_ServiceDesc.Streams[0], WorkerBridge_UploadWorkspace_FullMethodName, cOpts...)
+	stream, err := c.cc.NewStream(ctx, &WorkerBridge_ServiceDesc.Streams[1], WorkerBridge_UploadWorkspace_FullMethodName, cOpts...)
 	if err != nil {
 		return nil, err
 	}
@@ -236,7 +281,7 @@ func (c *workerBridgeClient) GetResultManifest(ctx context.Context, in *JobComma
 
 func (c *workerBridgeClient) DownloadResult(ctx context.Context, in *DownloadResultRequest, opts ...grpc.CallOption) (grpc.ServerStreamingClient[ResultChunk], error) {
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
-	stream, err := c.cc.NewStream(ctx, &WorkerBridge_ServiceDesc.Streams[1], WorkerBridge_DownloadResult_FullMethodName, cOpts...)
+	stream, err := c.cc.NewStream(ctx, &WorkerBridge_ServiceDesc.Streams[2], WorkerBridge_DownloadResult_FullMethodName, cOpts...)
 	if err != nil {
 		return nil, err
 	}
@@ -255,7 +300,7 @@ type WorkerBridge_DownloadResultClient = grpc.ServerStreamingClient[ResultChunk]
 
 func (c *workerBridgeClient) BenchmarkUpload(ctx context.Context, opts ...grpc.CallOption) (grpc.ClientStreamingClient[BenchmarkChunk, BenchmarkResult], error) {
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
-	stream, err := c.cc.NewStream(ctx, &WorkerBridge_ServiceDesc.Streams[2], WorkerBridge_BenchmarkUpload_FullMethodName, cOpts...)
+	stream, err := c.cc.NewStream(ctx, &WorkerBridge_ServiceDesc.Streams[3], WorkerBridge_BenchmarkUpload_FullMethodName, cOpts...)
 	if err != nil {
 		return nil, err
 	}
@@ -271,6 +316,9 @@ type WorkerBridge_BenchmarkUploadClient = grpc.ClientStreamingClient[BenchmarkCh
 // for forward compatibility.
 type WorkerBridgeServer interface {
 	SynchronizeGradients(context.Context, *GradientSubmission) (*AggregatedGradientResponse, error)
+	SynchronizeGradientChunk(context.Context, *GradientChunkSubmission) (*AggregatedGradientChunkResponse, error)
+	SynchronizeGradientBatch(context.Context, *GradientSubmission) (*AggregatedGradientResponse, error)
+	SynchronizeGradientBatchStream(*GradientSubmission, grpc.ServerStreamingServer[AggregatedGradientChunkResponse]) error
 	RegisterWorker(context.Context, *RegisterWorkerRequest) (*RegisterWorkerResponse, error)
 	UpdateWorkerStatus(context.Context, *WorkerStatusUpdate) (*WorkerStatusResponse, error)
 	PairWorker(context.Context, *PairWorkerRequest) (*PairWorkerResponse, error)
@@ -300,6 +348,15 @@ type UnimplementedWorkerBridgeServer struct{}
 
 func (UnimplementedWorkerBridgeServer) SynchronizeGradients(context.Context, *GradientSubmission) (*AggregatedGradientResponse, error) {
 	return nil, status.Error(codes.Unimplemented, "method SynchronizeGradients not implemented")
+}
+func (UnimplementedWorkerBridgeServer) SynchronizeGradientChunk(context.Context, *GradientChunkSubmission) (*AggregatedGradientChunkResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method SynchronizeGradientChunk not implemented")
+}
+func (UnimplementedWorkerBridgeServer) SynchronizeGradientBatch(context.Context, *GradientSubmission) (*AggregatedGradientResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method SynchronizeGradientBatch not implemented")
+}
+func (UnimplementedWorkerBridgeServer) SynchronizeGradientBatchStream(*GradientSubmission, grpc.ServerStreamingServer[AggregatedGradientChunkResponse]) error {
+	return status.Error(codes.Unimplemented, "method SynchronizeGradientBatchStream not implemented")
 }
 func (UnimplementedWorkerBridgeServer) RegisterWorker(context.Context, *RegisterWorkerRequest) (*RegisterWorkerResponse, error) {
 	return nil, status.Error(codes.Unimplemented, "method RegisterWorker not implemented")
@@ -390,6 +447,53 @@ func _WorkerBridge_SynchronizeGradients_Handler(srv interface{}, ctx context.Con
 	}
 	return interceptor(ctx, in, info, handler)
 }
+
+func _WorkerBridge_SynchronizeGradientChunk_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(GradientChunkSubmission)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(WorkerBridgeServer).SynchronizeGradientChunk(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: WorkerBridge_SynchronizeGradientChunk_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(WorkerBridgeServer).SynchronizeGradientChunk(ctx, req.(*GradientChunkSubmission))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _WorkerBridge_SynchronizeGradientBatch_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(GradientSubmission)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(WorkerBridgeServer).SynchronizeGradientBatch(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: WorkerBridge_SynchronizeGradientBatch_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(WorkerBridgeServer).SynchronizeGradientBatch(ctx, req.(*GradientSubmission))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _WorkerBridge_SynchronizeGradientBatchStream_Handler(srv interface{}, stream grpc.ServerStream) error {
+	m := new(GradientSubmission)
+	if err := stream.RecvMsg(m); err != nil {
+		return err
+	}
+	return srv.(WorkerBridgeServer).SynchronizeGradientBatchStream(m, &grpc.GenericServerStream[GradientSubmission, AggregatedGradientChunkResponse]{ServerStream: stream})
+}
+
+// This type alias is provided for backwards compatibility with existing code that references the prior non-generic stream type by name.
+type WorkerBridge_SynchronizeGradientBatchStreamServer = grpc.ServerStreamingServer[AggregatedGradientChunkResponse]
 
 func _WorkerBridge_RegisterWorker_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
 	in := new(RegisterWorkerRequest)
@@ -680,6 +784,14 @@ var WorkerBridge_ServiceDesc = grpc.ServiceDesc{
 			Handler:    _WorkerBridge_SynchronizeGradients_Handler,
 		},
 		{
+			MethodName: "SynchronizeGradientChunk",
+			Handler:    _WorkerBridge_SynchronizeGradientChunk_Handler,
+		},
+		{
+			MethodName: "SynchronizeGradientBatch",
+			Handler:    _WorkerBridge_SynchronizeGradientBatch_Handler,
+		},
+		{
 			MethodName: "RegisterWorker",
 			Handler:    _WorkerBridge_RegisterWorker_Handler,
 		},
@@ -737,6 +849,11 @@ var WorkerBridge_ServiceDesc = grpc.ServiceDesc{
 		},
 	},
 	Streams: []grpc.StreamDesc{
+		{
+			StreamName:    "SynchronizeGradientBatchStream",
+			Handler:       _WorkerBridge_SynchronizeGradientBatchStream_Handler,
+			ServerStreams: true,
+		},
 		{
 			StreamName:    "UploadWorkspace",
 			Handler:       _WorkerBridge_UploadWorkspace_Handler,

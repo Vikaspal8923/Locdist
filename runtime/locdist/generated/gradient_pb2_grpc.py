@@ -43,6 +43,21 @@ class WorkerBridgeStub:
                 request_serializer=gradient__pb2.GradientSubmission.SerializeToString,
                 response_deserializer=gradient__pb2.AggregatedGradientResponse.FromString,
                 _registered_method=True)
+        self.SynchronizeGradientChunk = channel.unary_unary(
+                '/locdist.v1.WorkerBridge/SynchronizeGradientChunk',
+                request_serializer=gradient__pb2.GradientChunkSubmission.SerializeToString,
+                response_deserializer=gradient__pb2.AggregatedGradientChunkResponse.FromString,
+                _registered_method=True)
+        self.SynchronizeGradientBatch = channel.unary_unary(
+                '/locdist.v1.WorkerBridge/SynchronizeGradientBatch',
+                request_serializer=gradient__pb2.GradientSubmission.SerializeToString,
+                response_deserializer=gradient__pb2.AggregatedGradientResponse.FromString,
+                _registered_method=True)
+        self.SynchronizeGradientBatchStream = channel.unary_stream(
+                '/locdist.v1.WorkerBridge/SynchronizeGradientBatchStream',
+                request_serializer=gradient__pb2.GradientSubmission.SerializeToString,
+                response_deserializer=gradient__pb2.AggregatedGradientChunkResponse.FromString,
+                _registered_method=True)
         self.RegisterWorker = channel.unary_unary(
                 '/locdist.v1.WorkerBridge/RegisterWorker',
                 request_serializer=gradient__pb2.RegisterWorkerRequest.SerializeToString,
@@ -138,6 +153,24 @@ class WorkerBridgeServicer:
     """
 
     def SynchronizeGradients(self, request, context):
+        """Missing associated documentation comment in .proto file."""
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
+    def SynchronizeGradientChunk(self, request, context):
+        """Missing associated documentation comment in .proto file."""
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
+    def SynchronizeGradientBatch(self, request, context):
+        """Missing associated documentation comment in .proto file."""
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
+    def SynchronizeGradientBatchStream(self, request, context):
         """Missing associated documentation comment in .proto file."""
         context.set_code(grpc.StatusCode.UNIMPLEMENTED)
         context.set_details('Method not implemented!')
@@ -252,6 +285,21 @@ def add_WorkerBridgeServicer_to_server(servicer, server):
                     servicer.SynchronizeGradients,
                     request_deserializer=gradient__pb2.GradientSubmission.FromString,
                     response_serializer=gradient__pb2.AggregatedGradientResponse.SerializeToString,
+            ),
+            'SynchronizeGradientChunk': grpc.unary_unary_rpc_method_handler(
+                    servicer.SynchronizeGradientChunk,
+                    request_deserializer=gradient__pb2.GradientChunkSubmission.FromString,
+                    response_serializer=gradient__pb2.AggregatedGradientChunkResponse.SerializeToString,
+            ),
+            'SynchronizeGradientBatch': grpc.unary_unary_rpc_method_handler(
+                    servicer.SynchronizeGradientBatch,
+                    request_deserializer=gradient__pb2.GradientSubmission.FromString,
+                    response_serializer=gradient__pb2.AggregatedGradientResponse.SerializeToString,
+            ),
+            'SynchronizeGradientBatchStream': grpc.unary_stream_rpc_method_handler(
+                    servicer.SynchronizeGradientBatchStream,
+                    request_deserializer=gradient__pb2.GradientSubmission.FromString,
+                    response_serializer=gradient__pb2.AggregatedGradientChunkResponse.SerializeToString,
             ),
             'RegisterWorker': grpc.unary_unary_rpc_method_handler(
                     servicer.RegisterWorker,
@@ -370,6 +418,87 @@ class WorkerBridge:
             '/locdist.v1.WorkerBridge/SynchronizeGradients',
             gradient__pb2.GradientSubmission.SerializeToString,
             gradient__pb2.AggregatedGradientResponse.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
+
+    @staticmethod
+    def SynchronizeGradientChunk(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(
+            request,
+            target,
+            '/locdist.v1.WorkerBridge/SynchronizeGradientChunk',
+            gradient__pb2.GradientChunkSubmission.SerializeToString,
+            gradient__pb2.AggregatedGradientChunkResponse.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
+
+    @staticmethod
+    def SynchronizeGradientBatch(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(
+            request,
+            target,
+            '/locdist.v1.WorkerBridge/SynchronizeGradientBatch',
+            gradient__pb2.GradientSubmission.SerializeToString,
+            gradient__pb2.AggregatedGradientResponse.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
+
+    @staticmethod
+    def SynchronizeGradientBatchStream(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_stream(
+            request,
+            target,
+            '/locdist.v1.WorkerBridge/SynchronizeGradientBatchStream',
+            gradient__pb2.GradientSubmission.SerializeToString,
+            gradient__pb2.AggregatedGradientChunkResponse.FromString,
             options,
             channel_credentials,
             insecure,

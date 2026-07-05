@@ -10,7 +10,7 @@ def extract_metadata(model) -> List[ParameterMetadata]:
 
     metadata = []
 
-    for name, parameter in model.named_parameters():
+    for layer_order, (name, parameter) in enumerate(model.named_parameters()):
 
         metadata.append(
             ParameterMetadata(
@@ -18,6 +18,7 @@ def extract_metadata(model) -> List[ParameterMetadata]:
                 shape=tuple(parameter.shape),
                 numel=parameter.numel(),
                 dtype=str(parameter.dtype),
+                layer_order=layer_order,
             )
         )
 

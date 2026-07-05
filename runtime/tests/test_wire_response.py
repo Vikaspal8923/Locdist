@@ -15,6 +15,19 @@ def main():
             job_id="job-123",
             participating_workers=8,
             aggregation_round=42,
+            chunks=[
+                gradient_pb2.GradientChunk(
+                    metadata=gradient_pb2.ParameterMetadata(
+                        name="fc.weight",
+                        shape=[2, 4],
+                        numel=8,
+                        dtype="torch.float32",
+                        layer_order=3,
+                    ),
+                    has_grad=False,
+                    sync_round=42,
+                )
+            ],
         )
     )
 
@@ -36,6 +49,9 @@ def main():
         package.aggregation_round
         == 42
     )
+
+    assert package.chunks[0].metadata.layer_order == 3
+    assert package.chunks[0].sync_round == 42
 
     print()
     print(

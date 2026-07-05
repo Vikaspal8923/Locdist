@@ -17,6 +17,7 @@ def main():
         shape=(3, 4),
         numel=12,
         dtype="torch.float32",
+        layer_order=7,
     )
 
     chunk = GradientChunk(
@@ -24,6 +25,7 @@ def main():
         has_grad=True,
         data=b"hello-world",
         byte_size=len(b"hello-world"),
+        sync_round=11,
     )
 
     original_package = GradientPackage(
@@ -88,6 +90,11 @@ def main():
     )
 
     assert (
+        restored_chunk.metadata.layer_order
+        == 7
+    )
+
+    assert (
         restored_chunk.has_grad
         is True
     )
@@ -95,6 +102,11 @@ def main():
     assert (
         restored_chunk.data
         == b"hello-world"
+    )
+
+    assert (
+        restored_chunk.sync_round
+        == 11
     )
 
     print()

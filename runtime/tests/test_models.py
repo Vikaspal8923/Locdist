@@ -1,4 +1,5 @@
 from locdist.models import (
+    CommunicationConfig,
     RuntimeConfig,
     ParameterMetadata,
     GradientChunk,
@@ -15,6 +16,7 @@ def main():
         worker_host="127.0.0.1",
         worker_port=7000,
         rpc_timeout_seconds=120,
+        communication=CommunicationConfig(),
     )
 
     metadata = ParameterMetadata(
@@ -22,6 +24,7 @@ def main():
         shape=(3, 4),
         numel=12,
         dtype="torch.float32",
+        layer_order=5,
     )
 
     chunk = GradientChunk(
@@ -29,6 +32,7 @@ def main():
         has_grad=True,
         data=b"hello",
         byte_size=5,
+        sync_round=9,
     )
 
     package = GradientPackage(
@@ -42,9 +46,11 @@ def main():
 
     assert metadata.name == "fc1.weight"
     assert metadata.numel == 12
+    assert metadata.layer_order == 5
 
     assert chunk.has_grad is True
     assert chunk.byte_size == 5
+    assert chunk.sync_round == 9
 
     assert len(package.chunks) == 1
     assert package.runtime_version == 1

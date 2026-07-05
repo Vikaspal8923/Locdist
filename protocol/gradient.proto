@@ -17,6 +17,8 @@ message ParameterMetadata {
   int64 numel = 3;
 
   string dtype = 4;
+
+  uint32 layer_order = 5;
 }
 
 
@@ -41,6 +43,8 @@ message GradientChunk {
   repeated int64 indices = 7;
 
   bytes indices_u32 = 8;
+
+  uint64 sync_round = 9;
 }
 
 
@@ -59,6 +63,17 @@ message GradientSubmission {
   repeated GradientChunk chunks = 4;
 }
 
+message GradientChunkSubmission {
+
+  uint32 runtime_version = 1;
+
+  string job_id = 2;
+
+  string worker_id = 3;
+
+  GradientChunk chunk = 4;
+}
+
 
 // =====================================================
 // Worker Service → Runtime
@@ -75,6 +90,19 @@ message AggregatedGradientResponse {
   uint64 aggregation_round = 4;
 
   repeated GradientChunk chunks = 5;
+}
+
+message AggregatedGradientChunkResponse {
+
+  uint32 runtime_version = 1;
+
+  string job_id = 2;
+
+  uint32 participating_workers = 3;
+
+  uint64 aggregation_round = 4;
+
+  GradientChunk chunk = 5;
 }
 
 // =====================================================
@@ -435,6 +463,24 @@ service WorkerBridge {
     GradientSubmission
   ) returns (
     AggregatedGradientResponse
+  );
+
+  rpc SynchronizeGradientChunk(
+    GradientChunkSubmission
+  ) returns (
+    AggregatedGradientChunkResponse
+  );
+
+  rpc SynchronizeGradientBatch(
+    GradientSubmission
+  ) returns (
+    AggregatedGradientResponse
+  );
+
+  rpc SynchronizeGradientBatchStream(
+    GradientSubmission
+  ) returns (
+    stream AggregatedGradientChunkResponse
   );
 
   rpc RegisterWorker(
