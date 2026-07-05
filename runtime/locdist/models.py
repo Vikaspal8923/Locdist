@@ -18,6 +18,8 @@ class RuntimeConfig:
 
     communication: "CommunicationConfig"
 
+    gradient_accumulation_steps: int = 1
+
 
 @dataclass
 class CommunicationConfig:

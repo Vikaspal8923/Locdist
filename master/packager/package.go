@@ -30,6 +30,7 @@ type PackageRequest struct {
 	Outputs       []string
 	RuntimePath   string
 	Communication project.CommunicationSpec
+	Training      project.TrainingSpec
 }
 
 type JobConfig struct {
@@ -39,6 +40,7 @@ type JobConfig struct {
 	DatasetPath   string                    `json:"dataset_path"`
 	Outputs       []string                  `json:"outputs,omitempty"`
 	Communication project.CommunicationSpec `json:"communication,omitempty"`
+	Training      project.TrainingSpec      `json:"training,omitempty"`
 }
 
 func Build(request PackageRequest) ([]byte, error) {
@@ -255,6 +257,7 @@ func addJobConfig(writer *zip.Writer, request PackageRequest) error {
 			DatasetPath:   request.DatasetPath,
 			Outputs:       request.Outputs,
 			Communication: request.Communication,
+			Training:      request.Training,
 		},
 		"",
 		"  ",

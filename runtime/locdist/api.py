@@ -126,6 +126,9 @@ def prepare(model):
             config = None
         if config is not None:
             runtime_state.communication = config.communication
+            runtime_state.gradient_accumulation_steps = (
+                config.gradient_accumulation_steps
+            )
             runtime_state.configure_runtime(
                 runtime_version=config.runtime_version,
                 job_id=config.job_id,

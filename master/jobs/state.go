@@ -29,6 +29,7 @@ type JobState struct {
 	DatasetPath   string                    `json:"dataset_path"`
 	Outputs       []string                  `json:"outputs,omitempty"`
 	Communication project.CommunicationSpec `json:"communication,omitempty"`
+	Training      project.TrainingSpec      `json:"training,omitempty"`
 	Workers       []WorkerAssignment        `json:"workers"`
 	Shards        []ShardAssignment         `json:"shards"`
 	Setup         map[string]WorkerSetup    `json:"setup"`

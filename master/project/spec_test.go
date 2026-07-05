@@ -39,6 +39,9 @@ communication:
     device: auto
     error_feedback: true
     warmup_steps: 500
+
+training:
+  gradient_accumulation_steps: 10
 `)
 
 	spec, err := LoadSpec(root)
@@ -74,6 +77,9 @@ communication:
 		!spec.Communication.Compression.ErrorFeedback ||
 		spec.Communication.Compression.WarmupSteps != 500 {
 		t.Fatalf("unexpected communication config: %+v", spec.Communication)
+	}
+	if spec.Training.GradientAccumulationSteps != 10 {
+		t.Fatalf("unexpected training config: %+v", spec.Training)
 	}
 }
 

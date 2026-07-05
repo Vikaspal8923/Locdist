@@ -93,6 +93,7 @@ func (d *Distributor) distributeWorker(ctx context.Context, job *jobs.JobState, 
 		Entrypoint: job.Entrypoint, DatasetPath: job.DatasetPath, ShardPath: shard.Path, ShardKind: shard.Kind,
 		Outputs:       job.Outputs,
 		Communication: job.Communication,
+		Training:      job.Training,
 	}
 	if err := packager.Write(packageFile, request); err != nil {
 		packageFile.Close()

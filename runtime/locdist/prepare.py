@@ -38,6 +38,7 @@ class PreparedRuntimeState:
     expected_layers: tuple[LayerIdentity, ...]
     hook_handles: list[Any] = field(default_factory=list)
     communication: CommunicationConfig = field(default_factory=CommunicationConfig)
+    gradient_accumulation_steps: int = 1
     runtime_version: int = 1
     job_id: str = ""
     worker_id: str = ""
@@ -97,6 +98,19 @@ class PreparedRuntimeState:
     ) -> None:
         start_ms = now_ms()
         with self.condition:
+            self.ready_layers.setdefault(
+                layer_order,
+                LayerIdentity(
+                    name=name,
+                    layer_order=layer_order,
+                    shape=shape,
+                    numel=gradient.numel(),
+                    dtype=parameter_dtype,
+                ),
+            )
+            if self.gradient_accumulation_steps > 1:
+                return
+
             if self.active_round is None:
                 self.active_round = self.next_round
                 self.round_metrics.setdefault(
@@ -125,16 +139,6 @@ class PreparedRuntimeState:
                 )
 
             active_round = self.active_round
-            self.ready_layers.setdefault(
-                layer_order,
-                LayerIdentity(
-                    name=name,
-                    layer_order=layer_order,
-                    shape=shape,
-                    numel=gradient.numel(),
-                    dtype=parameter_dtype,
-                ),
-            )
 
         chunk = compress_ready_gradient(
             name=name,
@@ -169,6 +173,91 @@ class PreparedRuntimeState:
             self.emitted_chunk_count += 1
             self._ensure_sender_started_locked()
             self.condition.notify_all()
+
+    def capture_accumulated_gradients(
+        self,
+        model: torch.nn.Module,
+    ) -> bool:
+        named_parameters = dict(model.named_parameters())
+        backward_complete_ms = now_ms()
+
+        with self.condition:
+            if self.active_round is not None:
+                return False
+
+            self.active_round = self.next_round
+            round_id = self.active_round
+            self.round_metrics.setdefault(
+                round_id,
+                {
+                    "compression_ms": 0.0,
+                    "runtime_to_worker_proto_build_ms": 0.0,
+                    "runtime_to_worker_rpc_ms": 0.0,
+                    "runtime_response_decode_ms": 0.0,
+                    "runtime_bytes_up": 0,
+                    "runtime_bytes_down": 0,
+                    "chunk_send_count": 0,
+                    "chunk_response_count": 0,
+                    "batch_send_count": 0,
+                    "max_queue_depth": 0,
+                    "max_inflight_chunks": 0,
+                    "max_chunks_per_batch": 0,
+                    "first_layer_ready_ms": 0.0,
+                    "last_layer_ready_ms": 0.0,
+                    "first_chunk_sent_ms": 0.0,
+                    "last_chunk_sent_ms": 0.0,
+                    "first_chunk_returned_ms": 0.0,
+                    "last_chunk_returned_ms": 0.0,
+                    "step_wait_ms": 0.0,
+                },
+            )
+            self.round_backward_complete_ms.setdefault(
+                round_id,
+                backward_complete_ms,
+            )
+
+        for layer in self.expected_layers:
+            parameter = named_parameters.get(layer.name)
+            if parameter is None or parameter.grad is None:
+                continue
+
+            chunk_start_ms = now_ms()
+            chunk = compress_ready_gradient(
+                name=layer.name,
+                layer_order=layer.layer_order,
+                gradient=parameter.grad,
+                parameter_dtype=layer.dtype,
+                communication=self.communication,
+                residuals=self.preview_residuals,
+                sync_round=round_id,
+            )
+
+            with self.condition:
+                self.ready_layers.setdefault(layer.layer_order, layer)
+                self.queued_chunks.setdefault(
+                    round_id,
+                    {},
+                )[layer.layer_order] = chunk
+                self._enqueue_chunk_locked(
+                    round_id,
+                    layer.layer_order,
+                )
+                metrics = self.round_metrics.setdefault(
+                    round_id,
+                    {},
+                )
+                ready_ts = now_ms()
+                if not metrics.get("first_layer_ready_ms"):
+                    metrics["first_layer_ready_ms"] = ready_ts
+                metrics["last_layer_ready_ms"] = ready_ts
+                metrics["compression_ms"] = float(
+                    metrics.get("compression_ms", 0.0)
+                ) + (ready_ts - chunk_start_ms)
+                self.emitted_chunk_count += 1
+                self._ensure_sender_started_locked()
+                self.condition.notify_all()
+
+        return True
 
     def finalize_round_chunks(
         self,
@@ -729,6 +818,7 @@ class PreparedOptimizer:
     def step(self, *args, **kwargs):
         try:
             if self._ldgcc_runtime_state is not None:
+                self._ldgcc_runtime_state.capture_accumulated_gradients(self._model)
                 self._ldgcc_runtime_state.complete_active_round(self._model)
             return self._optimizer.step(*args, **kwargs)
         finally:

@@ -17,6 +17,7 @@ def main():
         worker_port=7000,
         rpc_timeout_seconds=120,
         communication=CommunicationConfig(),
+        gradient_accumulation_steps=10,
     )
 
     metadata = ParameterMetadata(
@@ -43,6 +44,7 @@ def main():
     )
 
     assert config.runtime_version == 1
+    assert config.gradient_accumulation_steps == 10
 
     assert metadata.name == "fc1.weight"
     assert metadata.numel == 12

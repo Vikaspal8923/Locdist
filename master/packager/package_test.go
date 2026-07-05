@@ -3,10 +3,13 @@ package packager
 import (
 	"archive/zip"
 	"bytes"
+	"encoding/json"
 	"io"
 	"os"
 	"path/filepath"
 	"testing"
+
+	"github.com/Vikaspal8923/Locdist/master/project"
 )
 
 func TestBuildReplacesDatasetAndExcludesLocalState(t *testing.T) {
@@ -42,6 +45,37 @@ func TestBuildReplacesDatasetAndExcludesLocalState(t *testing.T) {
 	}
 	if !bytes.Contains(files["job_config.json"], []byte("model/model.pt")) {
 		t.Fatal("configured outputs are missing from job config")
+	}
+}
+
+func TestBuildIncludesTrainingConfigInJobConfig(t *testing.T) {
+	root := t.TempDir()
+	writeFile(t, root, "train.py", "print('train')")
+	writeFile(t, root, "dataset/train.jsonl", "original\n")
+	shard := writeFile(t, root, "ldgcc_jobs/job-1/shards/worker-1.jsonl", "worker shard\n")
+
+	data, err := Build(PackageRequest{
+		ProjectRoot: root,
+		JobID:       "job-1",
+		WorkerID:    "worker-1",
+		Entrypoint:  "train.py",
+		DatasetPath: "dataset/train.jsonl",
+		ShardPath:   shard,
+		Training: project.TrainingSpec{
+			GradientAccumulationSteps: 10,
+		},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	files := unzip(t, data)
+	var config JobConfig
+	if err := json.Unmarshal(files["job_config.json"], &config); err != nil {
+		t.Fatal(err)
+	}
+	if config.Training.GradientAccumulationSteps != 10 {
+		t.Fatalf("unexpected training config: %+v", config.Training)
 	}
 }
 

@@ -58,6 +58,13 @@ def load_config(
         except json.JSONDecodeError as e:
             raise ConfigError("LDGCC_COMMUNICATION must be JSON") from e
 
+    training_env = os.environ.get("LDGCC_TRAINING")
+    if training_env:
+        try:
+            data["training"] = json.loads(training_env)
+        except json.JSONDecodeError as e:
+            raise ConfigError("LDGCC_TRAINING must be JSON") from e
+
     if "worker_port" in data and isinstance(data["worker_port"], str):
         try:
             data["worker_port"] = int(data["worker_port"])
@@ -92,7 +99,7 @@ def load_config(
             )
         )
 
-    optional_fields = {"communication"}
+    optional_fields = {"communication", "training"}
 
     unknown_fields = (
         actual_fields - required_fields - optional_fields
@@ -209,6 +216,9 @@ def load_config(
     communication = parse_communication_config(
         data.get("communication", {})
     )
+    gradient_accumulation_steps = parse_training_config(
+        data.get("training", {})
+    )
 
     return RuntimeConfig(
         runtime_version=data["runtime_version"],
@@ -220,6 +230,7 @@ def load_config(
             "rpc_timeout_seconds"
         ],
         communication=communication,
+        gradient_accumulation_steps=gradient_accumulation_steps,
     )
 
 
@@ -304,6 +315,26 @@ def parse_communication_config(value) -> CommunicationConfig:
         error_feedback=error_feedback,
         warmup_steps=warmup_steps,
     )
+
+
+def parse_training_config(value) -> int:
+    if value is None:
+        value = {}
+    if not isinstance(value, dict):
+        raise ConfigError("training must be an object")
+
+    unknown_fields = set(value.keys()) - {"gradient_accumulation_steps"}
+    if unknown_fields:
+        raise ConfigError(
+            "Unknown training fields: " + ", ".join(sorted(unknown_fields))
+        )
+
+    gradient_accumulation_steps = value.get("gradient_accumulation_steps", 1)
+    if not isinstance(gradient_accumulation_steps, int):
+        raise ConfigError("training.gradient_accumulation_steps must be an integer")
+    if gradient_accumulation_steps <= 0:
+        raise ConfigError("training.gradient_accumulation_steps must be positive")
+    return gradient_accumulation_steps
 
 
 def parse_percent(value, field_name: str = "communication.compression.top_k") -> float:

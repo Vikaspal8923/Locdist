@@ -226,6 +226,46 @@ def test_invalid_chunk_response_is_rejected():
         transport_module.get_transport = original_get_transport
 
 
+def test_accumulation_boundary_starts_round_at_optimizer_step():
+    fake_transport = FakeTransport()
+    original_get_transport = transport_module.get_transport
+    state = None
+    transport_module.get_transport = lambda: fake_transport
+    try:
+        model = TinyModel()
+        model = locdist.prepare(model)
+        state = get_prepared_runtime_state(model)
+        assert state is not None
+        state.gradient_accumulation_steps = 10
+        state.configure_runtime(
+            runtime_version=1,
+            job_id="job-accum",
+            worker_id="worker-accum",
+            rpc_timeout_seconds=5,
+        )
+        optimizer = locdist.prepare_optimizer(torch.optim.SGD(model.parameters(), lr=0.1))
+        loss = model(torch.randn(4, 4)).sum()
+        loss.backward()
+
+        time.sleep(0.05)
+        assert state.active_round is None
+        assert fake_transport.chunk_calls == []
+        assert fake_transport.batch_calls == []
+
+        optimizer.step()
+
+        assert state.completed_rounds == [1]
+        sent_layers = set(fake_transport.chunk_calls)
+        for batch in fake_transport.batch_calls:
+            sent_layers.update(batch)
+        assert sent_layers == {0, 1, 2, 3}
+        print("✓ accumulation-aware V2 waits until optimizer.step() before sending")
+    finally:
+        if state is not None:
+            state.shutdown()
+        transport_module.get_transport = original_get_transport
+
+
 def test_round_timeout_is_cleaned_up():
     hanging_transport = FakeHangingTransport()
     original_get_transport = transport_module.get_transport
@@ -279,4 +319,5 @@ def test_round_timeout_is_cleaned_up():
 if __name__ == "__main__":
     main()
     test_invalid_chunk_response_is_rejected()
+    test_accumulation_boundary_starts_round_at_optimizer_step()
     test_round_timeout_is_cleaned_up()

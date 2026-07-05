@@ -18,6 +18,7 @@ type Spec struct {
 	Workers       WorkerSpec
 	Outputs       []string
 	Communication CommunicationSpec
+	Training      TrainingSpec
 }
 
 type JobSpec struct {
@@ -36,6 +37,10 @@ type WorkerSpec struct {
 type CommunicationSpec struct {
 	Precision   string          `json:"precision,omitempty"`
 	Compression CompressionSpec `json:"compression,omitempty"`
+}
+
+type TrainingSpec struct {
+	GradientAccumulationSteps int `json:"gradient_accumulation_steps,omitempty"`
 }
 
 type CompressionSpec struct {
@@ -124,6 +129,9 @@ func (s Spec) Validate(projectRoot string) error {
 	if err := s.Communication.Validate(); err != nil {
 		return err
 	}
+	if err := s.Training.Validate(); err != nil {
+		return err
+	}
 	return nil
 }
 
@@ -170,6 +178,13 @@ func (c CommunicationSpec) Validate() error {
 	return nil
 }
 
+func (t TrainingSpec) Validate() error {
+	if t.GradientAccumulationSteps < 0 {
+		return fmt.Errorf("training.gradient_accumulation_steps must be non-negative")
+	}
+	return nil
+}
+
 func parse(file *os.File) (Spec, error) {
 	var spec Spec
 	section := ""
@@ -202,6 +217,14 @@ func parse(file *os.File) (Spec, error) {
 		}
 		if indent == 2 && section == "communication" && key == "compression" && value == "" {
 			section = "communication.compression"
+			continue
+		}
+		if indent == 2 && section == "training" && key == "gradient_accumulation_steps" {
+			steps, err := strconv.Atoi(value)
+			if err != nil {
+				return Spec{}, fmt.Errorf("training.gradient_accumulation_steps must be a number")
+			}
+			spec.Training.GradientAccumulationSteps = steps
 			continue
 		}
 		if indent == 0 {

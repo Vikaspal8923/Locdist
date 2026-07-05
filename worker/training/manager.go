@@ -21,6 +21,7 @@ type Readiness interface{ IsReady(jobID string) bool }
 type jobConfig struct {
 	Entrypoint    string          `json:"entrypoint"`
 	Communication json.RawMessage `json:"communication,omitempty"`
+	Training      json.RawMessage `json:"training,omitempty"`
 }
 
 type process struct {
@@ -29,6 +30,7 @@ type process struct {
 	command       *exec.Cmd
 	done          chan struct{}
 	communication string
+	training      string
 	errorMessage  string
 	logPath       string
 	exitCode      int
@@ -91,6 +93,9 @@ func (m *Manager) Arm(jobID string) Result {
 	if len(config.Communication) > 0 {
 		m.processes[jobID].communication = string(config.Communication)
 	}
+	if len(config.Training) > 0 {
+		m.processes[jobID].training = string(config.Training)
+	}
 	return Result{Status: gradient.JobRunStatus_JOB_RUN_STATUS_ARMED, LogPath: logPath}
 }
 
@@ -128,6 +133,9 @@ func (m *Manager) Release(jobID, workerID string) Result {
 	command.Env = append(os.Environ(), "LDGCC_JOB_ID="+jobID, "LDGCC_WORKER_ID="+workerID, "LDGCC_WORKER_HOST=127.0.0.1", "LDGCC_WORKER_PORT="+m.workerPort)
 	if current.communication != "" {
 		command.Env = append(command.Env, "LDGCC_COMMUNICATION="+current.communication)
+	}
+	if current.training != "" {
+		command.Env = append(command.Env, "LDGCC_TRAINING="+current.training)
 	}
 	command.Stdout, command.Stderr = log, log
 	if err := command.Start(); err != nil {
