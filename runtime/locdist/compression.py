@@ -52,6 +52,7 @@ def extract_compressed_gradient_chunks(
                 "compression_total_ms": _elapsed_ms(start),
             }
         )
+        _stamp_sync_round(chunks, state.sync_step)
         return chunks
 
     start = _now_ms()
@@ -60,7 +61,55 @@ def extract_compressed_gradient_chunks(
     else:
         chunks = _extract_global_topk(model, communication, state)
     state.last_metrics["compression_total_ms"] = _elapsed_ms(start)
+    _stamp_sync_round(chunks, state.sync_step)
     return chunks
+
+
+def compress_ready_gradient(
+    *,
+    name: str,
+    layer_order: int,
+    gradient: torch.Tensor,
+    parameter_dtype: str,
+    communication: CommunicationConfig,
+    residuals: dict[str, torch.Tensor],
+    sync_round: int,
+) -> GradientChunk:
+    metadata = ParameterMetadata(
+        name=name,
+        shape=tuple(gradient.shape),
+        numel=gradient.numel(),
+        dtype=parameter_dtype,
+        layer_order=layer_order,
+    )
+    if communication.compression_type != "topk" or sync_round <= communication.warmup_steps:
+        return _dense_chunk_from_gradient(
+            metadata=metadata,
+            gradient=gradient,
+            payload_dtype=PRECISION_TO_DTYPE[communication.precision],
+            sync_round=sync_round,
+        )
+
+    effective = _effective_gradient_from_tensor(
+        name=name,
+        gradient=gradient,
+        communication=communication,
+        residuals=residuals,
+    )
+    selection = _select_indices(effective, communication)
+    indices = selection.indices
+    values = effective.index_select(0, indices)
+    residual = effective.clone()
+    if indices.numel() > 0:
+        residual[indices] = 0
+    residuals[name] = residual
+    return _sparse_chunk(
+        metadata,
+        values,
+        indices,
+        PRECISION_TO_DTYPE[communication.precision],
+        sync_round=sync_round,
+    )
 
 
 def _extract_dense(
@@ -70,24 +119,19 @@ def _extract_dense(
     chunks: list[GradientChunk] = []
     payload_dtype = PRECISION_TO_DTYPE[communication.precision]
 
-    for name, parameter in model.named_parameters():
-        metadata = _metadata(name, parameter)
+    for layer_order, (name, parameter) in enumerate(model.named_parameters()):
+        metadata = _metadata(name, parameter, layer_order)
         if parameter.grad is None:
             chunks.append(_empty_chunk(metadata))
             continue
 
         flat = parameter.grad.detach().cpu().contiguous().view(-1)
-        payload = flat.to(payload_dtype)
-        data = tensor_to_bytes(payload)
         chunks.append(
-            GradientChunk(
+            _dense_chunk_from_gradient(
                 metadata=metadata,
-                has_grad=True,
-                data=data,
-                byte_size=len(data),
-                data_dtype=str(payload.dtype),
-                encoding="dense",
-                indices=[],
+                gradient=flat,
+                payload_dtype=payload_dtype,
+                sync_round=0,
             )
         )
     return chunks
@@ -104,8 +148,8 @@ def _extract_per_layer_topk(
     target_total = 0
     fallback_total = 0
 
-    for name, parameter in model.named_parameters():
-        metadata = _metadata(name, parameter)
+    for layer_order, (name, parameter) in enumerate(model.named_parameters()):
+        metadata = _metadata(name, parameter, layer_order)
         if parameter.grad is None:
             state.residuals.pop(name, None)
             chunks.append(_empty_chunk(metadata))
@@ -144,8 +188,8 @@ def _extract_global_topk(
     effective_values: list[torch.Tensor] = []
     devices: set[torch.device] = set()
 
-    for name, parameter in model.named_parameters():
-        metadata = _metadata(name, parameter)
+    for layer_order, (name, parameter) in enumerate(model.named_parameters()):
+        metadata = _metadata(name, parameter, layer_order)
         if parameter.grad is None:
             state.residuals.pop(name, None)
             entries.append((name, metadata, None))
@@ -222,6 +266,28 @@ def _effective_gradient(
     ):
         residual = torch.zeros_like(gradient)
     return gradient + residual
+
+
+def _effective_gradient_from_tensor(
+    *,
+    name: str,
+    gradient: torch.Tensor,
+    communication: CommunicationConfig,
+    residuals: dict[str, torch.Tensor],
+) -> torch.Tensor:
+    effective = gradient.detach().contiguous().view(-1).to(torch.float32)
+    if communication.device == "cpu":
+        effective = effective.cpu()
+    elif communication.device == "gpu" and not effective.is_cuda:
+        effective = effective.cpu()
+    residual = residuals.get(name)
+    if (
+        residual is None
+        or residual.numel() != effective.numel()
+        or residual.device != effective.device
+    ):
+        residual = torch.zeros_like(effective)
+    return effective + residual
 
 
 @dataclass
@@ -329,6 +395,7 @@ def _sparse_chunk(
     values: torch.Tensor,
     indices: torch.Tensor,
     payload_dtype: torch.dtype,
+    sync_round: int = 0,
 ) -> GradientChunk:
     payload = values.to(payload_dtype).contiguous()
     data = tensor_to_bytes(payload)
@@ -342,6 +409,7 @@ def _sparse_chunk(
         encoding="topk",
         indices=[],
         indices_u32=pack_u32_indices(packed_indices),
+        sync_round=sync_round,
     )
 
 
@@ -353,12 +421,17 @@ def _elapsed_ms(start_ms: float) -> float:
     return _now_ms() - start_ms
 
 
-def _metadata(name: str, parameter: torch.nn.Parameter) -> ParameterMetadata:
+def _metadata(
+    name: str,
+    parameter: torch.nn.Parameter,
+    layer_order: int,
+) -> ParameterMetadata:
     return ParameterMetadata(
         name=name,
         shape=tuple(parameter.shape),
         numel=parameter.numel(),
         dtype=str(parameter.dtype),
+        layer_order=layer_order,
     )
 
 
@@ -372,4 +445,33 @@ def _empty_chunk(metadata: ParameterMetadata) -> GradientChunk:
         encoding="dense",
         indices=[],
         indices_u32=None,
+    )
+
+
+def _stamp_sync_round(
+    chunks: list[GradientChunk],
+    sync_round: int,
+) -> None:
+    for chunk in chunks:
+        chunk.sync_round = sync_round
+
+
+def _dense_chunk_from_gradient(
+    *,
+    metadata: ParameterMetadata,
+    gradient: torch.Tensor,
+    payload_dtype: torch.dtype,
+    sync_round: int,
+) -> GradientChunk:
+    payload = gradient.detach().cpu().contiguous().view(-1).to(payload_dtype)
+    data = tensor_to_bytes(payload)
+    return GradientChunk(
+        metadata=metadata,
+        has_grad=True,
+        data=data,
+        byte_size=len(data),
+        data_dtype=str(payload.dtype),
+        encoding="dense",
+        indices=[],
+        sync_round=sync_round,
     )

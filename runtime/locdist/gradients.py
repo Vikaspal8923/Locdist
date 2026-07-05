@@ -41,13 +41,14 @@ def extract_gradient_chunks(
 
     chunks = []
 
-    for name, parameter in model.named_parameters():
+    for layer_order, (name, parameter) in enumerate(model.named_parameters()):
 
         metadata = ParameterMetadata(
             name=name,
             shape=tuple(parameter.shape),
             numel=parameter.numel(),
             dtype=str(parameter.dtype),
+            layer_order=layer_order,
         )
 
         if parameter.grad is None:
