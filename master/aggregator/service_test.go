@@ -169,8 +169,307 @@ func TestAverageDenseTreatsMissingGradientAsZero(t *testing.T) {
 	}
 }
 
+func TestAggregateChunkReturnsAveragedSingleLayer(t *testing.T) {
+	service := New()
+	chunkA := sparseChunk([]int64{0, 2}, []float32{2, 6})
+	chunkA.Metadata.LayerOrder = 3
+	chunkA.SyncRound = 5
+	chunkB := sparseChunk([]int64{1, 2}, []float32{4, 10})
+	chunkB.Metadata.LayerOrder = 3
+	chunkB.SyncRound = 5
+
+	done := make(chan *gradient.AggregatedGradientChunkResponse, 2)
+	errs := make(chan error, 2)
+	go func() {
+		response, err := service.AggregateChunk(chunkSubmission("worker-a", chunkA), 2)
+		if err != nil {
+			errs <- err
+			return
+		}
+		done <- response
+	}()
+	go func() {
+		response, err := service.AggregateChunk(chunkSubmission("worker-b", chunkB), 2)
+		if err != nil {
+			errs <- err
+			return
+		}
+		done <- response
+	}()
+
+	var response *gradient.AggregatedGradientChunkResponse
+	for index := 0; index < 2; index++ {
+		select {
+		case err := <-errs:
+			t.Fatalf("aggregate chunk: %v", err)
+		case response = <-done:
+		case <-time.After(time.Second):
+			t.Fatal("chunk aggregation timed out")
+		}
+	}
+
+	chunk := response.GetChunk()
+	if chunk.GetMetadata().GetLayerOrder() != 3 {
+		t.Fatalf("expected layer order 3, got %d", chunk.GetMetadata().GetLayerOrder())
+	}
+	if chunk.GetSyncRound() != 5 {
+		t.Fatalf("expected sync round 5, got %d", chunk.GetSyncRound())
+	}
+	got, err := chunkIndices(chunk)
+	if err != nil {
+		t.Fatalf("decode response indices: %v", err)
+	}
+	if want := []int64{0, 1, 2}; len(got) != len(want) || got[0] != want[0] || got[1] != want[1] || got[2] != want[2] {
+		t.Fatalf("indices = %v, expected %v", got, want)
+	}
+}
+
+func TestAggregateChunkRejectsDuplicateWorkerSubmission(t *testing.T) {
+	service := New()
+	chunk := sparseChunk([]int64{0}, []float32{2})
+	chunk.Metadata.LayerOrder = 1
+	chunk.SyncRound = 3
+
+	done := make(chan error, 1)
+	go func() {
+		_, err := service.AggregateChunk(chunkSubmission("worker-a", chunk), 2)
+		done <- err
+	}()
+
+	deadline := time.Now().Add(time.Second)
+	for time.Now().Before(deadline) {
+		service.mutex.Lock()
+		waiting := 0
+		if round, ok := service.chunkRounds[chunkRoundKey(chunkSubmission("worker-a", chunk))]; ok {
+			waiting = round.WaitingReceivers
+		}
+		service.mutex.Unlock()
+		if waiting == 1 {
+			break
+		}
+		time.Sleep(time.Millisecond)
+	}
+
+	if _, err := service.AggregateChunk(chunkSubmission("worker-a", chunk), 2); err == nil {
+		t.Fatal("expected duplicate submission to fail")
+	}
+
+	service.AbortJob("duplicate chunk test cleanup")
+	select {
+	case <-done:
+	case <-time.After(time.Second):
+		t.Fatal("blocked duplicate test aggregation was not released")
+	}
+}
+
+func TestAggregateChunkRejectsStaleCompletedRound(t *testing.T) {
+	service := New()
+	chunkA := sparseChunk([]int64{0}, []float32{2})
+	chunkA.Metadata.LayerOrder = 2
+	chunkA.SyncRound = 7
+	chunkB := sparseChunk([]int64{0}, []float32{4})
+	chunkB.Metadata.LayerOrder = 2
+	chunkB.SyncRound = 7
+
+	done := make(chan error, 2)
+	for workerID, chunk := range map[string]*gradient.GradientChunk{
+		"worker-a": chunkA,
+		"worker-b": chunkB,
+	} {
+		go func(workerID string, chunk *gradient.GradientChunk) {
+			_, err := service.AggregateChunk(chunkSubmission(workerID, chunk), 2)
+			done <- err
+		}(workerID, chunk)
+	}
+
+	for index := 0; index < 2; index++ {
+		select {
+		case err := <-done:
+			if err != nil {
+				t.Fatalf("complete round before stale check: %v", err)
+			}
+		case <-time.After(time.Second):
+			t.Fatal("stale round setup timed out")
+		}
+	}
+
+	if _, err := service.AggregateChunk(chunkSubmission("worker-a", chunkA), 2); err == nil {
+		t.Fatal("expected stale completed chunk round to fail")
+	}
+}
+
+func TestAggregateChunkBatchReturnsOrderedBatch(t *testing.T) {
+	service := New()
+
+	layer1A := sparseChunk([]int64{0}, []float32{2})
+	layer1A.Metadata.LayerOrder = 1
+	layer1A.Metadata.Name = "layer-1"
+	layer1A.SyncRound = 8
+	layer2A := sparseChunk([]int64{1}, []float32{6})
+	layer2A.Metadata.LayerOrder = 2
+	layer2A.Metadata.Name = "layer-2"
+	layer2A.SyncRound = 8
+
+	layer1B := sparseChunk([]int64{0}, []float32{4})
+	layer1B.Metadata.LayerOrder = 1
+	layer1B.Metadata.Name = "layer-1"
+	layer1B.SyncRound = 8
+	layer2B := sparseChunk([]int64{1}, []float32{10})
+	layer2B.Metadata.LayerOrder = 2
+	layer2B.Metadata.Name = "layer-2"
+	layer2B.SyncRound = 8
+
+	type batchResult struct {
+		workerID string
+		response *gradient.AggregatedGradientResponse
+	}
+	done := make(chan batchResult, 2)
+	errs := make(chan error, 2)
+	go func() {
+		response, err := service.AggregateChunkBatch(&gradient.GradientSubmission{
+			RuntimeVersion: 1,
+			JobId:          "job-1",
+			WorkerId:       "worker-a",
+			Chunks:         []*gradient.GradientChunk{layer2A, layer1A},
+		}, 2)
+		if err != nil {
+			errs <- err
+			return
+		}
+		done <- batchResult{workerID: "worker-a", response: response}
+	}()
+	go func() {
+		response, err := service.AggregateChunkBatch(&gradient.GradientSubmission{
+			RuntimeVersion: 1,
+			JobId:          "job-1",
+			WorkerId:       "worker-b",
+			Chunks:         []*gradient.GradientChunk{layer1B, layer2B},
+		}, 2)
+		if err != nil {
+			errs <- err
+			return
+		}
+		done <- batchResult{workerID: "worker-b", response: response}
+	}()
+
+	for index := 0; index < 2; index++ {
+		select {
+		case err := <-errs:
+			t.Fatalf("aggregate chunk batch: %v", err)
+		case result := <-done:
+			response := result.response
+			if len(response.GetChunks()) != 2 {
+				t.Fatalf("expected 2 chunks, got %d", len(response.GetChunks()))
+			}
+			switch result.workerID {
+			case "worker-a":
+				if response.GetChunks()[0].GetMetadata().GetLayerOrder() != 2 {
+					t.Fatalf("expected worker-a response chunk 0 to be layer 2, got %d", response.GetChunks()[0].GetMetadata().GetLayerOrder())
+				}
+				if response.GetChunks()[1].GetMetadata().GetLayerOrder() != 1 {
+					t.Fatalf("expected worker-a response chunk 1 to be layer 1, got %d", response.GetChunks()[1].GetMetadata().GetLayerOrder())
+				}
+			case "worker-b":
+				if response.GetChunks()[0].GetMetadata().GetLayerOrder() != 1 {
+					t.Fatalf("expected worker-b response chunk 0 to be layer 1, got %d", response.GetChunks()[0].GetMetadata().GetLayerOrder())
+				}
+				if response.GetChunks()[1].GetMetadata().GetLayerOrder() != 2 {
+					t.Fatalf("expected worker-b response chunk 1 to be layer 2, got %d", response.GetChunks()[1].GetMetadata().GetLayerOrder())
+				}
+			default:
+				t.Fatalf("unexpected worker id %q", result.workerID)
+			}
+		case <-time.After(time.Second):
+			t.Fatal("chunk batch aggregation timed out")
+		}
+	}
+}
+
+func TestStreamChunkBatchReturnsAllChunks(t *testing.T) {
+	service := New()
+
+	layer1A := sparseChunk([]int64{0}, []float32{2})
+	layer1A.Metadata.LayerOrder = 1
+	layer1A.Metadata.Name = "layer-1"
+	layer1A.SyncRound = 9
+	layer2A := sparseChunk([]int64{1}, []float32{6})
+	layer2A.Metadata.LayerOrder = 2
+	layer2A.Metadata.Name = "layer-2"
+	layer2A.SyncRound = 9
+
+	layer1B := sparseChunk([]int64{0}, []float32{4})
+	layer1B.Metadata.LayerOrder = 1
+	layer1B.Metadata.Name = "layer-1"
+	layer1B.SyncRound = 9
+	layer2B := sparseChunk([]int64{1}, []float32{10})
+	layer2B.Metadata.LayerOrder = 2
+	layer2B.Metadata.Name = "layer-2"
+	layer2B.SyncRound = 9
+
+	type streamResult struct {
+		workerID string
+		layers   []uint32
+	}
+
+	done := make(chan streamResult, 2)
+	errs := make(chan error, 2)
+
+	go func() {
+		var layers []uint32
+		err := service.StreamChunkBatch(&gradient.GradientSubmission{
+			RuntimeVersion: 1,
+			JobId:          "job-1",
+			WorkerId:       "worker-a",
+			Chunks:         []*gradient.GradientChunk{layer2A, layer1A},
+		}, 2, func(response *gradient.AggregatedGradientChunkResponse) error {
+			layers = append(layers, response.GetChunk().GetMetadata().GetLayerOrder())
+			return nil
+		})
+		if err != nil {
+			errs <- err
+			return
+		}
+		done <- streamResult{workerID: "worker-a", layers: layers}
+	}()
+
+	go func() {
+		var layers []uint32
+		err := service.StreamChunkBatch(&gradient.GradientSubmission{
+			RuntimeVersion: 1,
+			JobId:          "job-1",
+			WorkerId:       "worker-b",
+			Chunks:         []*gradient.GradientChunk{layer1B, layer2B},
+		}, 2, func(response *gradient.AggregatedGradientChunkResponse) error {
+			layers = append(layers, response.GetChunk().GetMetadata().GetLayerOrder())
+			return nil
+		})
+		if err != nil {
+			errs <- err
+			return
+		}
+		done <- streamResult{workerID: "worker-b", layers: layers}
+	}()
+
+	for index := 0; index < 2; index++ {
+		select {
+		case err := <-errs:
+			t.Fatalf("stream chunk batch: %v", err)
+		case result := <-done:
+			if len(result.layers) != 2 {
+				t.Fatalf("expected 2 streamed layers for %s, got %d", result.workerID, len(result.layers))
+			}
+		case <-time.After(time.Second):
+			t.Fatal("stream chunk batch timed out")
+		}
+	}
+}
+
 func submission(workerID string, chunk *gradient.GradientChunk) *gradient.GradientSubmission {
 	return &gradient.GradientSubmission{RuntimeVersion: 1, JobId: "job-1", WorkerId: workerID, Chunks: []*gradient.GradientChunk{chunk}}
+}
+
+func chunkSubmission(workerID string, chunk *gradient.GradientChunk) *gradient.GradientChunkSubmission {
+	return &gradient.GradientChunkSubmission{RuntimeVersion: 1, JobId: "job-1", WorkerId: workerID, Chunk: chunk}
 }
 
 func sparseChunk(indices []int64, values []float32) *gradient.GradientChunk {

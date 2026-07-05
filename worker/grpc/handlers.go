@@ -342,6 +342,72 @@ func (s *WorkerBridgeServer) SynchronizeGradients(
 	return response, nil
 }
 
+func (s *WorkerBridgeServer) SynchronizeGradientChunk(
+	ctx context.Context,
+	request *gradient.GradientChunkSubmission,
+) (*gradient.AggregatedGradientChunkResponse, error) {
+	if s.runtimeBridge == nil {
+		return nil, fmt.Errorf("runtime bridge is not available")
+	}
+	response, err := s.runtimeBridge.SynchronizeChunk(request)
+	if err != nil {
+		return nil, err
+	}
+	return response, nil
+}
+
+func (s *WorkerBridgeServer) SynchronizeGradientBatch(
+	ctx context.Context,
+	request *gradient.GradientSubmission,
+) (*gradient.AggregatedGradientResponse, error) {
+	if s.runtimeBridge == nil {
+		return nil, fmt.Errorf("runtime bridge is not available")
+	}
+	response, err := s.runtimeBridge.SynchronizeBatch(request)
+	if err != nil {
+		return nil, err
+	}
+	return response, nil
+}
+
+func (s *WorkerBridgeServer) SynchronizeGradientBatchStream(
+	request *gradient.GradientSubmission,
+	stream gradient.WorkerBridge_SynchronizeGradientBatchStreamServer,
+) error {
+	if s.runtimeBridge == nil {
+		return fmt.Errorf("runtime bridge is not available")
+	}
+	start := time.Now()
+	bytesToRuntime := 0
+	stageMetrics, err := s.runtimeBridge.SynchronizeBatchStreamWithMetrics(
+		request,
+		func(response *gradient.AggregatedGradientChunkResponse) error {
+			bytesToRuntime += metrics.ProtoBytes(response)
+			return stream.Send(response)
+		},
+	)
+	done := time.Now()
+	if s.workspace != nil {
+		event := map[string]any{
+			"component":          "worker",
+			"job_id":             request.GetJobId(),
+			"worker_id":          request.GetWorkerId(),
+			"total_ms":           float64(done.Sub(start).Microseconds()) / 1000.0,
+			"bytes_from_runtime": metrics.ProtoBytes(request),
+			"bytes_to_runtime":   bytesToRuntime,
+			"streamed":           true,
+		}
+		for key, value := range stageMetrics {
+			event[key] = value
+		}
+		metrics.AppendJSONL(
+			metrics.SyncMetricsPath(s.workspace.Root(), request.GetJobId(), "ldgcc_worker_sync_metrics.jsonl"),
+			event,
+		)
+	}
+	return err
+}
+
 func (s *WorkerBridgeServer) PairWorker(
 	ctx context.Context,
 	request *gradient.PairWorkerRequest,

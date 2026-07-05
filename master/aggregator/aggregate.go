@@ -221,6 +221,7 @@ func sameMetadata(
 	if left.Name != right.Name ||
 		left.Numel != right.Numel ||
 		left.Dtype != right.Dtype ||
+		left.LayerOrder != right.LayerOrder ||
 		len(left.Shape) != len(right.Shape) {
 
 		return false

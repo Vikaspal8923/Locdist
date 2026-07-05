@@ -170,3 +170,142 @@ func TestSynchronizeMissingChunks(t *testing.T) {
 		)
 	}
 }
+
+func TestSynchronizeChunkSuccess(t *testing.T) {
+	service := runtimebridge.New(&FakeSynchronizer{})
+	request := &gradient.GradientChunkSubmission{
+		RuntimeVersion: 1,
+		JobId:          "job-123",
+		WorkerId:       "worker-123",
+		Chunk: &gradient.GradientChunk{
+			Metadata: &gradient.ParameterMetadata{
+				Name:       "layer",
+				Shape:      []int64{2},
+				Numel:      2,
+				Dtype:      "torch.float32",
+				LayerOrder: 1,
+			},
+			HasGrad:   true,
+			Data:      []byte{1, 2, 3, 4},
+			ByteSize:  4,
+			SyncRound: 7,
+		},
+	}
+
+	response, err := service.SynchronizeChunk(request)
+	if err != nil {
+		t.Fatalf("expected no error, got %v", err)
+	}
+	if response.GetAggregationRound() != 1 {
+		t.Fatalf("expected aggregation round 1, got %d", response.GetAggregationRound())
+	}
+	if response.GetChunk().GetMetadata().GetLayerOrder() != 1 {
+		t.Fatalf("expected layer order 1, got %d", response.GetChunk().GetMetadata().GetLayerOrder())
+	}
+	if response.GetChunk().GetSyncRound() != 7 {
+		t.Fatalf("expected sync round 7, got %d", response.GetChunk().GetSyncRound())
+	}
+}
+
+func TestSynchronizeBatchSuccess(t *testing.T) {
+	service := runtimebridge.New(&FakeSynchronizer{})
+	request := &gradient.GradientSubmission{
+		RuntimeVersion: 1,
+		JobId:          "job-123",
+		WorkerId:       "worker-123",
+		Chunks: []*gradient.GradientChunk{
+			{
+				Metadata: &gradient.ParameterMetadata{
+					Name:       "layer-1",
+					Shape:      []int64{2},
+					Numel:      2,
+					Dtype:      "torch.float32",
+					LayerOrder: 1,
+				},
+				HasGrad:   true,
+				Data:      []byte{1, 2},
+				ByteSize:  2,
+				SyncRound: 7,
+			},
+			{
+				Metadata: &gradient.ParameterMetadata{
+					Name:       "layer-2",
+					Shape:      []int64{2},
+					Numel:      2,
+					Dtype:      "torch.float32",
+					LayerOrder: 2,
+				},
+				HasGrad:   true,
+				Data:      []byte{3, 4},
+				ByteSize:  2,
+				SyncRound: 7,
+			},
+		},
+	}
+
+	response, err := service.SynchronizeBatch(request)
+	if err != nil {
+		t.Fatalf("expected no error, got %v", err)
+	}
+	if len(response.GetChunks()) != 2 {
+		t.Fatalf("expected 2 chunks, got %d", len(response.GetChunks()))
+	}
+	if response.GetChunks()[0].GetMetadata().GetLayerOrder() != 1 {
+		t.Fatalf("expected first layer order 1, got %d", response.GetChunks()[0].GetMetadata().GetLayerOrder())
+	}
+	if response.GetChunks()[1].GetMetadata().GetLayerOrder() != 2 {
+		t.Fatalf("expected second layer order 2, got %d", response.GetChunks()[1].GetMetadata().GetLayerOrder())
+	}
+}
+
+func TestSynchronizeBatchStreamSuccess(t *testing.T) {
+	service := runtimebridge.New(&FakeSynchronizer{})
+	request := &gradient.GradientSubmission{
+		RuntimeVersion: 1,
+		JobId:          "job-123",
+		WorkerId:       "worker-123",
+		Chunks: []*gradient.GradientChunk{
+			{
+				Metadata: &gradient.ParameterMetadata{
+					Name:       "layer-1",
+					Shape:      []int64{2},
+					Numel:      2,
+					Dtype:      "torch.float32",
+					LayerOrder: 1,
+				},
+				HasGrad:   true,
+				Data:      []byte{1, 2},
+				ByteSize:  2,
+				SyncRound: 7,
+			},
+			{
+				Metadata: &gradient.ParameterMetadata{
+					Name:       "layer-2",
+					Shape:      []int64{2},
+					Numel:      2,
+					Dtype:      "torch.float32",
+					LayerOrder: 2,
+				},
+				HasGrad:   true,
+				Data:      []byte{3, 4},
+				ByteSize:  2,
+				SyncRound: 7,
+			},
+		},
+	}
+
+	var layerOrders []uint32
+	err := service.SynchronizeBatchStream(
+		request,
+		func(response *gradient.AggregatedGradientChunkResponse) error {
+			layerOrders = append(layerOrders, response.GetChunk().GetMetadata().GetLayerOrder())
+			return nil
+		},
+	)
+	if err != nil {
+		t.Fatalf("expected no error, got %v", err)
+	}
+	if len(layerOrders) != 2 {
+		t.Fatalf("expected 2 streamed chunks, got %d", len(layerOrders))
+	}
+}

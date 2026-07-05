@@ -32,6 +32,36 @@ func (s *MasterServer) SynchronizeGradients(
 	)
 }
 
+func (s *MasterServer) SynchronizeGradientChunk(
+	ctx context.Context,
+	request *gradient.GradientChunkSubmission,
+) (*gradient.AggregatedGradientChunkResponse, error) {
+	return s.coordinator.SynchronizeGradientChunk(
+		request,
+	)
+}
+
+func (s *MasterServer) SynchronizeGradientBatch(
+	ctx context.Context,
+	request *gradient.GradientSubmission,
+) (*gradient.AggregatedGradientResponse, error) {
+	return s.coordinator.SynchronizeGradientBatch(
+		request,
+	)
+}
+
+func (s *MasterServer) SynchronizeGradientBatchStream(
+	request *gradient.GradientSubmission,
+	stream gradient.WorkerBridge_SynchronizeGradientBatchStreamServer,
+) error {
+	return s.coordinator.SynchronizeGradientBatchStream(
+		request,
+		func(response *gradient.AggregatedGradientChunkResponse) error {
+			return stream.Send(response)
+		},
+	)
+}
+
 func (s *MasterServer) RegisterWorker(
 	ctx context.Context,
 	request *gradient.RegisterWorkerRequest,

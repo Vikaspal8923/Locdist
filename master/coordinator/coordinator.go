@@ -118,3 +118,73 @@ func (c *Coordinator) SynchronizeGradients(
 		job.ExpectedWorkers,
 	)
 }
+
+func (c *Coordinator) SynchronizeGradientChunk(
+	request *gradient.GradientChunkSubmission,
+) (*gradient.AggregatedGradientChunkResponse, error) {
+	job, err := c.jobManager.CurrentJob()
+	if err != nil {
+		return nil, err
+	}
+
+	if request.GetJobId() != job.JobID {
+		return nil, fmt.Errorf("job %q is not active", request.GetJobId())
+	}
+	if !workerAssigned(job, request.GetWorkerId()) {
+		return nil, fmt.Errorf("worker %q is not assigned to job", request.GetWorkerId())
+	}
+
+	return c.aggregator.AggregateChunk(
+		request,
+		job.ExpectedWorkers,
+	)
+}
+
+func (c *Coordinator) SynchronizeGradientBatch(
+	request *gradient.GradientSubmission,
+) (*gradient.AggregatedGradientResponse, error) {
+	job, err := c.jobManager.CurrentJob()
+	if err != nil {
+		return nil, err
+	}
+	if request.GetJobId() != job.JobID {
+		return nil, fmt.Errorf("job %q is not active", request.GetJobId())
+	}
+	if !workerAssigned(job, request.GetWorkerId()) {
+		return nil, fmt.Errorf("worker %q is not assigned to job", request.GetWorkerId())
+	}
+	return c.aggregator.AggregateChunkBatch(
+		request,
+		job.ExpectedWorkers,
+	)
+}
+
+func (c *Coordinator) SynchronizeGradientBatchStream(
+	request *gradient.GradientSubmission,
+	emit func(*gradient.AggregatedGradientChunkResponse) error,
+) error {
+	job, err := c.jobManager.CurrentJob()
+	if err != nil {
+		return err
+	}
+	if request.GetJobId() != job.JobID {
+		return fmt.Errorf("job %q is not active", request.GetJobId())
+	}
+	if !workerAssigned(job, request.GetWorkerId()) {
+		return fmt.Errorf("worker %q is not assigned to job", request.GetWorkerId())
+	}
+	return c.aggregator.StreamChunkBatch(
+		request,
+		job.ExpectedWorkers,
+		emit,
+	)
+}
+
+func workerAssigned(job *jobs.JobState, workerID string) bool {
+	for _, worker := range job.Workers {
+		if worker.WorkerID == workerID {
+			return true
+		}
+	}
+	return false
+}

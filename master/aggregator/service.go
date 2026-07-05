@@ -9,6 +9,8 @@ import (
 
 type Service struct {
 	currentRound    *RoundState
+	chunkRounds     map[string]*ChunkRoundState
+	completedChunks map[string]uint64
 	resetJobPending bool
 
 	mutex sync.Mutex
@@ -26,6 +28,8 @@ func New() *Service {
 				map[string]*gradient.GradientSubmission,
 			),
 		},
+		chunkRounds:     make(map[string]*ChunkRoundState),
+		completedChunks: make(map[string]uint64),
 	}
 
 	service.cond = sync.NewCond(&service.mutex)
@@ -78,18 +82,32 @@ func (s *Service) resetRoundLocked() {
 			map[string]*gradient.GradientSubmission,
 		),
 	}
+	s.chunkRounds = make(map[string]*ChunkRoundState)
+	s.completedChunks = make(map[string]uint64)
 }
 
 func (s *Service) AbortJob(reason string) {
 	s.mutex.Lock()
 	defer s.mutex.Unlock()
-	if s.currentRound.WaitingReceivers == 0 {
+	chunkWaiters := false
+	for _, round := range s.chunkRounds {
+		if round.WaitingReceivers > 0 {
+			chunkWaiters = true
+			break
+		}
+	}
+	if s.currentRound.WaitingReceivers == 0 && !chunkWaiters {
 		s.currentRound = &RoundState{Round: 1, Gradients: make(map[string]*gradient.GradientSubmission)}
+		s.chunkRounds = make(map[string]*ChunkRoundState)
+		s.completedChunks = make(map[string]uint64)
 		s.resetJobPending = false
 		return
 	}
 	s.resetJobPending = true
 	s.currentRound.Err = fmt.Errorf("job aborted: %s", reason)
+	for _, round := range s.chunkRounds {
+		round.Err = fmt.Errorf("job aborted: %s", reason)
+	}
 	s.cond.Broadcast()
 }
 

@@ -2,6 +2,7 @@ package masterclient
 
 import (
 	"context"
+	"io"
 	"time"
 
 	gradient "github.com/Vikaspal8923/Locdist/worker/generated/gradient"
@@ -112,6 +113,49 @@ func (c *Client) Synchronize(
 ) (*gradient.AggregatedGradientResponse, error) {
 
 	return c.client.SynchronizeGradients(
+		context.Background(),
+		request,
+	)
+}
+
+func (c *Client) SynchronizeBatch(
+	request *gradient.GradientSubmission,
+) (*gradient.AggregatedGradientResponse, error) {
+	return c.client.SynchronizeGradientBatch(
+		context.Background(),
+		request,
+	)
+}
+
+func (c *Client) SynchronizeBatchStream(
+	request *gradient.GradientSubmission,
+	emit func(*gradient.AggregatedGradientChunkResponse) error,
+) error {
+	stream, err := c.client.SynchronizeGradientBatchStream(
+		context.Background(),
+		request,
+	)
+	if err != nil {
+		return err
+	}
+	for {
+		response, err := stream.Recv()
+		if err != nil {
+			if err == io.EOF {
+				return nil
+			}
+			return err
+		}
+		if err := emit(response); err != nil {
+			return err
+		}
+	}
+}
+
+func (c *Client) SynchronizeChunk(
+	request *gradient.GradientChunkSubmission,
+) (*gradient.AggregatedGradientChunkResponse, error) {
+	return c.client.SynchronizeGradientChunk(
 		context.Background(),
 		request,
 	)

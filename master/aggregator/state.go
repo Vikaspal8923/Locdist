@@ -15,3 +15,19 @@ type RoundState struct {
 
 	WaitingReceivers int
 }
+
+type ChunkRoundState struct {
+	Key string
+
+	LayerKey string
+
+	Round int
+
+	Submissions map[string]*gradient.GradientChunkSubmission
+
+	Response *gradient.AggregatedGradientChunkResponse
+
+	Err error
+
+	WaitingReceivers int
+}
