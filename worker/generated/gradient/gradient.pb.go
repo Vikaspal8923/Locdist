@@ -428,19 +428,88 @@ func (x *GradientChunk) GetSyncRound() uint64 {
 	return 0
 }
 
+type GradientChunkGroup struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	GroupId       uint32                 `protobuf:"varint,1,opt,name=group_id,json=groupId,proto3" json:"group_id,omitempty"`
+	SyncRound     uint64                 `protobuf:"varint,2,opt,name=sync_round,json=syncRound,proto3" json:"sync_round,omitempty"`
+	Chunks        []*GradientChunk       `protobuf:"bytes,3,rep,name=chunks,proto3" json:"chunks,omitempty"`
+	ByteSize      uint64                 `protobuf:"varint,4,opt,name=byte_size,json=byteSize,proto3" json:"byte_size,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *GradientChunkGroup) Reset() {
+	*x = GradientChunkGroup{}
+	mi := &file_gradient_proto_msgTypes[2]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *GradientChunkGroup) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*GradientChunkGroup) ProtoMessage() {}
+
+func (x *GradientChunkGroup) ProtoReflect() protoreflect.Message {
+	mi := &file_gradient_proto_msgTypes[2]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use GradientChunkGroup.ProtoReflect.Descriptor instead.
+func (*GradientChunkGroup) Descriptor() ([]byte, []int) {
+	return file_gradient_proto_rawDescGZIP(), []int{2}
+}
+
+func (x *GradientChunkGroup) GetGroupId() uint32 {
+	if x != nil {
+		return x.GroupId
+	}
+	return 0
+}
+
+func (x *GradientChunkGroup) GetSyncRound() uint64 {
+	if x != nil {
+		return x.SyncRound
+	}
+	return 0
+}
+
+func (x *GradientChunkGroup) GetChunks() []*GradientChunk {
+	if x != nil {
+		return x.Chunks
+	}
+	return nil
+}
+
+func (x *GradientChunkGroup) GetByteSize() uint64 {
+	if x != nil {
+		return x.ByteSize
+	}
+	return 0
+}
+
 type GradientSubmission struct {
 	state          protoimpl.MessageState `protogen:"open.v1"`
 	RuntimeVersion uint32                 `protobuf:"varint,1,opt,name=runtime_version,json=runtimeVersion,proto3" json:"runtime_version,omitempty"`
 	JobId          string                 `protobuf:"bytes,2,opt,name=job_id,json=jobId,proto3" json:"job_id,omitempty"`
 	WorkerId       string                 `protobuf:"bytes,3,opt,name=worker_id,json=workerId,proto3" json:"worker_id,omitempty"`
 	Chunks         []*GradientChunk       `protobuf:"bytes,4,rep,name=chunks,proto3" json:"chunks,omitempty"`
+	Groups         []*GradientChunkGroup  `protobuf:"bytes,5,rep,name=groups,proto3" json:"groups,omitempty"`
 	unknownFields  protoimpl.UnknownFields
 	sizeCache      protoimpl.SizeCache
 }
 
 func (x *GradientSubmission) Reset() {
 	*x = GradientSubmission{}
-	mi := &file_gradient_proto_msgTypes[2]
+	mi := &file_gradient_proto_msgTypes[3]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -452,7 +521,7 @@ func (x *GradientSubmission) String() string {
 func (*GradientSubmission) ProtoMessage() {}
 
 func (x *GradientSubmission) ProtoReflect() protoreflect.Message {
-	mi := &file_gradient_proto_msgTypes[2]
+	mi := &file_gradient_proto_msgTypes[3]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -465,7 +534,7 @@ func (x *GradientSubmission) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use GradientSubmission.ProtoReflect.Descriptor instead.
 func (*GradientSubmission) Descriptor() ([]byte, []int) {
-	return file_gradient_proto_rawDescGZIP(), []int{2}
+	return file_gradient_proto_rawDescGZIP(), []int{3}
 }
 
 func (x *GradientSubmission) GetRuntimeVersion() uint32 {
@@ -496,6 +565,13 @@ func (x *GradientSubmission) GetChunks() []*GradientChunk {
 	return nil
 }
 
+func (x *GradientSubmission) GetGroups() []*GradientChunkGroup {
+	if x != nil {
+		return x.Groups
+	}
+	return nil
+}
+
 type GradientChunkSubmission struct {
 	state          protoimpl.MessageState `protogen:"open.v1"`
 	RuntimeVersion uint32                 `protobuf:"varint,1,opt,name=runtime_version,json=runtimeVersion,proto3" json:"runtime_version,omitempty"`
@@ -508,7 +584,7 @@ type GradientChunkSubmission struct {
 
 func (x *GradientChunkSubmission) Reset() {
 	*x = GradientChunkSubmission{}
-	mi := &file_gradient_proto_msgTypes[3]
+	mi := &file_gradient_proto_msgTypes[4]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -520,7 +596,7 @@ func (x *GradientChunkSubmission) String() string {
 func (*GradientChunkSubmission) ProtoMessage() {}
 
 func (x *GradientChunkSubmission) ProtoReflect() protoreflect.Message {
-	mi := &file_gradient_proto_msgTypes[3]
+	mi := &file_gradient_proto_msgTypes[4]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -533,7 +609,7 @@ func (x *GradientChunkSubmission) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use GradientChunkSubmission.ProtoReflect.Descriptor instead.
 func (*GradientChunkSubmission) Descriptor() ([]byte, []int) {
-	return file_gradient_proto_rawDescGZIP(), []int{3}
+	return file_gradient_proto_rawDescGZIP(), []int{4}
 }
 
 func (x *GradientChunkSubmission) GetRuntimeVersion() uint32 {
@@ -571,13 +647,14 @@ type AggregatedGradientResponse struct {
 	ParticipatingWorkers uint32                 `protobuf:"varint,3,opt,name=participating_workers,json=participatingWorkers,proto3" json:"participating_workers,omitempty"`
 	AggregationRound     uint64                 `protobuf:"varint,4,opt,name=aggregation_round,json=aggregationRound,proto3" json:"aggregation_round,omitempty"`
 	Chunks               []*GradientChunk       `protobuf:"bytes,5,rep,name=chunks,proto3" json:"chunks,omitempty"`
+	Groups               []*GradientChunkGroup  `protobuf:"bytes,6,rep,name=groups,proto3" json:"groups,omitempty"`
 	unknownFields        protoimpl.UnknownFields
 	sizeCache            protoimpl.SizeCache
 }
 
 func (x *AggregatedGradientResponse) Reset() {
 	*x = AggregatedGradientResponse{}
-	mi := &file_gradient_proto_msgTypes[4]
+	mi := &file_gradient_proto_msgTypes[5]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -589,7 +666,7 @@ func (x *AggregatedGradientResponse) String() string {
 func (*AggregatedGradientResponse) ProtoMessage() {}
 
 func (x *AggregatedGradientResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_gradient_proto_msgTypes[4]
+	mi := &file_gradient_proto_msgTypes[5]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -602,7 +679,7 @@ func (x *AggregatedGradientResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use AggregatedGradientResponse.ProtoReflect.Descriptor instead.
 func (*AggregatedGradientResponse) Descriptor() ([]byte, []int) {
-	return file_gradient_proto_rawDescGZIP(), []int{4}
+	return file_gradient_proto_rawDescGZIP(), []int{5}
 }
 
 func (x *AggregatedGradientResponse) GetRuntimeVersion() uint32 {
@@ -640,6 +717,13 @@ func (x *AggregatedGradientResponse) GetChunks() []*GradientChunk {
 	return nil
 }
 
+func (x *AggregatedGradientResponse) GetGroups() []*GradientChunkGroup {
+	if x != nil {
+		return x.Groups
+	}
+	return nil
+}
+
 type AggregatedGradientChunkResponse struct {
 	state                protoimpl.MessageState `protogen:"open.v1"`
 	RuntimeVersion       uint32                 `protobuf:"varint,1,opt,name=runtime_version,json=runtimeVersion,proto3" json:"runtime_version,omitempty"`
@@ -647,13 +731,14 @@ type AggregatedGradientChunkResponse struct {
 	ParticipatingWorkers uint32                 `protobuf:"varint,3,opt,name=participating_workers,json=participatingWorkers,proto3" json:"participating_workers,omitempty"`
 	AggregationRound     uint64                 `protobuf:"varint,4,opt,name=aggregation_round,json=aggregationRound,proto3" json:"aggregation_round,omitempty"`
 	Chunk                *GradientChunk         `protobuf:"bytes,5,opt,name=chunk,proto3" json:"chunk,omitempty"`
+	Group                *GradientChunkGroup    `protobuf:"bytes,6,opt,name=group,proto3" json:"group,omitempty"`
 	unknownFields        protoimpl.UnknownFields
 	sizeCache            protoimpl.SizeCache
 }
 
 func (x *AggregatedGradientChunkResponse) Reset() {
 	*x = AggregatedGradientChunkResponse{}
-	mi := &file_gradient_proto_msgTypes[5]
+	mi := &file_gradient_proto_msgTypes[6]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -665,7 +750,7 @@ func (x *AggregatedGradientChunkResponse) String() string {
 func (*AggregatedGradientChunkResponse) ProtoMessage() {}
 
 func (x *AggregatedGradientChunkResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_gradient_proto_msgTypes[5]
+	mi := &file_gradient_proto_msgTypes[6]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -678,7 +763,7 @@ func (x *AggregatedGradientChunkResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use AggregatedGradientChunkResponse.ProtoReflect.Descriptor instead.
 func (*AggregatedGradientChunkResponse) Descriptor() ([]byte, []int) {
-	return file_gradient_proto_rawDescGZIP(), []int{5}
+	return file_gradient_proto_rawDescGZIP(), []int{6}
 }
 
 func (x *AggregatedGradientChunkResponse) GetRuntimeVersion() uint32 {
@@ -716,6 +801,13 @@ func (x *AggregatedGradientChunkResponse) GetChunk() *GradientChunk {
 	return nil
 }
 
+func (x *AggregatedGradientChunkResponse) GetGroup() *GradientChunkGroup {
+	if x != nil {
+		return x.Group
+	}
+	return nil
+}
+
 type RegisterWorkerRequest struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	WorkerId      string                 `protobuf:"bytes,1,opt,name=worker_id,json=workerId,proto3" json:"worker_id,omitempty"`
@@ -729,7 +821,7 @@ type RegisterWorkerRequest struct {
 
 func (x *RegisterWorkerRequest) Reset() {
 	*x = RegisterWorkerRequest{}
-	mi := &file_gradient_proto_msgTypes[6]
+	mi := &file_gradient_proto_msgTypes[7]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -741,7 +833,7 @@ func (x *RegisterWorkerRequest) String() string {
 func (*RegisterWorkerRequest) ProtoMessage() {}
 
 func (x *RegisterWorkerRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_gradient_proto_msgTypes[6]
+	mi := &file_gradient_proto_msgTypes[7]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -754,7 +846,7 @@ func (x *RegisterWorkerRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use RegisterWorkerRequest.ProtoReflect.Descriptor instead.
 func (*RegisterWorkerRequest) Descriptor() ([]byte, []int) {
-	return file_gradient_proto_rawDescGZIP(), []int{6}
+	return file_gradient_proto_rawDescGZIP(), []int{7}
 }
 
 func (x *RegisterWorkerRequest) GetWorkerId() string {
@@ -807,7 +899,7 @@ type PairWorkerRequest struct {
 
 func (x *PairWorkerRequest) Reset() {
 	*x = PairWorkerRequest{}
-	mi := &file_gradient_proto_msgTypes[7]
+	mi := &file_gradient_proto_msgTypes[8]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -819,7 +911,7 @@ func (x *PairWorkerRequest) String() string {
 func (*PairWorkerRequest) ProtoMessage() {}
 
 func (x *PairWorkerRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_gradient_proto_msgTypes[7]
+	mi := &file_gradient_proto_msgTypes[8]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -832,7 +924,7 @@ func (x *PairWorkerRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use PairWorkerRequest.ProtoReflect.Descriptor instead.
 func (*PairWorkerRequest) Descriptor() ([]byte, []int) {
-	return file_gradient_proto_rawDescGZIP(), []int{7}
+	return file_gradient_proto_rawDescGZIP(), []int{8}
 }
 
 func (x *PairWorkerRequest) GetRequestId() string {
@@ -895,7 +987,7 @@ type PairWorkerResponse struct {
 
 func (x *PairWorkerResponse) Reset() {
 	*x = PairWorkerResponse{}
-	mi := &file_gradient_proto_msgTypes[8]
+	mi := &file_gradient_proto_msgTypes[9]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -907,7 +999,7 @@ func (x *PairWorkerResponse) String() string {
 func (*PairWorkerResponse) ProtoMessage() {}
 
 func (x *PairWorkerResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_gradient_proto_msgTypes[8]
+	mi := &file_gradient_proto_msgTypes[9]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -920,7 +1012,7 @@ func (x *PairWorkerResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use PairWorkerResponse.ProtoReflect.Descriptor instead.
 func (*PairWorkerResponse) Descriptor() ([]byte, []int) {
-	return file_gradient_proto_rawDescGZIP(), []int{8}
+	return file_gradient_proto_rawDescGZIP(), []int{9}
 }
 
 func (x *PairWorkerResponse) GetRequestId() string {
@@ -955,7 +1047,7 @@ type UnpairWorkerRequest struct {
 
 func (x *UnpairWorkerRequest) Reset() {
 	*x = UnpairWorkerRequest{}
-	mi := &file_gradient_proto_msgTypes[9]
+	mi := &file_gradient_proto_msgTypes[10]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -967,7 +1059,7 @@ func (x *UnpairWorkerRequest) String() string {
 func (*UnpairWorkerRequest) ProtoMessage() {}
 
 func (x *UnpairWorkerRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_gradient_proto_msgTypes[9]
+	mi := &file_gradient_proto_msgTypes[10]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -980,7 +1072,7 @@ func (x *UnpairWorkerRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use UnpairWorkerRequest.ProtoReflect.Descriptor instead.
 func (*UnpairWorkerRequest) Descriptor() ([]byte, []int) {
-	return file_gradient_proto_rawDescGZIP(), []int{9}
+	return file_gradient_proto_rawDescGZIP(), []int{10}
 }
 
 func (x *UnpairWorkerRequest) GetWorkerId() string {
@@ -1013,7 +1105,7 @@ type UnpairWorkerResponse struct {
 
 func (x *UnpairWorkerResponse) Reset() {
 	*x = UnpairWorkerResponse{}
-	mi := &file_gradient_proto_msgTypes[10]
+	mi := &file_gradient_proto_msgTypes[11]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1025,7 +1117,7 @@ func (x *UnpairWorkerResponse) String() string {
 func (*UnpairWorkerResponse) ProtoMessage() {}
 
 func (x *UnpairWorkerResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_gradient_proto_msgTypes[10]
+	mi := &file_gradient_proto_msgTypes[11]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1038,7 +1130,7 @@ func (x *UnpairWorkerResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use UnpairWorkerResponse.ProtoReflect.Descriptor instead.
 func (*UnpairWorkerResponse) Descriptor() ([]byte, []int) {
-	return file_gradient_proto_rawDescGZIP(), []int{10}
+	return file_gradient_proto_rawDescGZIP(), []int{11}
 }
 
 func (x *UnpairWorkerResponse) GetUnpaired() bool {
@@ -1061,7 +1153,7 @@ type WorkerHeartbeat struct {
 
 func (x *WorkerHeartbeat) Reset() {
 	*x = WorkerHeartbeat{}
-	mi := &file_gradient_proto_msgTypes[11]
+	mi := &file_gradient_proto_msgTypes[12]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1073,7 +1165,7 @@ func (x *WorkerHeartbeat) String() string {
 func (*WorkerHeartbeat) ProtoMessage() {}
 
 func (x *WorkerHeartbeat) ProtoReflect() protoreflect.Message {
-	mi := &file_gradient_proto_msgTypes[11]
+	mi := &file_gradient_proto_msgTypes[12]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1086,7 +1178,7 @@ func (x *WorkerHeartbeat) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use WorkerHeartbeat.ProtoReflect.Descriptor instead.
 func (*WorkerHeartbeat) Descriptor() ([]byte, []int) {
-	return file_gradient_proto_rawDescGZIP(), []int{11}
+	return file_gradient_proto_rawDescGZIP(), []int{12}
 }
 
 func (x *WorkerHeartbeat) GetWorkerId() string {
@@ -1134,7 +1226,7 @@ type WorkerHeartbeatResponse struct {
 
 func (x *WorkerHeartbeatResponse) Reset() {
 	*x = WorkerHeartbeatResponse{}
-	mi := &file_gradient_proto_msgTypes[12]
+	mi := &file_gradient_proto_msgTypes[13]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1146,7 +1238,7 @@ func (x *WorkerHeartbeatResponse) String() string {
 func (*WorkerHeartbeatResponse) ProtoMessage() {}
 
 func (x *WorkerHeartbeatResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_gradient_proto_msgTypes[12]
+	mi := &file_gradient_proto_msgTypes[13]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1159,7 +1251,7 @@ func (x *WorkerHeartbeatResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use WorkerHeartbeatResponse.ProtoReflect.Descriptor instead.
 func (*WorkerHeartbeatResponse) Descriptor() ([]byte, []int) {
-	return file_gradient_proto_rawDescGZIP(), []int{12}
+	return file_gradient_proto_rawDescGZIP(), []int{13}
 }
 
 func (x *WorkerHeartbeatResponse) GetAccepted() bool {
@@ -1187,7 +1279,7 @@ type WorkerOfflineRequest struct {
 
 func (x *WorkerOfflineRequest) Reset() {
 	*x = WorkerOfflineRequest{}
-	mi := &file_gradient_proto_msgTypes[13]
+	mi := &file_gradient_proto_msgTypes[14]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1199,7 +1291,7 @@ func (x *WorkerOfflineRequest) String() string {
 func (*WorkerOfflineRequest) ProtoMessage() {}
 
 func (x *WorkerOfflineRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_gradient_proto_msgTypes[13]
+	mi := &file_gradient_proto_msgTypes[14]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1212,7 +1304,7 @@ func (x *WorkerOfflineRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use WorkerOfflineRequest.ProtoReflect.Descriptor instead.
 func (*WorkerOfflineRequest) Descriptor() ([]byte, []int) {
-	return file_gradient_proto_rawDescGZIP(), []int{13}
+	return file_gradient_proto_rawDescGZIP(), []int{14}
 }
 
 func (x *WorkerOfflineRequest) GetWorkerId() string {
@@ -1245,7 +1337,7 @@ type WorkerOfflineResponse struct {
 
 func (x *WorkerOfflineResponse) Reset() {
 	*x = WorkerOfflineResponse{}
-	mi := &file_gradient_proto_msgTypes[14]
+	mi := &file_gradient_proto_msgTypes[15]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1257,7 +1349,7 @@ func (x *WorkerOfflineResponse) String() string {
 func (*WorkerOfflineResponse) ProtoMessage() {}
 
 func (x *WorkerOfflineResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_gradient_proto_msgTypes[14]
+	mi := &file_gradient_proto_msgTypes[15]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1270,7 +1362,7 @@ func (x *WorkerOfflineResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use WorkerOfflineResponse.ProtoReflect.Descriptor instead.
 func (*WorkerOfflineResponse) Descriptor() ([]byte, []int) {
-	return file_gradient_proto_rawDescGZIP(), []int{14}
+	return file_gradient_proto_rawDescGZIP(), []int{15}
 }
 
 func (x *WorkerOfflineResponse) GetAcknowledged() bool {
@@ -1295,7 +1387,7 @@ type PrepareWorkspaceRequest struct {
 
 func (x *PrepareWorkspaceRequest) Reset() {
 	*x = PrepareWorkspaceRequest{}
-	mi := &file_gradient_proto_msgTypes[15]
+	mi := &file_gradient_proto_msgTypes[16]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1307,7 +1399,7 @@ func (x *PrepareWorkspaceRequest) String() string {
 func (*PrepareWorkspaceRequest) ProtoMessage() {}
 
 func (x *PrepareWorkspaceRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_gradient_proto_msgTypes[15]
+	mi := &file_gradient_proto_msgTypes[16]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1320,7 +1412,7 @@ func (x *PrepareWorkspaceRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use PrepareWorkspaceRequest.ProtoReflect.Descriptor instead.
 func (*PrepareWorkspaceRequest) Descriptor() ([]byte, []int) {
-	return file_gradient_proto_rawDescGZIP(), []int{15}
+	return file_gradient_proto_rawDescGZIP(), []int{16}
 }
 
 func (x *PrepareWorkspaceRequest) GetJobId() string {
@@ -1383,7 +1475,7 @@ type PrepareWorkspaceResponse struct {
 
 func (x *PrepareWorkspaceResponse) Reset() {
 	*x = PrepareWorkspaceResponse{}
-	mi := &file_gradient_proto_msgTypes[16]
+	mi := &file_gradient_proto_msgTypes[17]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1395,7 +1487,7 @@ func (x *PrepareWorkspaceResponse) String() string {
 func (*PrepareWorkspaceResponse) ProtoMessage() {}
 
 func (x *PrepareWorkspaceResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_gradient_proto_msgTypes[16]
+	mi := &file_gradient_proto_msgTypes[17]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1408,7 +1500,7 @@ func (x *PrepareWorkspaceResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use PrepareWorkspaceResponse.ProtoReflect.Descriptor instead.
 func (*PrepareWorkspaceResponse) Descriptor() ([]byte, []int) {
-	return file_gradient_proto_rawDescGZIP(), []int{16}
+	return file_gradient_proto_rawDescGZIP(), []int{17}
 }
 
 func (x *PrepareWorkspaceResponse) GetJobId() string {
@@ -1448,7 +1540,7 @@ type WorkspaceChunk struct {
 
 func (x *WorkspaceChunk) Reset() {
 	*x = WorkspaceChunk{}
-	mi := &file_gradient_proto_msgTypes[17]
+	mi := &file_gradient_proto_msgTypes[18]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1460,7 +1552,7 @@ func (x *WorkspaceChunk) String() string {
 func (*WorkspaceChunk) ProtoMessage() {}
 
 func (x *WorkspaceChunk) ProtoReflect() protoreflect.Message {
-	mi := &file_gradient_proto_msgTypes[17]
+	mi := &file_gradient_proto_msgTypes[18]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1473,7 +1565,7 @@ func (x *WorkspaceChunk) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use WorkspaceChunk.ProtoReflect.Descriptor instead.
 func (*WorkspaceChunk) Descriptor() ([]byte, []int) {
-	return file_gradient_proto_rawDescGZIP(), []int{17}
+	return file_gradient_proto_rawDescGZIP(), []int{18}
 }
 
 func (x *WorkspaceChunk) GetJobId() string {
@@ -1545,7 +1637,7 @@ type SetupJobRequest struct {
 
 func (x *SetupJobRequest) Reset() {
 	*x = SetupJobRequest{}
-	mi := &file_gradient_proto_msgTypes[18]
+	mi := &file_gradient_proto_msgTypes[19]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1557,7 +1649,7 @@ func (x *SetupJobRequest) String() string {
 func (*SetupJobRequest) ProtoMessage() {}
 
 func (x *SetupJobRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_gradient_proto_msgTypes[18]
+	mi := &file_gradient_proto_msgTypes[19]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1570,7 +1662,7 @@ func (x *SetupJobRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use SetupJobRequest.ProtoReflect.Descriptor instead.
 func (*SetupJobRequest) Descriptor() ([]byte, []int) {
-	return file_gradient_proto_rawDescGZIP(), []int{18}
+	return file_gradient_proto_rawDescGZIP(), []int{19}
 }
 
 func (x *SetupJobRequest) GetJobId() string {
@@ -1621,7 +1713,7 @@ type SetupJobResponse struct {
 
 func (x *SetupJobResponse) Reset() {
 	*x = SetupJobResponse{}
-	mi := &file_gradient_proto_msgTypes[19]
+	mi := &file_gradient_proto_msgTypes[20]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1633,7 +1725,7 @@ func (x *SetupJobResponse) String() string {
 func (*SetupJobResponse) ProtoMessage() {}
 
 func (x *SetupJobResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_gradient_proto_msgTypes[19]
+	mi := &file_gradient_proto_msgTypes[20]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1646,7 +1738,7 @@ func (x *SetupJobResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use SetupJobResponse.ProtoReflect.Descriptor instead.
 func (*SetupJobResponse) Descriptor() ([]byte, []int) {
-	return file_gradient_proto_rawDescGZIP(), []int{19}
+	return file_gradient_proto_rawDescGZIP(), []int{20}
 }
 
 func (x *SetupJobResponse) GetJobId() string {
@@ -1696,7 +1788,7 @@ type JobCommandRequest struct {
 
 func (x *JobCommandRequest) Reset() {
 	*x = JobCommandRequest{}
-	mi := &file_gradient_proto_msgTypes[20]
+	mi := &file_gradient_proto_msgTypes[21]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1708,7 +1800,7 @@ func (x *JobCommandRequest) String() string {
 func (*JobCommandRequest) ProtoMessage() {}
 
 func (x *JobCommandRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_gradient_proto_msgTypes[20]
+	mi := &file_gradient_proto_msgTypes[21]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1721,7 +1813,7 @@ func (x *JobCommandRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use JobCommandRequest.ProtoReflect.Descriptor instead.
 func (*JobCommandRequest) Descriptor() ([]byte, []int) {
-	return file_gradient_proto_rawDescGZIP(), []int{20}
+	return file_gradient_proto_rawDescGZIP(), []int{21}
 }
 
 func (x *JobCommandRequest) GetJobId() string {
@@ -1767,7 +1859,7 @@ type JobCommandResponse struct {
 
 func (x *JobCommandResponse) Reset() {
 	*x = JobCommandResponse{}
-	mi := &file_gradient_proto_msgTypes[21]
+	mi := &file_gradient_proto_msgTypes[22]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1779,7 +1871,7 @@ func (x *JobCommandResponse) String() string {
 func (*JobCommandResponse) ProtoMessage() {}
 
 func (x *JobCommandResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_gradient_proto_msgTypes[21]
+	mi := &file_gradient_proto_msgTypes[22]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1792,7 +1884,7 @@ func (x *JobCommandResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use JobCommandResponse.ProtoReflect.Descriptor instead.
 func (*JobCommandResponse) Descriptor() ([]byte, []int) {
-	return file_gradient_proto_rawDescGZIP(), []int{21}
+	return file_gradient_proto_rawDescGZIP(), []int{22}
 }
 
 func (x *JobCommandResponse) GetJobId() string {
@@ -1856,7 +1948,7 @@ type ResultFile struct {
 
 func (x *ResultFile) Reset() {
 	*x = ResultFile{}
-	mi := &file_gradient_proto_msgTypes[22]
+	mi := &file_gradient_proto_msgTypes[23]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1868,7 +1960,7 @@ func (x *ResultFile) String() string {
 func (*ResultFile) ProtoMessage() {}
 
 func (x *ResultFile) ProtoReflect() protoreflect.Message {
-	mi := &file_gradient_proto_msgTypes[22]
+	mi := &file_gradient_proto_msgTypes[23]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1881,7 +1973,7 @@ func (x *ResultFile) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ResultFile.ProtoReflect.Descriptor instead.
 func (*ResultFile) Descriptor() ([]byte, []int) {
-	return file_gradient_proto_rawDescGZIP(), []int{22}
+	return file_gradient_proto_rawDescGZIP(), []int{23}
 }
 
 func (x *ResultFile) GetPath() string {
@@ -1925,7 +2017,7 @@ type ResultManifestResponse struct {
 
 func (x *ResultManifestResponse) Reset() {
 	*x = ResultManifestResponse{}
-	mi := &file_gradient_proto_msgTypes[23]
+	mi := &file_gradient_proto_msgTypes[24]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -1937,7 +2029,7 @@ func (x *ResultManifestResponse) String() string {
 func (*ResultManifestResponse) ProtoMessage() {}
 
 func (x *ResultManifestResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_gradient_proto_msgTypes[23]
+	mi := &file_gradient_proto_msgTypes[24]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -1950,7 +2042,7 @@ func (x *ResultManifestResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ResultManifestResponse.ProtoReflect.Descriptor instead.
 func (*ResultManifestResponse) Descriptor() ([]byte, []int) {
-	return file_gradient_proto_rawDescGZIP(), []int{23}
+	return file_gradient_proto_rawDescGZIP(), []int{24}
 }
 
 func (x *ResultManifestResponse) GetJobId() string {
@@ -2001,7 +2093,7 @@ type DownloadResultRequest struct {
 
 func (x *DownloadResultRequest) Reset() {
 	*x = DownloadResultRequest{}
-	mi := &file_gradient_proto_msgTypes[24]
+	mi := &file_gradient_proto_msgTypes[25]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2013,7 +2105,7 @@ func (x *DownloadResultRequest) String() string {
 func (*DownloadResultRequest) ProtoMessage() {}
 
 func (x *DownloadResultRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_gradient_proto_msgTypes[24]
+	mi := &file_gradient_proto_msgTypes[25]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2026,7 +2118,7 @@ func (x *DownloadResultRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use DownloadResultRequest.ProtoReflect.Descriptor instead.
 func (*DownloadResultRequest) Descriptor() ([]byte, []int) {
-	return file_gradient_proto_rawDescGZIP(), []int{24}
+	return file_gradient_proto_rawDescGZIP(), []int{25}
 }
 
 func (x *DownloadResultRequest) GetJobId() string {
@@ -2073,7 +2165,7 @@ type ResultChunk struct {
 
 func (x *ResultChunk) Reset() {
 	*x = ResultChunk{}
-	mi := &file_gradient_proto_msgTypes[25]
+	mi := &file_gradient_proto_msgTypes[26]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2085,7 +2177,7 @@ func (x *ResultChunk) String() string {
 func (*ResultChunk) ProtoMessage() {}
 
 func (x *ResultChunk) ProtoReflect() protoreflect.Message {
-	mi := &file_gradient_proto_msgTypes[25]
+	mi := &file_gradient_proto_msgTypes[26]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2098,7 +2190,7 @@ func (x *ResultChunk) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ResultChunk.ProtoReflect.Descriptor instead.
 func (*ResultChunk) Descriptor() ([]byte, []int) {
-	return file_gradient_proto_rawDescGZIP(), []int{25}
+	return file_gradient_proto_rawDescGZIP(), []int{26}
 }
 
 func (x *ResultChunk) GetData() []byte {
@@ -2120,7 +2212,7 @@ type BenchmarkChunk struct {
 
 func (x *BenchmarkChunk) Reset() {
 	*x = BenchmarkChunk{}
-	mi := &file_gradient_proto_msgTypes[26]
+	mi := &file_gradient_proto_msgTypes[27]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2132,7 +2224,7 @@ func (x *BenchmarkChunk) String() string {
 func (*BenchmarkChunk) ProtoMessage() {}
 
 func (x *BenchmarkChunk) ProtoReflect() protoreflect.Message {
-	mi := &file_gradient_proto_msgTypes[26]
+	mi := &file_gradient_proto_msgTypes[27]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2145,7 +2237,7 @@ func (x *BenchmarkChunk) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use BenchmarkChunk.ProtoReflect.Descriptor instead.
 func (*BenchmarkChunk) Descriptor() ([]byte, []int) {
-	return file_gradient_proto_rawDescGZIP(), []int{26}
+	return file_gradient_proto_rawDescGZIP(), []int{27}
 }
 
 func (x *BenchmarkChunk) GetWorkerId() string {
@@ -2188,7 +2280,7 @@ type BenchmarkResult struct {
 
 func (x *BenchmarkResult) Reset() {
 	*x = BenchmarkResult{}
-	mi := &file_gradient_proto_msgTypes[27]
+	mi := &file_gradient_proto_msgTypes[28]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2200,7 +2292,7 @@ func (x *BenchmarkResult) String() string {
 func (*BenchmarkResult) ProtoMessage() {}
 
 func (x *BenchmarkResult) ProtoReflect() protoreflect.Message {
-	mi := &file_gradient_proto_msgTypes[27]
+	mi := &file_gradient_proto_msgTypes[28]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2213,7 +2305,7 @@ func (x *BenchmarkResult) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use BenchmarkResult.ProtoReflect.Descriptor instead.
 func (*BenchmarkResult) Descriptor() ([]byte, []int) {
-	return file_gradient_proto_rawDescGZIP(), []int{27}
+	return file_gradient_proto_rawDescGZIP(), []int{28}
 }
 
 func (x *BenchmarkResult) GetWorkerId() string {
@@ -2254,7 +2346,7 @@ type RegisterWorkerResponse struct {
 
 func (x *RegisterWorkerResponse) Reset() {
 	*x = RegisterWorkerResponse{}
-	mi := &file_gradient_proto_msgTypes[28]
+	mi := &file_gradient_proto_msgTypes[29]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2266,7 +2358,7 @@ func (x *RegisterWorkerResponse) String() string {
 func (*RegisterWorkerResponse) ProtoMessage() {}
 
 func (x *RegisterWorkerResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_gradient_proto_msgTypes[28]
+	mi := &file_gradient_proto_msgTypes[29]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2279,7 +2371,7 @@ func (x *RegisterWorkerResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use RegisterWorkerResponse.ProtoReflect.Descriptor instead.
 func (*RegisterWorkerResponse) Descriptor() ([]byte, []int) {
-	return file_gradient_proto_rawDescGZIP(), []int{28}
+	return file_gradient_proto_rawDescGZIP(), []int{29}
 }
 
 func (x *RegisterWorkerResponse) GetWorkerId() string {
@@ -2307,7 +2399,7 @@ type WorkerStatusUpdate struct {
 
 func (x *WorkerStatusUpdate) Reset() {
 	*x = WorkerStatusUpdate{}
-	mi := &file_gradient_proto_msgTypes[29]
+	mi := &file_gradient_proto_msgTypes[30]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2319,7 +2411,7 @@ func (x *WorkerStatusUpdate) String() string {
 func (*WorkerStatusUpdate) ProtoMessage() {}
 
 func (x *WorkerStatusUpdate) ProtoReflect() protoreflect.Message {
-	mi := &file_gradient_proto_msgTypes[29]
+	mi := &file_gradient_proto_msgTypes[30]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2332,7 +2424,7 @@ func (x *WorkerStatusUpdate) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use WorkerStatusUpdate.ProtoReflect.Descriptor instead.
 func (*WorkerStatusUpdate) Descriptor() ([]byte, []int) {
-	return file_gradient_proto_rawDescGZIP(), []int{29}
+	return file_gradient_proto_rawDescGZIP(), []int{30}
 }
 
 func (x *WorkerStatusUpdate) GetWorkerId() string {
@@ -2366,7 +2458,7 @@ type WorkerStatusResponse struct {
 
 func (x *WorkerStatusResponse) Reset() {
 	*x = WorkerStatusResponse{}
-	mi := &file_gradient_proto_msgTypes[30]
+	mi := &file_gradient_proto_msgTypes[31]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -2378,7 +2470,7 @@ func (x *WorkerStatusResponse) String() string {
 func (*WorkerStatusResponse) ProtoMessage() {}
 
 func (x *WorkerStatusResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_gradient_proto_msgTypes[30]
+	mi := &file_gradient_proto_msgTypes[31]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -2391,7 +2483,7 @@ func (x *WorkerStatusResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use WorkerStatusResponse.ProtoReflect.Descriptor instead.
 func (*WorkerStatusResponse) Descriptor() ([]byte, []int) {
-	return file_gradient_proto_rawDescGZIP(), []int{30}
+	return file_gradient_proto_rawDescGZIP(), []int{31}
 }
 
 func (x *WorkerStatusResponse) GetWorkerId() string {
@@ -2433,29 +2525,38 @@ const file_gradient_proto_rawDesc = "" +
 	"\vindices_u32\x18\b \x01(\fR\n" +
 	"indicesU32\x12\x1d\n" +
 	"\n" +
-	"sync_round\x18\t \x01(\x04R\tsyncRound\"\xa4\x01\n" +
+	"sync_round\x18\t \x01(\x04R\tsyncRound\"\x9e\x01\n" +
+	"\x12GradientChunkGroup\x12\x19\n" +
+	"\bgroup_id\x18\x01 \x01(\rR\agroupId\x12\x1d\n" +
+	"\n" +
+	"sync_round\x18\x02 \x01(\x04R\tsyncRound\x121\n" +
+	"\x06chunks\x18\x03 \x03(\v2\x19.locdist.v1.GradientChunkR\x06chunks\x12\x1b\n" +
+	"\tbyte_size\x18\x04 \x01(\x04R\bbyteSize\"\xdc\x01\n" +
 	"\x12GradientSubmission\x12'\n" +
 	"\x0fruntime_version\x18\x01 \x01(\rR\x0eruntimeVersion\x12\x15\n" +
 	"\x06job_id\x18\x02 \x01(\tR\x05jobId\x12\x1b\n" +
 	"\tworker_id\x18\x03 \x01(\tR\bworkerId\x121\n" +
-	"\x06chunks\x18\x04 \x03(\v2\x19.locdist.v1.GradientChunkR\x06chunks\"\xa7\x01\n" +
+	"\x06chunks\x18\x04 \x03(\v2\x19.locdist.v1.GradientChunkR\x06chunks\x126\n" +
+	"\x06groups\x18\x05 \x03(\v2\x1e.locdist.v1.GradientChunkGroupR\x06groups\"\xa7\x01\n" +
 	"\x17GradientChunkSubmission\x12'\n" +
 	"\x0fruntime_version\x18\x01 \x01(\rR\x0eruntimeVersion\x12\x15\n" +
 	"\x06job_id\x18\x02 \x01(\tR\x05jobId\x12\x1b\n" +
 	"\tworker_id\x18\x03 \x01(\tR\bworkerId\x12/\n" +
-	"\x05chunk\x18\x04 \x01(\v2\x19.locdist.v1.GradientChunkR\x05chunk\"\xf1\x01\n" +
+	"\x05chunk\x18\x04 \x01(\v2\x19.locdist.v1.GradientChunkR\x05chunk\"\xa9\x02\n" +
 	"\x1aAggregatedGradientResponse\x12'\n" +
 	"\x0fruntime_version\x18\x01 \x01(\rR\x0eruntimeVersion\x12\x15\n" +
 	"\x06job_id\x18\x02 \x01(\tR\x05jobId\x123\n" +
 	"\x15participating_workers\x18\x03 \x01(\rR\x14participatingWorkers\x12+\n" +
 	"\x11aggregation_round\x18\x04 \x01(\x04R\x10aggregationRound\x121\n" +
-	"\x06chunks\x18\x05 \x03(\v2\x19.locdist.v1.GradientChunkR\x06chunks\"\xf4\x01\n" +
+	"\x06chunks\x18\x05 \x03(\v2\x19.locdist.v1.GradientChunkR\x06chunks\x126\n" +
+	"\x06groups\x18\x06 \x03(\v2\x1e.locdist.v1.GradientChunkGroupR\x06groups\"\xaa\x02\n" +
 	"\x1fAggregatedGradientChunkResponse\x12'\n" +
 	"\x0fruntime_version\x18\x01 \x01(\rR\x0eruntimeVersion\x12\x15\n" +
 	"\x06job_id\x18\x02 \x01(\tR\x05jobId\x123\n" +
 	"\x15participating_workers\x18\x03 \x01(\rR\x14participatingWorkers\x12+\n" +
 	"\x11aggregation_round\x18\x04 \x01(\x04R\x10aggregationRound\x12/\n" +
-	"\x05chunk\x18\x05 \x01(\v2\x19.locdist.v1.GradientChunkR\x05chunk\"\xa7\x01\n" +
+	"\x05chunk\x18\x05 \x01(\v2\x19.locdist.v1.GradientChunkR\x05chunk\x124\n" +
+	"\x05group\x18\x06 \x01(\v2\x1e.locdist.v1.GradientChunkGroupR\x05group\"\xa7\x01\n" +
 	"\x15RegisterWorkerRequest\x12\x1b\n" +
 	"\tworker_id\x18\x01 \x01(\tR\bworkerId\x12\x12\n" +
 	"\x04host\x18\x02 \x01(\tR\x04host\x12\x1b\n" +
@@ -2655,7 +2756,7 @@ func file_gradient_proto_rawDescGZIP() []byte {
 }
 
 var file_gradient_proto_enumTypes = make([]protoimpl.EnumInfo, 4)
-var file_gradient_proto_msgTypes = make([]protoimpl.MessageInfo, 31)
+var file_gradient_proto_msgTypes = make([]protoimpl.MessageInfo, 32)
 var file_gradient_proto_goTypes = []any{
 	(WorkerStatus)(0),                       // 0: locdist.v1.WorkerStatus
 	(PairingDecision)(0),                    // 1: locdist.v1.PairingDecision
@@ -2663,96 +2764,101 @@ var file_gradient_proto_goTypes = []any{
 	(JobRunStatus)(0),                       // 3: locdist.v1.JobRunStatus
 	(*ParameterMetadata)(nil),               // 4: locdist.v1.ParameterMetadata
 	(*GradientChunk)(nil),                   // 5: locdist.v1.GradientChunk
-	(*GradientSubmission)(nil),              // 6: locdist.v1.GradientSubmission
-	(*GradientChunkSubmission)(nil),         // 7: locdist.v1.GradientChunkSubmission
-	(*AggregatedGradientResponse)(nil),      // 8: locdist.v1.AggregatedGradientResponse
-	(*AggregatedGradientChunkResponse)(nil), // 9: locdist.v1.AggregatedGradientChunkResponse
-	(*RegisterWorkerRequest)(nil),           // 10: locdist.v1.RegisterWorkerRequest
-	(*PairWorkerRequest)(nil),               // 11: locdist.v1.PairWorkerRequest
-	(*PairWorkerResponse)(nil),              // 12: locdist.v1.PairWorkerResponse
-	(*UnpairWorkerRequest)(nil),             // 13: locdist.v1.UnpairWorkerRequest
-	(*UnpairWorkerResponse)(nil),            // 14: locdist.v1.UnpairWorkerResponse
-	(*WorkerHeartbeat)(nil),                 // 15: locdist.v1.WorkerHeartbeat
-	(*WorkerHeartbeatResponse)(nil),         // 16: locdist.v1.WorkerHeartbeatResponse
-	(*WorkerOfflineRequest)(nil),            // 17: locdist.v1.WorkerOfflineRequest
-	(*WorkerOfflineResponse)(nil),           // 18: locdist.v1.WorkerOfflineResponse
-	(*PrepareWorkspaceRequest)(nil),         // 19: locdist.v1.PrepareWorkspaceRequest
-	(*PrepareWorkspaceResponse)(nil),        // 20: locdist.v1.PrepareWorkspaceResponse
-	(*WorkspaceChunk)(nil),                  // 21: locdist.v1.WorkspaceChunk
-	(*SetupJobRequest)(nil),                 // 22: locdist.v1.SetupJobRequest
-	(*SetupJobResponse)(nil),                // 23: locdist.v1.SetupJobResponse
-	(*JobCommandRequest)(nil),               // 24: locdist.v1.JobCommandRequest
-	(*JobCommandResponse)(nil),              // 25: locdist.v1.JobCommandResponse
-	(*ResultFile)(nil),                      // 26: locdist.v1.ResultFile
-	(*ResultManifestResponse)(nil),          // 27: locdist.v1.ResultManifestResponse
-	(*DownloadResultRequest)(nil),           // 28: locdist.v1.DownloadResultRequest
-	(*ResultChunk)(nil),                     // 29: locdist.v1.ResultChunk
-	(*BenchmarkChunk)(nil),                  // 30: locdist.v1.BenchmarkChunk
-	(*BenchmarkResult)(nil),                 // 31: locdist.v1.BenchmarkResult
-	(*RegisterWorkerResponse)(nil),          // 32: locdist.v1.RegisterWorkerResponse
-	(*WorkerStatusUpdate)(nil),              // 33: locdist.v1.WorkerStatusUpdate
-	(*WorkerStatusResponse)(nil),            // 34: locdist.v1.WorkerStatusResponse
+	(*GradientChunkGroup)(nil),              // 6: locdist.v1.GradientChunkGroup
+	(*GradientSubmission)(nil),              // 7: locdist.v1.GradientSubmission
+	(*GradientChunkSubmission)(nil),         // 8: locdist.v1.GradientChunkSubmission
+	(*AggregatedGradientResponse)(nil),      // 9: locdist.v1.AggregatedGradientResponse
+	(*AggregatedGradientChunkResponse)(nil), // 10: locdist.v1.AggregatedGradientChunkResponse
+	(*RegisterWorkerRequest)(nil),           // 11: locdist.v1.RegisterWorkerRequest
+	(*PairWorkerRequest)(nil),               // 12: locdist.v1.PairWorkerRequest
+	(*PairWorkerResponse)(nil),              // 13: locdist.v1.PairWorkerResponse
+	(*UnpairWorkerRequest)(nil),             // 14: locdist.v1.UnpairWorkerRequest
+	(*UnpairWorkerResponse)(nil),            // 15: locdist.v1.UnpairWorkerResponse
+	(*WorkerHeartbeat)(nil),                 // 16: locdist.v1.WorkerHeartbeat
+	(*WorkerHeartbeatResponse)(nil),         // 17: locdist.v1.WorkerHeartbeatResponse
+	(*WorkerOfflineRequest)(nil),            // 18: locdist.v1.WorkerOfflineRequest
+	(*WorkerOfflineResponse)(nil),           // 19: locdist.v1.WorkerOfflineResponse
+	(*PrepareWorkspaceRequest)(nil),         // 20: locdist.v1.PrepareWorkspaceRequest
+	(*PrepareWorkspaceResponse)(nil),        // 21: locdist.v1.PrepareWorkspaceResponse
+	(*WorkspaceChunk)(nil),                  // 22: locdist.v1.WorkspaceChunk
+	(*SetupJobRequest)(nil),                 // 23: locdist.v1.SetupJobRequest
+	(*SetupJobResponse)(nil),                // 24: locdist.v1.SetupJobResponse
+	(*JobCommandRequest)(nil),               // 25: locdist.v1.JobCommandRequest
+	(*JobCommandResponse)(nil),              // 26: locdist.v1.JobCommandResponse
+	(*ResultFile)(nil),                      // 27: locdist.v1.ResultFile
+	(*ResultManifestResponse)(nil),          // 28: locdist.v1.ResultManifestResponse
+	(*DownloadResultRequest)(nil),           // 29: locdist.v1.DownloadResultRequest
+	(*ResultChunk)(nil),                     // 30: locdist.v1.ResultChunk
+	(*BenchmarkChunk)(nil),                  // 31: locdist.v1.BenchmarkChunk
+	(*BenchmarkResult)(nil),                 // 32: locdist.v1.BenchmarkResult
+	(*RegisterWorkerResponse)(nil),          // 33: locdist.v1.RegisterWorkerResponse
+	(*WorkerStatusUpdate)(nil),              // 34: locdist.v1.WorkerStatusUpdate
+	(*WorkerStatusResponse)(nil),            // 35: locdist.v1.WorkerStatusResponse
 }
 var file_gradient_proto_depIdxs = []int32{
 	4,  // 0: locdist.v1.GradientChunk.metadata:type_name -> locdist.v1.ParameterMetadata
-	5,  // 1: locdist.v1.GradientSubmission.chunks:type_name -> locdist.v1.GradientChunk
-	5,  // 2: locdist.v1.GradientChunkSubmission.chunk:type_name -> locdist.v1.GradientChunk
-	5,  // 3: locdist.v1.AggregatedGradientResponse.chunks:type_name -> locdist.v1.GradientChunk
-	5,  // 4: locdist.v1.AggregatedGradientChunkResponse.chunk:type_name -> locdist.v1.GradientChunk
-	1,  // 5: locdist.v1.PairWorkerResponse.decision:type_name -> locdist.v1.PairingDecision
-	0,  // 6: locdist.v1.WorkerHeartbeat.status:type_name -> locdist.v1.WorkerStatus
-	2,  // 7: locdist.v1.SetupJobResponse.status:type_name -> locdist.v1.JobSetupStatus
-	3,  // 8: locdist.v1.JobCommandResponse.status:type_name -> locdist.v1.JobRunStatus
-	26, // 9: locdist.v1.ResultManifestResponse.files:type_name -> locdist.v1.ResultFile
-	0,  // 10: locdist.v1.WorkerStatusUpdate.status:type_name -> locdist.v1.WorkerStatus
-	0,  // 11: locdist.v1.WorkerStatusResponse.status:type_name -> locdist.v1.WorkerStatus
-	6,  // 12: locdist.v1.WorkerBridge.SynchronizeGradients:input_type -> locdist.v1.GradientSubmission
-	7,  // 13: locdist.v1.WorkerBridge.SynchronizeGradientChunk:input_type -> locdist.v1.GradientChunkSubmission
-	6,  // 14: locdist.v1.WorkerBridge.SynchronizeGradientBatch:input_type -> locdist.v1.GradientSubmission
-	6,  // 15: locdist.v1.WorkerBridge.SynchronizeGradientBatchStream:input_type -> locdist.v1.GradientSubmission
-	10, // 16: locdist.v1.WorkerBridge.RegisterWorker:input_type -> locdist.v1.RegisterWorkerRequest
-	33, // 17: locdist.v1.WorkerBridge.UpdateWorkerStatus:input_type -> locdist.v1.WorkerStatusUpdate
-	11, // 18: locdist.v1.WorkerBridge.PairWorker:input_type -> locdist.v1.PairWorkerRequest
-	13, // 19: locdist.v1.WorkerBridge.UnpairWorker:input_type -> locdist.v1.UnpairWorkerRequest
-	15, // 20: locdist.v1.WorkerBridge.Heartbeat:input_type -> locdist.v1.WorkerHeartbeat
-	17, // 21: locdist.v1.WorkerBridge.GoingOffline:input_type -> locdist.v1.WorkerOfflineRequest
-	19, // 22: locdist.v1.WorkerBridge.PrepareWorkspace:input_type -> locdist.v1.PrepareWorkspaceRequest
-	21, // 23: locdist.v1.WorkerBridge.UploadWorkspace:input_type -> locdist.v1.WorkspaceChunk
-	22, // 24: locdist.v1.WorkerBridge.SetupJob:input_type -> locdist.v1.SetupJobRequest
-	24, // 25: locdist.v1.WorkerBridge.ArmJob:input_type -> locdist.v1.JobCommandRequest
-	24, // 26: locdist.v1.WorkerBridge.ReleaseJob:input_type -> locdist.v1.JobCommandRequest
-	24, // 27: locdist.v1.WorkerBridge.StopJob:input_type -> locdist.v1.JobCommandRequest
-	24, // 28: locdist.v1.WorkerBridge.GetJobStatus:input_type -> locdist.v1.JobCommandRequest
-	24, // 29: locdist.v1.WorkerBridge.CleanupJob:input_type -> locdist.v1.JobCommandRequest
-	24, // 30: locdist.v1.WorkerBridge.GetResultManifest:input_type -> locdist.v1.JobCommandRequest
-	28, // 31: locdist.v1.WorkerBridge.DownloadResult:input_type -> locdist.v1.DownloadResultRequest
-	30, // 32: locdist.v1.WorkerBridge.BenchmarkUpload:input_type -> locdist.v1.BenchmarkChunk
-	8,  // 33: locdist.v1.WorkerBridge.SynchronizeGradients:output_type -> locdist.v1.AggregatedGradientResponse
-	9,  // 34: locdist.v1.WorkerBridge.SynchronizeGradientChunk:output_type -> locdist.v1.AggregatedGradientChunkResponse
-	8,  // 35: locdist.v1.WorkerBridge.SynchronizeGradientBatch:output_type -> locdist.v1.AggregatedGradientResponse
-	9,  // 36: locdist.v1.WorkerBridge.SynchronizeGradientBatchStream:output_type -> locdist.v1.AggregatedGradientChunkResponse
-	32, // 37: locdist.v1.WorkerBridge.RegisterWorker:output_type -> locdist.v1.RegisterWorkerResponse
-	34, // 38: locdist.v1.WorkerBridge.UpdateWorkerStatus:output_type -> locdist.v1.WorkerStatusResponse
-	12, // 39: locdist.v1.WorkerBridge.PairWorker:output_type -> locdist.v1.PairWorkerResponse
-	14, // 40: locdist.v1.WorkerBridge.UnpairWorker:output_type -> locdist.v1.UnpairWorkerResponse
-	16, // 41: locdist.v1.WorkerBridge.Heartbeat:output_type -> locdist.v1.WorkerHeartbeatResponse
-	18, // 42: locdist.v1.WorkerBridge.GoingOffline:output_type -> locdist.v1.WorkerOfflineResponse
-	20, // 43: locdist.v1.WorkerBridge.PrepareWorkspace:output_type -> locdist.v1.PrepareWorkspaceResponse
-	20, // 44: locdist.v1.WorkerBridge.UploadWorkspace:output_type -> locdist.v1.PrepareWorkspaceResponse
-	23, // 45: locdist.v1.WorkerBridge.SetupJob:output_type -> locdist.v1.SetupJobResponse
-	25, // 46: locdist.v1.WorkerBridge.ArmJob:output_type -> locdist.v1.JobCommandResponse
-	25, // 47: locdist.v1.WorkerBridge.ReleaseJob:output_type -> locdist.v1.JobCommandResponse
-	25, // 48: locdist.v1.WorkerBridge.StopJob:output_type -> locdist.v1.JobCommandResponse
-	25, // 49: locdist.v1.WorkerBridge.GetJobStatus:output_type -> locdist.v1.JobCommandResponse
-	25, // 50: locdist.v1.WorkerBridge.CleanupJob:output_type -> locdist.v1.JobCommandResponse
-	27, // 51: locdist.v1.WorkerBridge.GetResultManifest:output_type -> locdist.v1.ResultManifestResponse
-	29, // 52: locdist.v1.WorkerBridge.DownloadResult:output_type -> locdist.v1.ResultChunk
-	31, // 53: locdist.v1.WorkerBridge.BenchmarkUpload:output_type -> locdist.v1.BenchmarkResult
-	33, // [33:54] is the sub-list for method output_type
-	12, // [12:33] is the sub-list for method input_type
-	12, // [12:12] is the sub-list for extension type_name
-	12, // [12:12] is the sub-list for extension extendee
-	0,  // [0:12] is the sub-list for field type_name
+	5,  // 1: locdist.v1.GradientChunkGroup.chunks:type_name -> locdist.v1.GradientChunk
+	5,  // 2: locdist.v1.GradientSubmission.chunks:type_name -> locdist.v1.GradientChunk
+	6,  // 3: locdist.v1.GradientSubmission.groups:type_name -> locdist.v1.GradientChunkGroup
+	5,  // 4: locdist.v1.GradientChunkSubmission.chunk:type_name -> locdist.v1.GradientChunk
+	5,  // 5: locdist.v1.AggregatedGradientResponse.chunks:type_name -> locdist.v1.GradientChunk
+	6,  // 6: locdist.v1.AggregatedGradientResponse.groups:type_name -> locdist.v1.GradientChunkGroup
+	5,  // 7: locdist.v1.AggregatedGradientChunkResponse.chunk:type_name -> locdist.v1.GradientChunk
+	6,  // 8: locdist.v1.AggregatedGradientChunkResponse.group:type_name -> locdist.v1.GradientChunkGroup
+	1,  // 9: locdist.v1.PairWorkerResponse.decision:type_name -> locdist.v1.PairingDecision
+	0,  // 10: locdist.v1.WorkerHeartbeat.status:type_name -> locdist.v1.WorkerStatus
+	2,  // 11: locdist.v1.SetupJobResponse.status:type_name -> locdist.v1.JobSetupStatus
+	3,  // 12: locdist.v1.JobCommandResponse.status:type_name -> locdist.v1.JobRunStatus
+	27, // 13: locdist.v1.ResultManifestResponse.files:type_name -> locdist.v1.ResultFile
+	0,  // 14: locdist.v1.WorkerStatusUpdate.status:type_name -> locdist.v1.WorkerStatus
+	0,  // 15: locdist.v1.WorkerStatusResponse.status:type_name -> locdist.v1.WorkerStatus
+	7,  // 16: locdist.v1.WorkerBridge.SynchronizeGradients:input_type -> locdist.v1.GradientSubmission
+	8,  // 17: locdist.v1.WorkerBridge.SynchronizeGradientChunk:input_type -> locdist.v1.GradientChunkSubmission
+	7,  // 18: locdist.v1.WorkerBridge.SynchronizeGradientBatch:input_type -> locdist.v1.GradientSubmission
+	7,  // 19: locdist.v1.WorkerBridge.SynchronizeGradientBatchStream:input_type -> locdist.v1.GradientSubmission
+	11, // 20: locdist.v1.WorkerBridge.RegisterWorker:input_type -> locdist.v1.RegisterWorkerRequest
+	34, // 21: locdist.v1.WorkerBridge.UpdateWorkerStatus:input_type -> locdist.v1.WorkerStatusUpdate
+	12, // 22: locdist.v1.WorkerBridge.PairWorker:input_type -> locdist.v1.PairWorkerRequest
+	14, // 23: locdist.v1.WorkerBridge.UnpairWorker:input_type -> locdist.v1.UnpairWorkerRequest
+	16, // 24: locdist.v1.WorkerBridge.Heartbeat:input_type -> locdist.v1.WorkerHeartbeat
+	18, // 25: locdist.v1.WorkerBridge.GoingOffline:input_type -> locdist.v1.WorkerOfflineRequest
+	20, // 26: locdist.v1.WorkerBridge.PrepareWorkspace:input_type -> locdist.v1.PrepareWorkspaceRequest
+	22, // 27: locdist.v1.WorkerBridge.UploadWorkspace:input_type -> locdist.v1.WorkspaceChunk
+	23, // 28: locdist.v1.WorkerBridge.SetupJob:input_type -> locdist.v1.SetupJobRequest
+	25, // 29: locdist.v1.WorkerBridge.ArmJob:input_type -> locdist.v1.JobCommandRequest
+	25, // 30: locdist.v1.WorkerBridge.ReleaseJob:input_type -> locdist.v1.JobCommandRequest
+	25, // 31: locdist.v1.WorkerBridge.StopJob:input_type -> locdist.v1.JobCommandRequest
+	25, // 32: locdist.v1.WorkerBridge.GetJobStatus:input_type -> locdist.v1.JobCommandRequest
+	25, // 33: locdist.v1.WorkerBridge.CleanupJob:input_type -> locdist.v1.JobCommandRequest
+	25, // 34: locdist.v1.WorkerBridge.GetResultManifest:input_type -> locdist.v1.JobCommandRequest
+	29, // 35: locdist.v1.WorkerBridge.DownloadResult:input_type -> locdist.v1.DownloadResultRequest
+	31, // 36: locdist.v1.WorkerBridge.BenchmarkUpload:input_type -> locdist.v1.BenchmarkChunk
+	9,  // 37: locdist.v1.WorkerBridge.SynchronizeGradients:output_type -> locdist.v1.AggregatedGradientResponse
+	10, // 38: locdist.v1.WorkerBridge.SynchronizeGradientChunk:output_type -> locdist.v1.AggregatedGradientChunkResponse
+	9,  // 39: locdist.v1.WorkerBridge.SynchronizeGradientBatch:output_type -> locdist.v1.AggregatedGradientResponse
+	10, // 40: locdist.v1.WorkerBridge.SynchronizeGradientBatchStream:output_type -> locdist.v1.AggregatedGradientChunkResponse
+	33, // 41: locdist.v1.WorkerBridge.RegisterWorker:output_type -> locdist.v1.RegisterWorkerResponse
+	35, // 42: locdist.v1.WorkerBridge.UpdateWorkerStatus:output_type -> locdist.v1.WorkerStatusResponse
+	13, // 43: locdist.v1.WorkerBridge.PairWorker:output_type -> locdist.v1.PairWorkerResponse
+	15, // 44: locdist.v1.WorkerBridge.UnpairWorker:output_type -> locdist.v1.UnpairWorkerResponse
+	17, // 45: locdist.v1.WorkerBridge.Heartbeat:output_type -> locdist.v1.WorkerHeartbeatResponse
+	19, // 46: locdist.v1.WorkerBridge.GoingOffline:output_type -> locdist.v1.WorkerOfflineResponse
+	21, // 47: locdist.v1.WorkerBridge.PrepareWorkspace:output_type -> locdist.v1.PrepareWorkspaceResponse
+	21, // 48: locdist.v1.WorkerBridge.UploadWorkspace:output_type -> locdist.v1.PrepareWorkspaceResponse
+	24, // 49: locdist.v1.WorkerBridge.SetupJob:output_type -> locdist.v1.SetupJobResponse
+	26, // 50: locdist.v1.WorkerBridge.ArmJob:output_type -> locdist.v1.JobCommandResponse
+	26, // 51: locdist.v1.WorkerBridge.ReleaseJob:output_type -> locdist.v1.JobCommandResponse
+	26, // 52: locdist.v1.WorkerBridge.StopJob:output_type -> locdist.v1.JobCommandResponse
+	26, // 53: locdist.v1.WorkerBridge.GetJobStatus:output_type -> locdist.v1.JobCommandResponse
+	26, // 54: locdist.v1.WorkerBridge.CleanupJob:output_type -> locdist.v1.JobCommandResponse
+	28, // 55: locdist.v1.WorkerBridge.GetResultManifest:output_type -> locdist.v1.ResultManifestResponse
+	30, // 56: locdist.v1.WorkerBridge.DownloadResult:output_type -> locdist.v1.ResultChunk
+	32, // 57: locdist.v1.WorkerBridge.BenchmarkUpload:output_type -> locdist.v1.BenchmarkResult
+	37, // [37:58] is the sub-list for method output_type
+	16, // [16:37] is the sub-list for method input_type
+	16, // [16:16] is the sub-list for extension type_name
+	16, // [16:16] is the sub-list for extension extendee
+	0,  // [0:16] is the sub-list for field type_name
 }
 
 func init() { file_gradient_proto_init() }
@@ -2766,7 +2872,7 @@ func file_gradient_proto_init() {
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_gradient_proto_rawDesc), len(file_gradient_proto_rawDesc)),
 			NumEnums:      4,
-			NumMessages:   31,
+			NumMessages:   32,
 			NumExtensions: 0,
 			NumServices:   1,
 		},

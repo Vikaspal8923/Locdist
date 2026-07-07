@@ -31,3 +31,19 @@ type ChunkRoundState struct {
 
 	WaitingReceivers int
 }
+
+type GroupRoundState struct {
+	Key string
+
+	GroupKey string
+
+	Round int
+
+	Submissions map[string]*gradient.GradientChunkGroup
+
+	Response *gradient.AggregatedGradientChunkResponse
+
+	Err error
+
+	WaitingReceivers int
+}

@@ -27,7 +27,7 @@ func TestArmJobRejectsInvalidMasterCredentials(t *testing.T) {
 	}
 	workspaceManager := workspace.New(filepath.Join(t.TempDir(), "workspaces"))
 	handler := workergrpc.NewWorkerBridgeServer(nil, pairingManager)
-	handler.SetTrainingManager(training.New(workspaceManager, readyForTraining(true), "50051"))
+	handler.SetTrainingManager(training.New(workspaceManager, readyForTraining(true), "50051", pairingManager))
 
 	_, err = handler.ArmJob(context.Background(), &gradient.JobCommandRequest{
 		JobId: "job-1", WorkerId: "worker-1", MasterId: "master-1", PairingToken: "wrong",

@@ -11,6 +11,8 @@ type Service struct {
 	currentRound    *RoundState
 	chunkRounds     map[string]*ChunkRoundState
 	completedChunks map[string]uint64
+	groupRounds     map[string]*GroupRoundState
+	completedGroups map[string]uint64
 	resetJobPending bool
 
 	mutex sync.Mutex
@@ -30,6 +32,8 @@ func New() *Service {
 		},
 		chunkRounds:     make(map[string]*ChunkRoundState),
 		completedChunks: make(map[string]uint64),
+		groupRounds:     make(map[string]*GroupRoundState),
+		completedGroups: make(map[string]uint64),
 	}
 
 	service.cond = sync.NewCond(&service.mutex)
@@ -84,6 +88,8 @@ func (s *Service) resetRoundLocked() {
 	}
 	s.chunkRounds = make(map[string]*ChunkRoundState)
 	s.completedChunks = make(map[string]uint64)
+	s.groupRounds = make(map[string]*GroupRoundState)
+	s.completedGroups = make(map[string]uint64)
 }
 
 func (s *Service) AbortJob(reason string) {
@@ -96,16 +102,28 @@ func (s *Service) AbortJob(reason string) {
 			break
 		}
 	}
-	if s.currentRound.WaitingReceivers == 0 && !chunkWaiters {
+	groupWaiters := false
+	for _, round := range s.groupRounds {
+		if round.WaitingReceivers > 0 {
+			groupWaiters = true
+			break
+		}
+	}
+	if s.currentRound.WaitingReceivers == 0 && !chunkWaiters && !groupWaiters {
 		s.currentRound = &RoundState{Round: 1, Gradients: make(map[string]*gradient.GradientSubmission)}
 		s.chunkRounds = make(map[string]*ChunkRoundState)
 		s.completedChunks = make(map[string]uint64)
+		s.groupRounds = make(map[string]*GroupRoundState)
+		s.completedGroups = make(map[string]uint64)
 		s.resetJobPending = false
 		return
 	}
 	s.resetJobPending = true
 	s.currentRound.Err = fmt.Errorf("job aborted: %s", reason)
 	for _, round := range s.chunkRounds {
+		round.Err = fmt.Errorf("job aborted: %s", reason)
+	}
+	for _, round := range s.groupRounds {
 		round.Err = fmt.Errorf("job aborted: %s", reason)
 	}
 	s.cond.Broadcast()

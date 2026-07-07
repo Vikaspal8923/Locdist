@@ -18,7 +18,7 @@ type readiness bool
 func (r readiness) IsReady(string) bool { return bool(r) }
 
 func TestArmRequiresReadySetup(t *testing.T) {
-	manager := New(preparedTrainingWorkspace(t, "#!/bin/sh\nexit 0\n", `{"entrypoint":"train.py"}`), readiness(false), "50051")
+	manager := New(preparedTrainingWorkspace(t, "#!/bin/sh\nexit 0\n", `{"entrypoint":"train.py"}`), readiness(false), "50051", nil)
 	if result := manager.Arm("job-1"); result.Status != gradient.JobRunStatus_JOB_RUN_STATUS_FAILED {
 		t.Fatalf("status = %s", result.Status)
 	}
@@ -30,7 +30,7 @@ func TestReleaseInjectsRuntimeEnvironmentAndCompletes(t *testing.T) {
 		"#!/bin/sh\necho \"$LDGCC_JOB_ID|$LDGCC_WORKER_ID|$LDGCC_WORKER_HOST|$LDGCC_WORKER_PORT|$LDGCC_TRAINING\"\n",
 		`{"entrypoint":"train.py","training":{"gradient_accumulation_steps":10}}`,
 	)
-	manager := New(workspaceManager, readiness(true), "51000")
+	manager := New(workspaceManager, readiness(true), "51000", nil)
 	if result := manager.Arm("job-1"); result.Status != gradient.JobRunStatus_JOB_RUN_STATUS_ARMED {
 		t.Fatalf("arm = %+v", result)
 	}
@@ -62,7 +62,7 @@ func TestReleaseInjectsRuntimeEnvironmentAndCompletes(t *testing.T) {
 }
 
 func TestFailedProcessReportsExitCode(t *testing.T) {
-	manager := New(preparedTrainingWorkspace(t, "#!/bin/sh\necho failed\nexit 7\n", `{"entrypoint":"train.py"}`), readiness(true), "50051")
+	manager := New(preparedTrainingWorkspace(t, "#!/bin/sh\necho failed\nexit 7\n", `{"entrypoint":"train.py"}`), readiness(true), "50051", nil)
 	if result := manager.Arm("job-1"); result.Status != gradient.JobRunStatus_JOB_RUN_STATUS_ARMED {
 		t.Fatal(result.ErrorMessage)
 	}
@@ -87,7 +87,7 @@ func TestReleaseUsesCachedVenvMarker(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(path, ".ldgcc-venv-path"), []byte(cachedRoot+"\n"), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	manager := New(workspaceManager, readiness(true), "50051")
+	manager := New(workspaceManager, readiness(true), "50051", nil)
 	if result := manager.Arm("job-1"); result.Status != gradient.JobRunStatus_JOB_RUN_STATUS_ARMED {
 		t.Fatal(result.ErrorMessage)
 	}
@@ -103,7 +103,7 @@ func TestReleaseUsesCachedVenvMarker(t *testing.T) {
 }
 
 func TestStopCancelsRunningProcess(t *testing.T) {
-	manager := New(preparedTrainingWorkspace(t, "#!/bin/sh\nsleep 30\n", `{"entrypoint":"train.py"}`), readiness(true), "50051")
+	manager := New(preparedTrainingWorkspace(t, "#!/bin/sh\nsleep 30\n", `{"entrypoint":"train.py"}`), readiness(true), "50051", nil)
 	if result := manager.Arm("job-1"); result.Status != gradient.JobRunStatus_JOB_RUN_STATUS_ARMED {
 		t.Fatal(result.ErrorMessage)
 	}

@@ -2,12 +2,14 @@ import json
 import os
 from pathlib import Path
 import time
+from collections import Counter
 import torch
 import torch.nn as nn
 
 import locdist
 from locdist.prepare import get_prepared_runtime_state
 from locdist.models import AggregatedGradientChunkPackage
+from locdist.models import GradientChunkGroup
 import locdist.transport as transport_module
 
 
@@ -59,6 +61,34 @@ class FakeTransport:
 
     def synchronize_chunk_batch_stream(self, package):
         time.sleep(0.01)
+        if package.groups:
+            self.batch_calls.append(
+                [
+                    tuple(chunk.metadata.layer_order for chunk in group.chunks)
+                    for group in package.groups
+                ]
+            )
+            for index, group in enumerate(package.groups):
+                yield AggregatedGradientChunkPackage(
+                    runtime_version=package.runtime_version,
+                    job_id=package.job_id,
+                    participating_workers=1,
+                    aggregation_round=group.sync_round,
+                    group=GradientChunkGroup(
+                        group_id=group.group_id,
+                        sync_round=group.sync_round,
+                        chunks=group.chunks,
+                        byte_size=group.byte_size,
+                    ),
+                ), {
+                    "runtime_to_worker_proto_build_ms": 1.0 if index == 0 else 0.0,
+                    "runtime_to_worker_rpc_ms": 2.0,
+                    "runtime_response_decode_ms": 0.5,
+                    "runtime_bytes_up": 256 if index == 0 else 0,
+                    "runtime_bytes_down": 128,
+                    "transport_mode": "chunk_batch_stream",
+                }
+            return
         self.batch_calls.append([chunk.metadata.layer_order for chunk in package.chunks])
         for index, chunk in enumerate(package.chunks):
             yield AggregatedGradientChunkPackage(
@@ -157,22 +187,35 @@ def main():
         assert state.returned_layers == set()
         assert state.completed_rounds == [1]
         assert state.step_count == 1
-        sent_layers = set(fake_transport.chunk_calls)
+        assert fake_transport.chunk_calls == []
+        flattened_batches = []
         for batch in fake_transport.batch_calls:
-            sent_layers.update(batch)
-        assert sent_layers == {0, 1, 2, 3}
+            if batch and isinstance(batch[0], tuple):
+                for group in batch:
+                    flattened_batches.extend(group)
+            else:
+                flattened_batches.extend(batch)
+        assert set(flattened_batches) == {0, 1, 2, 3}
+        assert max(Counter(flattened_batches).values()) == 1
         assert metrics_file.exists()
 
         metric = json.loads(metrics_file.read_text(encoding="utf-8").strip().splitlines()[-1])
-        assert metric["sync_mode"] == "chunk_async"
+        assert metric["sync_mode"] == "group_async"
         assert metric["chunk_count"] == 4
         assert metric["chunk_send_count"] == 4
         assert metric["chunk_response_count"] == 4
+        assert metric["group_count"] >= 1
+        assert metric["group_send_count"] >= 1
+        assert metric["group_response_count"] >= 1
         assert metric["batch_send_count"] >= 1
-        assert metric["max_chunks_per_batch"] >= 1
+        assert metric["max_groups_per_batch"] >= 1
         assert metric["max_queue_depth"] >= 1
-        assert metric["max_inflight_chunks"] >= 1
+        assert metric["max_inflight_groups"] >= 1
         assert metric["step_wait_ms"] >= 0.0
+        assert metric["finalize_round_ms"] >= 0.0
+        assert metric["optimizer_step_blocking_ms"] >= 0.0
+        assert metric["non_overlap_overhead_ms"] == metric["optimizer_step_blocking_ms"]
+        assert metric["round_trigger"] == "backward_hook"
         assert metric["first_layer_ready_ms"] > 0.0
         assert metric["first_chunk_sent_ms"] > 0.0
         assert metric["last_chunk_returned_ms"] >= metric["first_chunk_returned_ms"]
@@ -255,15 +298,67 @@ def test_accumulation_boundary_starts_round_at_optimizer_step():
         optimizer.step()
 
         assert state.completed_rounds == [1]
-        sent_layers = set(fake_transport.chunk_calls)
+        sent_layer_events = list(fake_transport.chunk_calls)
         for batch in fake_transport.batch_calls:
-            sent_layers.update(batch)
-        assert sent_layers == {0, 1, 2, 3}
+            if batch and isinstance(batch[0], tuple):
+                for group in batch:
+                    sent_layer_events.extend(group)
+            else:
+                sent_layer_events.extend(batch)
+        assert set(sent_layer_events) == {0, 1, 2, 3}
+        assert max(Counter(sent_layer_events).values()) == 1
+        print("✓ accumulation-aware V2 emits optimizer-step blocking metrics")
+    finally:
+        if state is not None:
+            state.shutdown()
+        transport_module.get_transport = original_get_transport
+
+
+def test_accumulation_boundary_metrics_mark_optimizer_step_trigger():
+    fake_transport = FakeTransport()
+    original_get_transport = transport_module.get_transport
+    state = None
+    original_metrics_path = os.environ.get("LDGCC_SYNC_METRICS_PATH")
+    metrics_file = Path("/tmp/ldgcc-test-prepare-accum-metrics.jsonl")
+    if metrics_file.exists():
+        metrics_file.unlink()
+    os.environ["LDGCC_SYNC_METRICS_PATH"] = str(metrics_file)
+    transport_module.get_transport = lambda: fake_transport
+    try:
+        model = TinyModel()
+        model = locdist.prepare(model)
+        state = get_prepared_runtime_state(model)
+        assert state is not None
+        state.gradient_accumulation_steps = 10
+        state.configure_runtime(
+            runtime_version=1,
+            job_id="job-accum-metric",
+            worker_id="worker-accum-metric",
+            rpc_timeout_seconds=5,
+        )
+        optimizer = locdist.prepare_optimizer(torch.optim.SGD(model.parameters(), lr=0.1))
+        loss = model(torch.randn(4, 4)).sum()
+        loss.backward()
+        optimizer.step()
+
+        metric = json.loads(metrics_file.read_text(encoding="utf-8").strip().splitlines()[-1])
+        assert metric["round_trigger"] == "optimizer_step_capture"
+        assert metric["optimizer_step_capture_ms"] >= 0.0
+        assert metric["finalize_round_ms"] >= 0.0
+        assert metric["optimizer_step_blocking_ms"] >= metric["step_wait_ms"]
+        assert metric["non_overlap_overhead_ms"] == metric["optimizer_step_blocking_ms"]
+        assert metric["blocking_capture_and_finalize_ms"] >= 0.0
         print("✓ accumulation-aware V2 waits until optimizer.step() before sending")
     finally:
         if state is not None:
             state.shutdown()
         transport_module.get_transport = original_get_transport
+        if original_metrics_path is None:
+            os.environ.pop("LDGCC_SYNC_METRICS_PATH", None)
+        else:
+            os.environ["LDGCC_SYNC_METRICS_PATH"] = original_metrics_path
+        if metrics_file.exists():
+            metrics_file.unlink()
 
 
 def test_round_timeout_is_cleaned_up():
@@ -293,12 +388,12 @@ def test_round_timeout_is_cleaned_up():
         try:
             optimizer.step()
         except Exception as exc:
-            assert "Timed out waiting for aggregated chunks" in str(exc)
+            assert "Timed out waiting for aggregated groups" in str(exc)
         else:
             raise AssertionError("expected timeout cleanup failure")
         assert state.active_round is None
         assert len(state.outgoing_order) == 0
-        assert len(state.inflight_layers) == 0
+        assert len(state.inflight_groups) == 0
         assert metrics_file.exists()
         metric = json.loads(metrics_file.read_text(encoding="utf-8").strip().splitlines()[-1])
         assert metric["round_status"] == "timeout"
@@ -320,4 +415,5 @@ if __name__ == "__main__":
     main()
     test_invalid_chunk_response_is_rejected()
     test_accumulation_boundary_starts_round_at_optimizer_step()
+    test_accumulation_boundary_metrics_mark_optimizer_step_trigger()
     test_round_timeout_is_cleaned_up()

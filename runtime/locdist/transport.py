@@ -37,10 +37,22 @@ class TransportClient:
         self.config = load_config()
         self.last_metrics = {}
 
-        self.address = (
-            f"{self.config.worker_host}:"
-            f"{self.config.worker_port}"
-        )
+        if (
+            self.config.sync_target == "master"
+            and self.config.master_host
+            and self.config.master_port
+        ):
+            self.address = (
+                f"{self.config.master_host}:"
+                f"{self.config.master_port}"
+            )
+            self.transport_peer = "master"
+        else:
+            self.address = (
+                f"{self.config.worker_host}:"
+                f"{self.config.worker_port}"
+            )
+            self.transport_peer = "worker"
 
         try:
 
@@ -99,6 +111,7 @@ class TransportClient:
                 "runtime_response_decode_ms": decode_done_ms - rpc_done_ms,
                 "runtime_bytes_up": request.ByteSize(),
                 "runtime_bytes_down": response.ByteSize(),
+                "transport_peer": self.transport_peer,
             }
 
             return aggregated
@@ -138,6 +151,7 @@ class TransportClient:
                 "runtime_bytes_up": request.ByteSize(),
                 "runtime_bytes_down": response.ByteSize(),
                 "transport_mode": "chunk",
+                "transport_peer": self.transport_peer,
             }
 
             return aggregated
@@ -175,6 +189,7 @@ class TransportClient:
                 "runtime_bytes_up": request.ByteSize(),
                 "runtime_bytes_down": response.ByteSize(),
                 "transport_mode": "chunk_batch",
+                "transport_peer": self.transport_peer,
             }
 
             return aggregated
@@ -221,6 +236,7 @@ class TransportClient:
                     "runtime_bytes_up": request.ByteSize() if response_count == 1 else 0,
                     "runtime_bytes_down": response.ByteSize(),
                     "transport_mode": "chunk_batch_stream",
+                    "transport_peer": self.transport_peer,
                 }
                 previous_ms = decoded_ms
 

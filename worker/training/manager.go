@@ -13,6 +13,7 @@ import (
 	"time"
 
 	gradient "github.com/Vikaspal8923/Locdist/worker/generated/gradient"
+	"github.com/Vikaspal8923/Locdist/worker/pairing"
 	"github.com/Vikaspal8923/Locdist/worker/workspace"
 )
 
@@ -49,12 +50,25 @@ type Manager struct {
 	workspace   *workspace.Manager
 	readiness   Readiness
 	workerPort  string
+	pairing     *pairing.Manager
 	processes   map[string]*process
 	stopTimeout time.Duration
 }
 
-func New(workspaceManager *workspace.Manager, readiness Readiness, workerPort string) *Manager {
-	return &Manager{workspace: workspaceManager, readiness: readiness, workerPort: workerPort, processes: make(map[string]*process), stopTimeout: 5 * time.Second}
+func New(
+	workspaceManager *workspace.Manager,
+	readiness Readiness,
+	workerPort string,
+	pairingManager *pairing.Manager,
+) *Manager {
+	return &Manager{
+		workspace:   workspaceManager,
+		readiness:   readiness,
+		workerPort:  workerPort,
+		pairing:     pairingManager,
+		processes:   make(map[string]*process),
+		stopTimeout: 5 * time.Second,
+	}
 }
 
 func (m *Manager) Arm(jobID string) Result {
@@ -131,6 +145,16 @@ func (m *Manager) Release(jobID, workerID string) Result {
 	command := exec.Command(python, current.entrypoint)
 	command.Dir = absDirectory
 	command.Env = append(os.Environ(), "LDGCC_JOB_ID="+jobID, "LDGCC_WORKER_ID="+workerID, "LDGCC_WORKER_HOST=127.0.0.1", "LDGCC_WORKER_PORT="+m.workerPort)
+	if m.pairing != nil {
+		if record, ok := m.pairing.Record(); ok {
+			command.Env = append(
+				command.Env,
+				"LDGCC_MASTER_HOST="+record.MasterHost,
+				"LDGCC_MASTER_PORT="+record.MasterPort,
+				"LDGCC_SYNC_TARGET=master",
+			)
+		}
+	}
 	if current.communication != "" {
 		command.Env = append(command.Env, "LDGCC_COMMUNICATION="+current.communication)
 	}

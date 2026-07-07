@@ -45,7 +45,14 @@ func NewServer(
 	workerBridgeServer.SetWorkspaceManager(workspaceManager)
 	setupManager := workersetup.New(workspaceManager)
 	workerBridgeServer.SetSetupManager(setupManager)
-	workerBridgeServer.SetTrainingManager(training.New(workspaceManager, setupManager, cfg.Port))
+	workerBridgeServer.SetTrainingManager(
+		training.New(
+			workspaceManager,
+			setupManager,
+			cfg.Port,
+			pairingManager,
+		),
+	)
 	workerBridgeServer.SetResultManager(workerresults.New(workspaceManager))
 
 	gradient.RegisterWorkerBridgeServer(

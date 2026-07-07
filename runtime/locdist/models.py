@@ -18,6 +18,12 @@ class RuntimeConfig:
 
     communication: "CommunicationConfig"
 
+    master_host: str | None = None
+
+    master_port: int | None = None
+
+    sync_target: str = "worker"
+
     gradient_accumulation_steps: int = 1
 
 
@@ -82,6 +88,14 @@ class GradientChunk:
 
 
 @dataclass
+class GradientChunkGroup:
+    group_id: int
+    sync_round: int
+    chunks: List[GradientChunk]
+    byte_size: int = 0
+
+
+@dataclass
 class GradientPackage:
     runtime_version: int
 
@@ -90,6 +104,8 @@ class GradientPackage:
     worker_id: str
 
     chunks: List[GradientChunk]
+
+    groups: List[GradientChunkGroup] | None = None
 
 
 @dataclass
@@ -116,6 +132,8 @@ class AggregatedGradientPackage:
 
     chunks: list[GradientChunk]
 
+    groups: list[GradientChunkGroup] | None = None
+
 
 @dataclass
 class AggregatedGradientChunkPackage:
@@ -127,4 +145,6 @@ class AggregatedGradientChunkPackage:
 
     aggregation_round: int
 
-    chunk: GradientChunk
+    chunk: GradientChunk | None = None
+
+    group: GradientChunkGroup | None = None

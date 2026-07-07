@@ -45,6 +45,9 @@ def load_config(
         "LDGCC_WORKER_ID": "worker_id",
         "LDGCC_WORKER_HOST": "worker_host",
         "LDGCC_WORKER_PORT": "worker_port",
+        "LDGCC_MASTER_HOST": "master_host",
+        "LDGCC_MASTER_PORT": "master_port",
+        "LDGCC_SYNC_TARGET": "sync_target",
     }
     for environment_name, field_name in environment_fields.items():
         value = os.environ.get(environment_name)
@@ -70,6 +73,12 @@ def load_config(
             data["worker_port"] = int(data["worker_port"])
         except ValueError as e:
             raise ConfigError("worker_port must be an integer") from e
+
+    if "master_port" in data and isinstance(data["master_port"], str):
+        try:
+            data["master_port"] = int(data["master_port"])
+        except ValueError as e:
+            raise ConfigError("master_port must be an integer") from e
 
     # --------------------------------------------------
     # Required schema
@@ -99,7 +108,13 @@ def load_config(
             )
         )
 
-    optional_fields = {"communication", "training"}
+    optional_fields = {
+        "communication",
+        "training",
+        "master_host",
+        "master_port",
+        "sync_target",
+    }
 
     unknown_fields = (
         actual_fields - required_fields - optional_fields
@@ -166,6 +181,30 @@ def load_config(
             "rpc_timeout_seconds must be an integer"
         )
 
+    if "master_host" in data and not isinstance(
+        data["master_host"],
+        str,
+    ):
+        raise ConfigError(
+            "master_host must be a string"
+        )
+
+    if "master_port" in data and not isinstance(
+        data["master_port"],
+        int,
+    ):
+        raise ConfigError(
+            "master_port must be an integer"
+        )
+
+    if "sync_target" in data and not isinstance(
+        data["sync_target"],
+        str,
+    ):
+        raise ConfigError(
+            "sync_target must be a string"
+        )
+
     # --------------------------------------------------
     # Value validation
     # --------------------------------------------------
@@ -209,6 +248,26 @@ def load_config(
             "rpc_timeout_seconds must be positive"
         )
 
+    if "master_host" in data and not data["master_host"].strip():
+        raise ConfigError(
+            "master_host cannot be empty"
+        )
+
+    if "master_port" in data and not (
+        1 <= data["master_port"] <= 65535
+    ):
+        raise ConfigError(
+            "master_port must be between 1 and 65535"
+        )
+
+    if "sync_target" in data and data["sync_target"] not in {
+        "worker",
+        "master",
+    }:
+        raise ConfigError(
+            "sync_target must be either 'worker' or 'master'"
+        )
+
     # --------------------------------------------------
     # Build RuntimeConfig
     # --------------------------------------------------
@@ -226,6 +285,9 @@ def load_config(
         worker_id=data["worker_id"],
         worker_host=data["worker_host"],
         worker_port=data["worker_port"],
+        master_host=data.get("master_host"),
+        master_port=data.get("master_port"),
+        sync_target=data.get("sync_target", "worker"),
         rpc_timeout_seconds=data[
             "rpc_timeout_seconds"
         ],
