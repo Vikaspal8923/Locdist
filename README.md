@@ -1,119 +1,167 @@
-# LocDist LDGCC V1
+# LocDist LDGCC
 
 LocDist LDGCC is a local distributed training system for running one training
 job across multiple laptops on the same LAN.
 
-The goal is simple: keep the user's PyTorch training code mostly normal, while
-LDGCC handles worker discovery, pairing, project packaging, dataset sharding,
-environment setup, gradient synchronization, and result collection.
+The goal is practical: keep your PyTorch training code close to normal, while
+LDGCC handles the distributed system work around it.
 
-This top-level README is written for normal users who want to understand what
-LDGCC is, what it supports, and how to run it.
+With LDGCC, the user mainly writes the model, dataloaders, optimizer, and
+training loop. LDGCC handles the rest:
 
-If you want implementation details or want to work on the codebase itself, use
-the component developer docs instead:
+- Worker discovery
+- Worker pairing
+- project packaging
+- dataset sharding
+- Worker environment setup
+- gradient synchronization
+- output and log collection
 
-- [master/README.md](master/README.md)
-- [worker/README.md](worker/README.md)
-- [runtime/README.md](runtime/README.md)
+This README is the user-facing guide for the repo. It is meant for someone who
+opens LocDist for the first time and wants to know:
+
+- what the system does
+- what is currently supported
+- how to install and run it
+- how to structure a training project
+- how to write `ldgcc.yaml`
+- how to use gradient accumulation
+- what constraints exist today
+- how to contribute
+
+If you want deeper implementation docs, use these developer READMEs:
+
+- [master/README.md](master/README.md) - Master deep dive
+- [worker/README.md](worker/README.md) - Worker deep dive
+- [runtime/README.md](runtime/README.md) - Runtime deep dive
 - [extension/README.md](extension/README.md)
 - [packaging/README.md](packaging/README.md)
 
-In short:
+## What LDGCC Is
 
-- `README.md`: user-facing overview and usage
-- component READMEs: developer-facing architecture and implementation notes
-
-## What LDGCC Does
-
-LDGCC turns nearby laptops into a small local training cluster:
+LDGCC turns nearby laptops into a small temporary training cluster for local
+distributed deep learning.
 
 ```text
 Brain Laptop
-    owns the training project and controls the job
+    owns the project and starts the job
 
 Worker Laptops
-    provide compute and run assigned dataset shards
+    receive the packaged project and dataset shard
+    run the user's training code
 
 LDGCC Runtime
-    syncs gradients from inside the user's Python training loop
+    runs inside train.py and synchronizes gradients
 ```
 
-The workers do not talk to each other. All coordination goes through the Brain
-laptop.
+The current design is centralized:
 
-## User-Facing Components
+- Workers do not talk directly to each other
+- all coordination goes through the Brain laptop
 
-Users only need to understand these pieces:
+That makes the system simpler to operate on a local LAN and easier to debug
+than a peer-to-peer design.
 
-```text
-LDGCC Studio
-    VS Code extension installed on the Brain laptop.
-    Starts Master internally and provides the training controls.
+## What LDGCC Handles For You
 
-LDGCC Worker
-    App installed on each Worker laptop.
-    Makes the laptop discoverable, handles pairing, setup, and training.
+When you start a distributed job, LDGCC handles:
 
-LDGCC Runtime
-    Python package imported by train.py.
-    Synchronizes gradients with locdist.sync_gradients(model).
+- discovering Workers on the LAN
+- pairing them to one Brain laptop
+- reading `ldgcc.yaml`
+- selecting the Workers for the job
+- sharding the dataset
+- packaging the project
+- sending each Worker its workspace
+- creating a private Worker Python environment
+- installing LDGCC runtime dependencies
+- optionally installing your `requirements.txt`
+- running your training entrypoint on each Worker
+- synchronizing gradients
+- collecting outputs and logs after training
 
-ldgcc.yml
-    Project config file.
-    Tells LDGCC the entrypoint, dataset path, worker count, outputs, and
-    communication settings.
-```
+Your training code still owns:
 
-## Current V1 Support
+- model definition
+- dataloaders
+- optimizer
+- learning-rate schedule
+- loss function
+- gradient accumulation policy
+- where to call LDGCC runtime functions
 
-Supported now:
+## Current Support
 
-```text
-Brain laptop:
-    Linux x64 VS Code extension release with bundled Master
+Current support in the repo:
 
-Worker laptops:
-    Linux x64 Worker package
-    Windows x64 Worker package
-    Mixed Linux + Windows Workers in the same job
-    NVIDIA CUDA GPU Workers only
+### Brain laptop
 
-Dataset types:
-    JSONL line-based datasets
-    ImageFolder-style image datasets
+- Linux x64 VS Code extension release with bundled Master
 
-Training:
-    PyTorch-style training loop
-    averaged gradient synchronization
-    fp32 or fp16 gradient communication
-    optional top-k gradient compression
-    setup with private Worker .venv
-    automatic LDGCC runtime dependency install
-    optional user requirements.txt install
-    declared output collection
-```
+### Worker laptops
 
-Not yet V1 scope:
+- Linux x64 Worker package
+- Windows x64 Worker package
+- mixed Linux + Windows Workers in one job
+- NVIDIA CUDA GPU Workers only
 
-```text
-Native .deb/.msi installers
-macOS packages
-Windows Brain laptop bundled Master release
-multi-Master per Worker
-object-detection dataset formats such as COCO/YOLO
-automatic accuracy guarantees for compressed training
-```
+### Dataset types
 
-## Download
+- `jsonl`
+- `image_folder`
+- `yolo_split`
 
-LDGCC release files are published through GitHub Releases:
+### Communication
+
+- `fp32` or `fp16` gradient payload precision
+- `none` or `topk` compression
+- `global` or `per_layer` top-k mode
+- `exact` or `sampled_threshold` selection
+- optional warmup before compression begins
+
+### Training flow
+
+- normal `loss.backward() -> sync -> optimizer.step()` style integration
+- newer prepared runtime path through `locdist.prepare(model)` and
+  `locdist.prepare_optimizer(optimizer)`
+- optional gradient accumulation
+- output collection
+
+## What You Need
+
+Before starting, make sure the basic requirements are in place.
+
+### Network requirements
+
+- all machines on the same LAN
+- Workers reachable from the Brain laptop
+
+### Hardware requirements
+
+- Worker laptops with NVIDIA CUDA GPUs
+- `nvidia-smi` available on the Worker machines
+
+### Project requirements
+
+Your training project should have:
+
+- a Python training entrypoint such as `train.py`
+- a dataset path that stays stable inside the project
+- an `ldgcc.yaml` or `ldgcc.yml` file in the project root
+- optionally a `requirements.txt`
+
+In practice, this means your project should already run as a normal single
+machine training project before you adapt it to LDGCC.
+
+## Install
+
+LDGCC release files are published here:
 
 ```text
 https://github.com/Vikaspal8923/Locdist/releases
 ```
 
-Each release provides:
+Typical release artifacts:
 
 ```text
 ldgcc-studio.vsix
@@ -124,48 +172,28 @@ checksums.txt
 manifest.json
 ```
 
-Normal users usually need only:
+Normal users usually need:
 
-```text
-ldgcc-studio.vsix
-one Worker App zip matching each Worker laptop OS
-INSTALL.md
-```
+- `ldgcc-studio.vsix`
+- one Worker zip for each Worker laptop OS
+- `INSTALL.md`
 
-`checksums.txt` and `manifest.json` are release verification/support files.
+### Brain laptop install
 
-## Install
+The Brain laptop is where you open the training project in VS Code.
 
-### Brain Laptop
-
-The Brain laptop is where the training project is opened in VS Code.
-
-Download:
-
-```text
-ldgcc-studio.vsix
-```
-
-Install:
+Install the Studio extension:
 
 ```text
 VS Code
     -> Extensions
     -> Install from VSIX
-    -> select ldgcc-studio.vsix
+    -> choose ldgcc-studio.vsix
 ```
 
-Then open the training project folder and use the LDGCC view.
+Then open your training project in VS Code and use the LDGCC view.
 
-### Linux Worker Laptop
-
-Download:
-
-```text
-ldgcc-worker-app-linux-x64.zip
-```
-
-Install:
+### Linux Worker install
 
 ```bash
 unzip ldgcc-worker-app-linux-x64.zip
@@ -173,84 +201,142 @@ cd ldgcc-worker-app
 ./install-worker-app.sh
 ```
 
-Open `LDGCC Worker` from the app menu.
+Then open `LDGCC Worker`.
 
-### Windows Worker Laptop
-
-Download:
-
-```text
-ldgcc-worker-app-windows-x64.zip
-```
-
-Install:
+### Windows Worker install
 
 ```text
 Extract ldgcc-worker-app-windows-x64.zip
 Double click ldgcc-worker-app\install-worker-app.bat
 ```
 
-Open `LDGCC Worker` from the Desktop or Start Menu.
+Then open `LDGCC Worker`.
 
-## Training Flow
+## Full User Flow
 
-1. Open the training project on the Brain laptop in VS Code.
-2. Open the LDGCC view.
-3. Start Master.
-4. On each Worker laptop, open `LDGCC Worker` and click `Start Worker`.
-5. In VS Code, discover Workers.
-6. Pair the Workers.
-7. Prepare the job.
-8. Set up Workers.
-9. Start training.
-10. Open collected results after the job finishes.
+The normal user flow is:
 
-Under the hood, LDGCC:
+1. open the training project on the Brain laptop in VS Code
+2. open the LDGCC view
+3. start Master
+4. open `LDGCC Worker` on each Worker laptop
+5. click `Start Worker`
+6. discover Workers from the Brain laptop
+7. pair the Workers
+8. prepare the job
+9. set up the Workers
+10. start training
+11. inspect logs and results after the run finishes
+
+Under the hood, the system is doing:
 
 ```text
-packages the project
-    -> shards the dataset
-    -> sends each Worker its workspace
-    -> creates a private .venv on each Worker
-    -> runs train.py on each Worker
-    -> synchronizes gradients through Master
-    -> collects declared outputs and logs
+project package
+    -> dataset shard creation
+    -> workspace transfer
+    -> Worker setup
+    -> train.py launch
+    -> gradient synchronization
+    -> result collection
 ```
+
+## Full Project Setup
+
+For a normal user project, the setup usually looks like this:
+
+1. create or prepare a training project folder
+2. put the dataset inside the project, or make sure the dataset path exists at
+   the relative location your code expects
+3. add `ldgcc.yaml`
+4. add `requirements.txt` if your training code needs extra Python packages
+5. update `train.py` to call the LDGCC runtime
+6. install the Studio extension on the Brain laptop
+7. install the Worker app on each Worker machine
+8. discover, pair, prepare, set up, and start the job
+
+If the project already trains on one machine, the usual code change is mainly
+around gradient synchronization.
 
 ## Training Project Layout
 
-Example JSONL project:
+### Example JSONL project
 
 ```text
 movie-review/
     train.py
     requirements.txt
-    ldgcc.yml
+    ldgcc.yaml
     dataset/
         train.jsonl
 ```
 
-Example image project:
+### Example image-folder project
 
 ```text
 dental-classifier/
     train.py
     requirements.txt
-    ldgcc.yml
+    ldgcc.yaml
     dataset/
         train/
-            caries/
-            calculus/
-            gingivitis/
+            class_a/
+            class_b/
+            class_c/
 ```
 
-Keep dataset paths stable. If `train.py` reads `dataset/train.jsonl`, LDGCC
-will make sure each Worker receives its shard at the same relative path.
+### Example YOLO split project
 
-## Python Runtime Usage
+```text
+detector/
+    train.py
+    requirements.txt
+    ldgcc.yaml
+    dataset/
+        train/
+            images/
+            labels/
+```
 
-User training code should call `locdist.sync_gradients(model)` after
-`loss.backward()` and before `optimizer.step()`.
+Keep dataset paths stable inside the project. If your code expects
+`dataset/train.jsonl` or `dataset/train/images`, LDGCC will keep that relative
+path structure on the Worker side.
+
+## `requirements.txt`
+
+`requirements.txt` is optional, but in most real projects you should include
+it.
+
+Use it when your training code depends on packages beyond the LDGCC runtime
+stack.
+
+Typical examples:
+
+- `transformers`
+- `timm`
+- `Pillow`
+- `opencv-python`
+- `ultralytics`
+- dataset-specific utilities
+
+LDGCC already manages its own core runtime packages on Workers, including
+PyTorch and the communication/runtime dependencies. Your project
+`requirements.txt` should focus on the packages your training code needs.
+
+A simple example:
+
+```text
+timm==1.0.9
+Pillow==10.4.0
+scikit-learn==1.5.1
+```
+
+## Training Code Integration
+
+There are two main runtime integration styles.
+
+### 1. Simple sync style
+
+This is the easiest model to understand.
 
 ```python
 import locdist
@@ -266,18 +352,83 @@ for batch in dataloader:
     optimizer.step()
 ```
 
-Gradient clipping, optimizer choice, batch size, and gradient accumulation
-remain user training-code responsibilities.
+This keeps your training loop close to normal PyTorch code.
 
-## `ldgcc.yml`
+### 2. Prepared runtime style
 
-LDGCC reads `ldgcc.yml` or `ldgcc.yaml` from the training project root.
+This is the newer path used when you want the runtime to prepare the model and
+optimizer for the more advanced synchronization path.
 
-Full V1 example:
+```python
+import locdist
+
+model = locdist.prepare(model)
+optimizer = locdist.prepare_optimizer(optimizer)
+
+for batch in dataloader:
+    optimizer.zero_grad()
+    outputs = model(batch)
+    loss = outputs.loss
+    loss.backward()
+    optimizer.step()
+```
+
+Use the prepared path when your project is written for the newer overlap-aware
+runtime path.
+
+## Gradient Accumulation
+
+Gradient accumulation is still the training code's responsibility.
+
+LDGCC does not decide your accumulation schedule for you. You decide it in your
+training loop and, if you want the runtime to stay aligned with that behavior,
+you also declare it in `ldgcc.yaml`.
+
+### Example training-loop accumulation
+
+```python
+import locdist
+
+accum_steps = 4
+
+for step, batch in enumerate(dataloader, start=1):
+    outputs = model(batch)
+    loss = outputs.loss / accum_steps
+    loss.backward()
+
+    if step % accum_steps == 0:
+        locdist.sync_gradients(model)
+        optimizer.step()
+        optimizer.zero_grad()
+```
+
+### Matching config
+
+```yaml
+training:
+  gradient_accumulation_steps: 4
+```
+
+Why this matters:
+
+- your code decides **when** optimizer steps happen
+- `training.gradient_accumulation_steps` tells LDGCC runtime what accumulation
+  structure to expect
+
+If you use accumulation in code, keep the YAML value aligned with it.
+
+If you do not want gradient accumulation, keep your training loop normal and
+set the YAML value to `1`.
+
+## `ldgcc.yaml`
+
+LDGCC reads `ldgcc.yaml` or `ldgcc.yml` from the project root.
+
+### Full example
 
 ```yaml
 job:
-  name: movie-review-test
+  name: experiment-a
 
 entrypoint: train.py
 
@@ -289,77 +440,95 @@ workers:
   count: 2
 
 outputs:
-  - result.txt
+  - outputs/
   - checkpoints/
+
+training:
+  gradient_accumulation_steps: 4
 
 communication:
   precision: fp16
+  estimated_link_mbps: 300
   compression:
     type: topk
-    mode: global
+    mode: per_layer
+    selection: sampled_threshold
+    sample_rate: 1%
+    max_payload_factor: 1.5
     top_k: 5%
+    device: auto
     error_feedback: true
-    warmup_steps: 0
+    warmup_steps: 100
 ```
 
-### Required Fields
+## Required Fields
 
-`entrypoint`
+### `entrypoint`
 
-Relative path to the training file LDGCC runs on each Worker.
+The training file LDGCC runs on each Worker.
 
 ```yaml
 entrypoint: train.py
 ```
 
-`dataset.train`
+Rules:
 
-Relative path to the training dataset.
+- must be a relative path
+- must stay inside the project
+- must exist and be readable
+
+### `dataset.train`
+
+The dataset path used for training.
 
 ```yaml
 dataset:
   train: dataset/train.jsonl
 ```
 
-`workers.count`
+Rules:
 
-Exact number of Workers required for the job. LDGCC selects this many paired
-online Workers before preparing the job.
+- must be a relative path
+- must stay inside the project
+- must exist and be readable
+
+### `workers.count`
+
+The exact number of Workers required for the job.
 
 ```yaml
 workers:
   count: 2
 ```
 
-### Optional Fields
+LDGCC will only prepare the job if that many online Workers are available.
 
-`job.name`
+## Optional Fields
 
-Human-readable job name.
+### `job.name`
 
-Default: empty.
+Human-readable name for the job.
 
 ```yaml
 job:
-  name: experiment-a
+  name: food101-test
 ```
 
-`dataset.type`
+### `dataset.type`
 
 Supported values:
 
-```text
-jsonl
-image_folder
-yolo_split
+- `jsonl`
+- `image_folder`
+- `yolo_split`
+
+Examples:
+
+```yaml
+dataset:
+  train: dataset/train.jsonl
+  type: jsonl
 ```
-
-Default: `jsonl`.
-
-JSONL sharding is line-based. Image folder sharding expects class folders under
-the dataset path, similar to PyTorch `ImageFolder`. `yolo_split` supports a
-single YOLO train split directory containing paired `images/` and `labels/`
-subdirectories.
 
 ```yaml
 dataset:
@@ -373,195 +542,327 @@ dataset:
   type: yolo_split
 ```
 
-Expected `yolo_split` structure:
+YOLO split layout should look like:
 
 ```text
 dataset/train/
   images/
-    a.jpg
-    nested/b.jpg
   labels/
-    a.txt
-    nested/b.txt
 ```
 
-`outputs`
+### `outputs`
 
-Relative files or directories to collect after training. When omitted, LDGCC
-still collects setup/training logs.
+Relative files or directories to collect after the job finishes.
 
 ```yaml
 outputs:
-  - result.txt
-  - checkpoints/
+  - outputs/
+  - logs/
+  - result.json
 ```
 
-`communication.precision`
+If omitted, LDGCC still collects internal logs, but declared outputs are the
+normal way to ask for project artifacts back.
 
-Supported values:
+### `training.gradient_accumulation_steps`
 
-```text
-fp32
-fp16
-```
-
-Default: `fp32`.
-
-`communication.compression`
-
-Supported values:
-
-```text
-none
-topk
-```
-
-Default: `none`.
-
-Top-k defaults:
-
-```text
-mode: global
-top_k: 5%
-error_feedback: true
-warmup_steps: 0
-```
-
-Top-k modes:
-
-```text
-global
-    choose the strongest gradients across the whole model
-
-per_layer
-    choose the strongest gradients separately inside each parameter tensor
-```
-
-Example without compression:
+Tell LDGCC runtime how many accumulation microsteps belong to one optimizer
+step.
 
 ```yaml
-communication:
-  precision: fp32
-  compression:
-    type: none
+training:
+  gradient_accumulation_steps: 4
 ```
 
-Example with top-k:
+Rules:
+
+- should be a positive integer
+- keep it aligned with your training code
+- use `1` when you are not doing accumulation
+
+### `communication.precision`
+
+Supported values:
+
+- `fp32`
+- `fp16`
 
 ```yaml
 communication:
   precision: fp16
+```
+
+This changes the transmitted gradient payload precision, not your full training
+code automatically.
+
+### `communication.estimated_link_mbps`
+
+Optional estimate of link speed used for metric interpretation.
+
+```yaml
+communication:
+  estimated_link_mbps: 300
+```
+
+### `communication.compression.type`
+
+Supported values:
+
+- `none`
+- `topk`
+
+```yaml
+communication:
+  compression:
+    type: none
+```
+
+or
+
+```yaml
+communication:
+  compression:
+    type: topk
+```
+
+### `communication.compression.mode`
+
+Only used when `type: topk`.
+
+Supported values:
+
+- `global`
+- `per_layer`
+
+```yaml
+communication:
   compression:
     type: topk
     mode: per_layer
+```
+
+### `communication.compression.selection`
+
+Only used when `type: topk`.
+
+Supported values:
+
+- `exact`
+- `sampled_threshold`
+
+```yaml
+communication:
+  compression:
+    type: topk
+    selection: sampled_threshold
+```
+
+### `communication.compression.sample_rate`
+
+Only used with `selection: sampled_threshold`.
+
+```yaml
+communication:
+  compression:
+    type: topk
+    selection: sampled_threshold
+    sample_rate: 1%
+```
+
+### `communication.compression.max_payload_factor`
+
+Only used with sampled-threshold selection.
+
+```yaml
+communication:
+  compression:
+    type: topk
+    selection: sampled_threshold
+    max_payload_factor: 1.5
+```
+
+This lets the selection path overshoot the target payload in a controlled way
+before fallback logic is used.
+
+### `communication.compression.top_k`
+
+Top-k percentage.
+
+```yaml
+communication:
+  compression:
+    type: topk
     top_k: 5%
+```
+
+### `communication.compression.device`
+
+Supported values:
+
+- `auto`
+- `cpu`
+- `gpu`
+
+```yaml
+communication:
+  compression:
+    type: topk
+    device: auto
+```
+
+### `communication.compression.error_feedback`
+
+For top-k in the current design, this must be `true`.
+
+```yaml
+communication:
+  compression:
+    type: topk
     error_feedback: true
-    warmup_steps: 500
 ```
 
-In V1, `error_feedback` must be `true` when `compression.type` is `topk`.
+### `communication.compression.warmup_steps`
 
-## Things To Keep In Mind
+Number of sync steps to run before compression starts.
 
-All machines must be on the same LAN.
-
-Each Worker pairs with one Master at a time. Use `Reset Previous Connection` in
-the Worker App before pairing with a different Brain laptop.
-
-Worker setup creates a private `.venv` for each job. LDGCC installs its runtime
-dependencies automatically:
-
-```text
-torch
-grpcio
-protobuf
-numpy
+```yaml
+communication:
+  compression:
+    type: topk
+    warmup_steps: 100
 ```
 
-LDGCC V1 requires an NVIDIA CUDA Worker. If a Worker has no CUDA GPU or
-`nvidia-smi` is not available, setup fails clearly before training starts.
+## Project Requirements
 
-If the project contains `requirements.txt`, Workers also install it for the
-user's training code. LDGCC filters its own packages from `requirements.txt` so
-the user file does not overwrite the LDGCC CUDA PyTorch runtime.
+Your project should follow these rules:
 
-Every new job sends a fresh project package and dataset shard. This matters when
-the user changes code or data between runs.
+- `train.py` must exist
+- `ldgcc.yaml` must exist
+- dataset path in YAML must exist
+- output paths must be relative and stay inside the project
+- entrypoint and dataset paths must be relative
 
-If any required Worker disconnects during training, the job should be treated as
-failed and rerun from discovery/setup.
+If you include `requirements.txt`:
 
-For successful jobs, declared `outputs` must exist. Missing declared outputs
-cause result collection to fail.
+- Workers will install it
+- LDGCC still manages its own core runtime stack
+- the Worker setup process filters user requirements so the LDGCC runtime
+  environment is not accidentally overwritten
 
-## Build A Release
+## Worker Setup Behavior
 
-Maintainers can build release artifacts locally:
+When a Worker sets up a job, it will:
 
-```bash
-python3 tools/package_release.py
-```
+1. verify that an NVIDIA CUDA GPU exists
+2. unpack the workspace
+3. create or reuse a Python environment
+4. install CUDA PyTorch
+5. install LDGCC runtime requirements
+6. install your project requirements if present
 
-This creates:
+This means:
 
-```text
-dist/release/
-    ldgcc-studio.vsix
-    ldgcc-worker-app-linux-x64.zip
-    ldgcc-worker-app-windows-x64.zip
-    INSTALL.md
-    manifest.json
-    checksums.txt
-```
+- you do not need to manually create `.venv` on every Worker for each run
+- repeated runs may reuse cached environments when dependency shape matches
 
-Publish to GitHub Releases:
+## Notes And Limitations
 
-```bash
-gh auth login
-python3 tools/publish_github_release.py v0.1.0 --draft
-```
+Important current limitations:
 
-Use `--skip-build` if `dist/release/` is already built.
+- Brain laptop support is currently Linux-focused
+- Worker laptops must have NVIDIA CUDA GPUs
+- one Worker pairs with one Master at a time
+- one active job model is the normal path
+- LDGCC is designed for local LAN distributed training, not cloud-scale
+  orchestration
+
+## Contributor Guide
+
+There are two ways to read this repo, depending on what you want.
+
+### If you want to use LDGCC
+
+Start with this top-level README. It is written from the user perspective and
+covers installation, project setup, training integration, and config fields.
+
+### If you want to build or extend LDGCC
+
+Then move into the component READMEs:
+
+- [master/README.md](master/README.md)
+- [worker/README.md](worker/README.md)
+- [runtime/README.md](runtime/README.md)
+- [extension/README.md](extension/README.md)
+- [packaging/README.md](packaging/README.md)
+
+Those documents explain the internal design, request flows, algorithms,
+component responsibilities, and tradeoffs.
+
+## Developer Docs
+
+If you want to understand the implementation:
+
+- [master/README.md](master/README.md)
+- [worker/README.md](worker/README.md)
+- [runtime/README.md](runtime/README.md)
+
+These are the main technical deep dives for the distributed training path.
 
 ## Contributing
 
-LDGCC is open for contributions around:
+Contributions are welcome, especially around:
 
-```text
-dataset format support
-runtime performance
-training examples
-Worker App UX
-VS Code extension UX
-release packaging
-cross-platform validation
-documentation
-tests
-```
+- runtime performance
+- synchronization and compression behavior
+- dataset support
+- Worker app UX
+- Studio UX
+- packaging and install flow
+- cross-platform validation
+- documentation
+- tests
 
-Before opening a PR, run the relevant checks:
+Before opening a PR, run the relevant checks.
+
+### Master
 
 ```bash
-cd master && env GOCACHE=/tmp/locdist-go-cache go test ./...
-cd worker && env GOCACHE=/tmp/locdist-go-cache go test ./...
-cd extension && npm run compile
+cd master
+env GOCACHE=/tmp/locdist-go-cache go test ./...
+```
+
+### Worker
+
+```bash
+cd worker
+env GOCACHE=/tmp/locdist-go-cache go test ./...
+```
+
+### Extension
+
+```bash
+cd extension
+npm run compile
+```
+
+### Runtime / end-to-end checks
+
+```bash
 python3 tools/e2e_local_validation.py --timeout 180
 ```
 
-For release packaging changes:
+### Release packaging check
 
 ```bash
 python3 tools/package_release.py --out /tmp/ldgcc-release-check
 ```
 
-## Component Docs
+## Repo Guide
 
-Implementation notes live in component docs:
+If you are new to the repo:
 
-```text
-master/README.md
-worker/README.md
-runtime/README.md
-extension/README.md
-packaging/README.md
-```
+- start here for user setup and usage
+- read `master/README.md`, `worker/README.md`, and `runtime/README.md` for the
+  main technical design
+- then read `extension/README.md` and `packaging/README.md` for the supporting
+  parts around UI and release flow

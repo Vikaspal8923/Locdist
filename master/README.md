@@ -1,2338 +1,1383 @@
 # LDGCC Master
 
+This README is the developer-facing deep dive for the `master/` component.
+
+It is written for two audiences:
+
+- contributors who want to understand how the Master works internally
+- interview/review readers who want to understand the design choices, control
+  flow, and tradeoffs behind the Master service
+
+The top-level [README.md](../README.md) is the user-facing overview. This file
+describes the current Master codebase as it exists today.
+
 ## Overview
 
-The Master is the central coordination component of LDGCC.
+The Master is the control-plane center of LDGCC.
 
-It runs on the Brain Laptop and owns all cluster orchestration responsibilities.
+It runs on the Brain laptop and is responsible for coordinating the entire
+lifecycle of a distributed training job:
 
-Master is the single source of truth for:
+- discovering and pairing Workers
+- tracking Worker state and availability
+- validating the project spec
+- selecting Workers for a job
+- sharding the dataset
+- preparing per-worker job state
+- coordinating workspace delivery, setup, and training
+- synchronizing and aggregating gradients
+- collecting outputs and final job results
 
-* Worker Discovery
-* Worker Registration
-* Scheduling
-* Dataset Sharding
-* Workspace Distribution
-* Job Orchestration
-* Gradient Aggregation
-* Output Collection
+The Master is intentionally centralized. Workers do not communicate directly
+with each other, and the Python runtime does not talk directly to the
+aggregator. That makes the current LAN-first design easier to reason about,
+easier to debug, and easier to expose through the Studio UI.
 
-Workers never communicate directly with each other.
+## Responsibilities
 
-All cluster communication flows through the Master.
+The Master owns the following responsibilities in the current codebase.
+These responsibilities are split across control-plane state, job lifecycle
+coordination, and data-plane synchronization. Together, they make the Master
+the system component that decides what should happen, when it should happen,
+and whether the cluster is still in a valid state.
 
----
+### Control plane
 
-# Master V1 Architecture
+The control plane is the part of the Master that manages identity, state, and
+coordination rather than training data itself. If the UI needs to know which
+Workers exist, which ones are paired, or whether a job is active, that answer
+comes from the Master control plane.
 
-LDGCC V1 follows a coordinator-based architecture.
+- Worker discovery state
+- pairing lifecycle
+- Worker registration and heartbeat validation
+- online/stale/offline Worker tracking
+- active job ownership
 
-```text
-Worker A
-    │
-    ▼
+### Job preparation
 
-Worker B
-    │
-    ▼
+Job preparation is the stage where a user project is turned into a concrete
+distributed execution plan. In this phase, the Master stops thinking in terms
+of "a folder on disk" and starts thinking in terms of Workers, shards,
+assignments, and runtime settings.
 
-Worker C
-    │
-    ▼
+- parse and validate `ldgcc.yaml`
+- choose the Workers for a job
+- create a new job id
+- shard the dataset according to dataset type
+- record Worker assignments and shard assignments
 
-      Master
+### Training orchestration
 
-    ▲   ▲   ▲
+Training orchestration is the phase control logic around setup, launch,
+stopping, cleanup, and recovery. The Master does not run the user's Python
+code itself, but it decides when Workers are allowed to move from one lifecycle
+phase to the next.
 
-No Worker ↔ Worker Communication
-```
+- drive prepare -> setup -> arm -> release -> running -> stop/cleanup flows
+- verify that all assigned Workers are ready before training starts
+- track per-worker setup state and run state
 
-All synchronization occurs through the Master.
+### Data plane coordination
 
----
+The data plane is the gradient synchronization path used while training is
+already running. This is where the Master stops acting like a deployment
+orchestrator and starts acting like a synchronization service.
 
-# Future Master Components
+- accept aggregated gradient requests through gRPC
+- apply barrier-style aggregation across Workers
+- support whole-gradient, chunked, and grouped/batched synchronization paths
 
-The following components represent the long-term Master architecture.
+### Results and recovery
 
-Some are not implemented yet.
+Results and recovery cover everything that happens after or around execution:
+collecting outputs, recording summaries, reacting to failure, and returning the
+system to a reusable state for the next job.
 
-```text
-master/
+- collect result manifests and files
+- archive final summaries
+- reset job state after completion or abort
+- propagate failure and cancellation state across the system
 
-├── discovery/
-├── scheduler/
-├── sharder/
-├── worker-manager/
-├── orchestrator/
-├── aggregator/
-└── storage/
-```
+## System Position
 
----
+The Master sits between the user-facing Studio, Worker services, and the
+runtime traffic coming from training processes.
 
-## Discovery
-
-Responsibilities:
-
-* Discover available workers
-* Detect worker availability
-* Maintain worker presence information
-
----
-
-## Scheduler
-
-Responsibilities:
-
-* Select workers for jobs
-* Allocate dataset shards
-* Determine training assignments
-
----
-
-## Sharder
-
-Responsibilities:
-
-* Read datasets
-* Count samples
-* Create dataset shards
-* Generate shard assignments
-
----
-
-## Worker Manager
-
-Responsibilities:
-
-* Register workers
-* Track worker state
-* Maintain worker connections
-* Handle heartbeats
-
----
-
-## Orchestrator
-
-Responsibilities:
-
-* Start jobs
-* Coordinate phases
-* Manage training lifecycle
-* Handle job completion
-
----
-
-## Aggregator
-
-Responsibilities:
-
-* Receive gradients
-* Perform barrier synchronization
-* Aggregate gradients
-* Return aggregated results
-
----
-
-## Storage
-
-Responsibilities:
-
-* Job metadata
-* Worker metadata
-* Checkpoints
-* Artifacts
-* Logs
-
----
-
-# Master Architecture Decisions
-
-## Decision 1
-
-Master exposes:
+In practical terms, the Master is the point where all system-wide knowledge is
+combined. Studio knows what the user wants to do, Workers know what each
+machine is doing locally, and runtimes know what gradients are ready right now.
+The Master is the only component that sees enough of the whole picture to
+coordinate the cluster safely.
 
 ```text
-ONE external gRPC server
+Studio / UI
+    -> master/app
+    -> master/orchestrator
+    -> master/jobs + master/workers
+
+Worker service
+    -> master/grpc
+    -> master/coordinator
+    -> master/aggregator + worker state updates
+
+Python runtime
+    -> local Worker service
+    -> Master gRPC API
+    -> aggregator/coordinator
 ```
 
----
-
-## Decision 2
-
-Workers connect to:
+The important architectural rule is:
 
 ```text
-Master
+Workers do not coordinate with each other directly.
+All shared synchronization state lives in the Master.
 ```
 
-NOT:
+That gives the Master three roles at once:
 
-```text
-Aggregator
-Scheduler
-Worker Manager
-Orchestrator
-```
+- source of truth for cluster state
+- orchestrator for training lifecycle
+- barrier point for gradient synchronization
 
----
+## Request And Training Flows
 
-## Decision 3
+The Master has two big classes of flow:
 
-Worker maintains:
+- control-plane flows triggered by the Studio/app
+- data-plane flows triggered by Worker runtime traffic
 
-```text
-ONE persistent connection
-```
+These flows matter because the Master is not just a passive server. It moves
+jobs through stages, validates preconditions at each stage, and also sits in
+the hot path for synchronization once training is underway.
 
-to Master.
+Another useful way to think about the Master is this:
 
-Worker does not maintain separate connections for:
+- before training starts, it behaves like an orchestrator
+- while training is running, it behaves like a synchronization service
+- after training ends, it behaves like a result and cleanup controller
 
-* Aggregation
-* Registration
-* Status
-* Logs
-* Heartbeats
+### 1. Discovery and pairing flow
 
----
+Discovery and pairing answer two different questions. Discovery asks "what
+Workers are visible on the LAN right now?" Pairing asks "which of those
+Workers has this Master been allowed to control?"
 
-## Decision 4
+1. `discovery/` finds Workers on the LAN.
+2. `app.Controller` exposes them to the UI.
+3. `pairing.Service` sends/receives pairing requests.
+4. `workers.Manager` persists pairing credentials.
+5. paired Workers later authenticate registration and heartbeats using the
+   stored Master id and pairing token.
 
-Aggregator is an internal Master component.
+Important idea:
 
-Correct architecture:
+- discovery is about visibility
+- pairing is about trust and control
 
-```text
-Worker
-    ↓
-Master Server
-    ↓
-Aggregator Component
-```
+The Master keeps those as separate phases so that seeing a Worker on the
+network does not automatically mean the Master is allowed to run jobs on it.
 
-NOT:
+### 2. Worker registration and heartbeat flow
 
-```text
-Worker
-    ↓
-Standalone Aggregator
-```
+Registration and heartbeats are the path from "paired Worker" to "trusted,
+currently-active Worker." This is where the Master turns pairing credentials
+into live runtime state.
 
----
+1. Worker calls `RegisterWorker`.
+2. `grpc.MasterServer` forwards to `coordinator.Coordinator`.
+3. `workers.Manager.Register()` validates pairing credentials and records the
+   Worker as online.
+4. Worker sends `Heartbeat`.
+5. `workers.Manager.Heartbeat()` updates status, job id, availability, and
+   `LastSeen`.
+6. periodic sweeps mark Workers stale or remove them entirely.
 
-# Training Lifecycle
+Important idea:
 
-## Before Training
+- pairing proves that the Worker is allowed
+- registration proves that the Worker is present
+- heartbeat proves that the Worker is still alive
 
-Master performs:
+That three-step model gives the Master a cleaner cluster state than treating
+every seen machine as immediately usable.
 
-```text
-Discover Workers
-    ↓
+### 3. Prepare job flow
 
-Accept Workers
-    ↓
+Prepare is the most important pre-training phase in the control path. It is
+the point where the Master freezes the current project configuration, selects
+actual machines, shards the dataset, and creates the active job record that all
+later phases depend on.
 
-Read Dataset
-    ↓
+1. Studio triggers prepare through `app.Controller`.
+2. `orchestrator.Preparer.Prepare(projectRoot)` starts the flow.
+3. `project.LoadSpec()` reads and validates `ldgcc.yaml`.
+4. `scheduler.SelectOnline()` deterministically chooses online Workers.
+5. `shardDataset(...)` dispatches to the dataset-specific sharder:
+   - `jsonl`
+   - `image_folder`
+   - `yolo_split`
+6. `jobs.Manager.PrepareJob()` stores:
+   - job metadata
+   - Worker assignments
+   - shard assignments
+   - communication settings
+   - training settings
 
-Create Dataset Shards
-    ↓
+At the end of prepare, the Master has a fully defined job plan.
 
-Package Project
-    ↓
+In practice, prepare turns a user project into a distributed execution record.
+After this point, the Master knows:
 
-Generate Configurations
-    ↓
+- which Workers are in the job
+- which shard each Worker should receive
+- which entrypoint should run
+- which outputs should come back
+- which communication/training settings belong to this run
 
-Send Workspaces
-    ↓
+This is one of the most important boundaries in the design, because later
+stages should not need to rediscover this information from scratch.
 
-Start Training
-```
+### 4. Setup flow
 
-Aggregator is inactive.
+Setup takes the job plan created during prepare and turns it into runnable
+Worker state. A Worker is not considered ready just because it was selected;
+it must receive the workspace, the shard, and complete environment setup.
 
----
+The setup path actually has two closely related pieces:
 
-## During Training
+- distribution
+- Worker setup
 
-```text
-loss.backward()
-      ↓
+The distribution path:
 
-Runtime
-      ↓
+1. the Master builds a Worker-specific workspace package
+2. the package includes project files, shard path information, outputs, and
+   runtime config inputs
+3. `Distributor` uploads that package to the Worker in streamed chunks
+4. the Worker returns a prepared workspace path
 
-Worker Service
-      ↓
+The setup path:
 
-Master Server
-      ↓
+1. `SetupCoordinator` contacts each assigned Worker
+2. the Master marks that Worker as `setting_up`
+3. the Worker runs its setup phase remotely
+4. the returned setup status is written back into the active job state
+5. failed setups can be retried for all failed Workers or for one specific
+   Worker
 
-Aggregator Component
-      ↓
+Training cannot start until `jobs.Manager.AllWorkersReady(...)` returns true.
 
-Master Server
-      ↓
+Important idea:
 
-Worker Service
-      ↓
+- distribute answers "did the Worker receive the project and shard?"
+- setup answers "is the Worker now ready to run the training process?"
 
-Runtime
-      ↓
+That split is useful because transfer problems and environment problems are not
+the same thing, and the Master tracks them separately.
 
-optimizer.step()
-```
+### 5. Training start flow
 
-Aggregator is active only during synchronization.
+Training start is intentionally guarded. The Master does not allow a job to
+enter `running` state until all assigned Workers are ready, online, and able to
+accept the coordinated launch commands.
 
----
+The current training start path in `orchestrator/training.go` is:
 
-## After Training
+1. load current job
+2. verify job is `prepared`
+3. verify all assigned Workers are ready
+4. verify all assigned Workers are still online
+5. send `ArmJob` to all Workers
+6. if arm succeeds, send `ReleaseJob` to all Workers
+7. set job status to `running`
 
-Master performs:
+This split arm/release model gives the Master a lightweight coordinated launch
+mechanism instead of letting each Worker begin as soon as it receives a start
+request.
 
-```text
-Collect Outputs
-    ↓
+The practical meaning of the two commands is:
 
-Collect Logs
-    ↓
+- `ArmJob`: get ready, but do not start actual execution yet
+- `ReleaseJob`: start for real now
 
-Collect Artifacts
-    ↓
+This makes the launch more coordinated than a single "start" RPC. If one Worker
+cannot even arm successfully, the Master can stop early instead of letting some
+Workers begin while others never enter the run.
 
-Mark Job Completed
-```
+### 6. One gradient synchronization round
 
-Aggregator is inactive.
+This is the core runtime path once distributed training is active. At this
+stage the Master is no longer just coordinating phases; it is enforcing a round
+boundary so that all participating Workers see a consistent aggregation step.
 
----
+At runtime, gradient synchronization flows through gRPC:
 
-# Master Communication Model
+1. runtime on Worker A sends gradients
+2. Worker service forwards to Master
+3. `grpc.MasterServer` forwards to `coordinator.Coordinator`
+4. coordinator routes the request to `aggregator.Service`
+5. aggregator stores the submission for the current round
+6. once the expected Worker count is reached, barrier is satisfied
+7. gradients are aggregated
+8. responses are sent back to each Worker
+9. round state advances
 
-```text
-Runtime
-    ↓
+The current code supports multiple synchronization shapes:
 
-Worker Service
-    ↓
+- full gradient submissions
+- single gradient chunks
+- chunk batches
+- streamed batch responses
+- grouped/per-layer metadata for more structured synchronization
 
-Master Server
-    ↓
+### 7. Stop, cleanup, and results flow
 
-Internal Components
+Stopping and cleanup are not just "nice to have" control actions. In a
+distributed system they are part of correctness, because a partially-running
+cluster can leave stale job state, stale outputs, or blocked synchronization
+waiters behind.
 
-    ├── Aggregator
-    ├── Worker Manager
-    ├── Scheduler
-    ├── Orchestrator
-    └── Storage
-```
+There are really three related flows here:
 
-Workers never communicate directly with internal Master components.
+- stop/cancel
+- monitor/finalize
+- result collection
 
----
+The stop/cancel flow:
 
-# Current Implementation Status
+1. the Master sends `StopJob` to Workers when the user cancels or when cleanup
+   is needed after launch failure
+2. the job status is moved toward `cancelled` or `failed`
 
-Implemented:
+The monitoring/finalize flow:
 
-```text
-✓ Shared Protocol Integration
+1. `LifecycleCoordinator.Monitor(...)` polls Worker job status
+2. if a Worker disconnects, fails, times out, or returns a bad final state, the
+   Master finalizes the job as failed
+3. if all Workers complete successfully, the Master finalizes the job as
+   finished
+4. during finalize, the Master may abort aggregator waiters, stop online
+   Workers, collect results, run cleanup commands, and archive the final
+   summary
 
-✓ Identity Aggregation
+The result collection flow:
 
-✓ gRPC Server
+1. `ResultCollector` asks each Worker for a result manifest
+2. the Master validates file paths and size limits
+3. files are downloaded and checksum-verified
+4. Master-side sync metrics are copied into the result bundle when present
+5. `summary.json` is written for the finished job
 
-✓ Configuration Loading
+There is also an important retry-aware detail:
 
-✓ Validation Layer
+- for some failed runs, the lifecycle logic can return the job from `running`
+  back to `prepared` while keeping a summary, so retry/setup flows still make
+  sense without rebuilding everything from zero
 
-✓ Unit Tests
+If a job fails partway through, the lifecycle code tries to return the system
+to a known state as cleanly as it can rather than just dropping the active job
+record and hoping the next run starts cleanly.
 
-✓ Integration Tests
+## Internal Components
 
-✓ Real Gradient Aggregation
+This section maps the current `master/` folders to responsibilities in the
+running system.
 
-✓ Barrier Synchronization
+The packages under `master/` are not arbitrary folders. They roughly follow
+the system boundaries between transport adapters, control-plane state,
+orchestration logic, and synchronization logic.
 
-✓ Aggregation Rounds
-```
+### `app/`
 
-Not Implemented:
+Owns the app-facing control layer used by Studio.
+This is the user-control entrypoint for the Master side of the system.
 
-```text
-✗ Orchestration
+- `controller.go`: top-level UI/backend controller; coordinates actions like
+  pairing, network checks, and job operations
+- `controller.go` is also where several cross-subsystem flows are stitched
+  together from the Studio side, so it is a good file for understanding the
+  operational "verbs" the Master supports
+- `server.go`: HTTP/API server wiring for the app layer
+- `server.go` defines the loopback-only app server, REST-style endpoints, SSE
+  event streaming, authentication checks, and the mapping from UI commands to
+  controller actions
+- `events.go`: event hub for streaming state changes to the UI
+- `events.go` is what allows Studio to react to state transitions without
+  polling every subsystem independently
+- `api_test.go`: tests for app-facing behavior
 
-✗ Workspace Distribution
+`app/` is the control entrypoint for user actions. It should stay thin and
+delegate real state transitions to lower-level managers/coordinators.
 
-✗ Worker Environment Setup
+### `grpc/`
 
-✗ Worker Execution
+Owns the gRPC surface used by Workers.
+This package is the Worker-facing network edge of the Master.
 
-✗ Artifact Collection
+- `server.go`: gRPC server wiring
+- `handlers.go`: `WorkerBridge` RPC handlers that forward into the coordinator
+- `handlers.go` is intentionally simple: it validates the transport boundary
+  shape and hands requests off instead of embedding orchestration logic in RPC
+  methods
 
-✗ VS Code Extension UI
-```
+`grpc/` should not contain business logic. It is the network adapter layer.
 
----
+### `coordinator/`
 
-# Master Phase 1
+Owns cross-component request routing for Worker-originated RPCs.
+This package is the central handoff layer between transport and business logic.
 
-## Goal
+- `coordinator.go`: central service that wires together aggregator, worker
+  management, job management, and orchestration-facing calls
+- `coordinator.go` is especially important for understanding the runtime-facing
+  sync path because it validates active job and Worker assignment before
+  delegating to the aggregator
+- the coordinator is also where Worker lifecycle RPCs like register, heartbeat,
+  and unpair are normalized into calls on the underlying managers
 
-Master Phase 1 exists to validate:
+This is the bridge between transport handlers and core services.
 
-```text
-Worker
-    ↓
-Master
-    ↓
-Aggregator
-    ↓
-Master
-    ↓
-Worker
-```
+### `aggregator/`
 
-communication using Identity Aggregation.
+Owns synchronized gradient aggregation state.
+This package is the distributed synchronization core of the Master.
 
-No distributed-training logic exists yet.
+- `service.go`: owns round lifecycle, current round state, barrier checks,
+  reset behavior, abort behavior, chunk/group round bookkeeping, and condition
+  variable signaling for blocked waiters
+- `aggregate.go`: owns the actual aggregation logic once the required Worker
+  inputs have been collected
+- `chunk.go`: extends synchronization beyond full-gradient submissions into
+  chunked and grouped synchronization flows
+- `state.go`: defines the state structures used to represent rounds, chunk
+  rounds, grouped rounds, and pending/completed synchronization bookkeeping
+- `service_test.go`: behavior tests
 
----
+This is one of the most important subsystems in the Master because it is where
+distributed correctness and runtime synchronization pressure meet.
 
-## Identity Aggregation
+### `discovery/`
 
-Phase 1 uses:
+Owns Worker discovery state and browsing.
+This package answers the question: "what Worker instances can the Brain laptop
+currently see?"
 
-```text
-G = G
-```
+- `browser.go`: LAN discovery browser
+- `browser.go` is where mDNS/network browsing behavior is implemented
+- `registry.go`: in-memory discovered Worker registry
+- `registry.go` answers "what has been seen recently?" without yet implying
+  authenticated participation
+- `service.go`: discovery service orchestration
+- `state.go`: discovery state model
+- tests validate presence handling and registry updates
 
-where:
+### `pairing/`
 
-```text
-Input Gradient
-=
-Output Gradient
-```
+Owns user-approved Worker pairing.
+This package answers the question: "which discovered Workers are allowed to be
+controlled by this Master?"
 
-No mathematical aggregation occurs.
+- `service.go`: pairing workflow
+- `service.go` owns the approval handshake that turns a discovered Worker into
+  a machine this Master is allowed to control
+- `network.go`: network-related pairing helpers
 
-Purpose:
+Pairing is distinct from discovery: discovery says "this Worker exists";
+pairing says "this Master is allowed to control it."
 
-* Validate communication
-* Validate protobuf contracts
-* Validate gRPC flow
-* Validate response handling
+### `workers/`
 
----
+Owns authenticated Worker state.
+This package is the live registry of Workers that have moved past discovery and
+pairing into actual runtime participation.
 
-## Phase 1 Execution Flow
+- `manager.go`: register, heartbeat, sweep stale Workers, update status,
+  reserve/revoke pairing, and enforce pairing-token authentication
+- `state.go`: Worker state model, including availability and current runtime
+  status fields
+- `store.go`: persistent pairing store used so the Master can remember
+  pairings across restarts
+- tests cover store and manager behavior
 
-```text
-Worker
-    ↓
+This package is the source of truth for which Workers are currently known,
+paired, online, stale, or removed.
 
-GradientSubmission
+### `jobs/`
 
-    ↓
+Owns active job state and archived summaries.
+This package is the source of truth for the current distributed job.
 
-Master Server
+- `manager.go`: one-active-job manager; owns prepare/start/update/archive/reset
+  behavior and tracks per-worker setup/run state maps
+- `state.go`: defines `JobState`, `Summary`, `WorkerAssignment`,
+  `ShardAssignment`, `WorkerSetup`, and `WorkerRun`, which together form the
+  Master-side distributed job model
+- `state.go` also customizes JSON serialization so protobuf enum-backed setup
+  and run states are readable in app/API outputs
 
-    ↓
+The design is intentionally simple: one active job at a time, with the last
+summary retained after reset.
 
-Aggregator Service
+### `orchestrator/`
 
-    ↓
+Owns job lifecycle coordination.
+This package contains most of the system's operational workflow logic.
 
-Identity Aggregation
+- `prepare.go`: spec load, Worker selection, shard creation, and initial
+  `JobState` construction
+- `distribute.go`: workspace/package delivery flow from Brain to Workers
+- `setup.go`: Worker-side environment and workspace setup coordination
+- `training.go`: arm/release/stop/status/cleanup command fanout across assigned
+  Workers
+- `lifecycle.go`: lifecycle recovery and transition logic when a job ends,
+  fails, or needs cleanup
+- `results.go`: manifest retrieval, file download, checksum verification,
+  result directory construction, and summary writing
+- tests validate lifecycle behavior and failure handling
 
-    ↓
+`orchestrator/` is where most end-to-end operational logic lives.
 
-AggregatedGradientResponse
+### `scheduler/`
 
-    ↓
+Owns Worker selection.
+This package decides which available Workers become part of a specific job.
 
-Worker
-```
+- `scheduler.go`: deterministic selection of online Workers
+- the selection algorithm is deliberately simple enough to audit mentally, which
+  matters for debugging and repeatability
 
----
+The current algorithm is intentionally conservative: select online Workers,
+sort by Worker id, take the first `N`.
+
+### `sharder/`
+
+Owns dataset splitting.
+This package is where dataset semantics become distributed-execution semantics.
+
+- `jsonl.go`: line-based sharding for text-style datasets
+- `image_folder.go`: class-folder-aware sharding for `ImageFolder`-style image
+  datasets
+- `yolo_split.go`: image/label paired sharding for YOLO split datasets
+
+Each sharder converts the user dataset into per-worker assignments while
+preserving the expected runtime path semantics.
+
+### `packager/`
+
+Owns project packaging before workspace distribution.
+This package is responsible for turning a user project into something that can
+be shipped to Workers reproducibly.
+
+- `package.go`: package build logic
+- `package.go` is responsible for building the transferable project payload
+  that Workers receive before setup/training
+- tests validate packaging behavior
+
+### `project/`
+
+Owns `ldgcc.yaml` parsing and validation.
+This package defines the contract between the training project and the Master.
+
+- `spec.go`: config schema, validation, supported dataset and communication
+  fields
+- `spec.go` is one of the highest-leverage files in the Master because invalid
+  project assumptions are stopped here before they become broken distributed
+  jobs
+- tests cover supported config shapes
+
+This package is important because it defines the contract between user projects
+and the Master.
+
+### `metrics/`
+
+Owns sync-related metrics helpers.
+This package supports observability around synchronization behavior.
+
+- `sync.go`: metrics support for synchronization reporting
+- this package is small, but it matters because synchronization overhead is one
+  of the key things users and developers need to inspect in distributed runs
+
+### `tests/`
+
+Higher-level cross-package integration coverage:
+These tests matter because many important Master behaviors only show up when
+multiple packages are wired together.
+
+- aggregator behavior
+- handlers
+- worker paths
+- integration scenarios
+- these tests act like the closest thing to a system contract for the Master,
+  because they verify that the packages behave correctly when composed together
 
 ## Folder Structure
 
+Current `master/` tree at a high level:
+
 ```text
 master/
+  aggregator/     gradient round state and aggregation logic
+  app/            Studio-facing controller and API/event layer
+  cmd/master/     executable entrypoint
+  coordinator/    bridges RPC handlers to core services
+  discovery/      LAN Worker discovery
+  generated/      generated protobuf bindings
+  grpc/           gRPC server and WorkerBridge handlers
+  internal/       config and internal helper packages
+  jobs/           active job state and archived summaries
+  metrics/        sync metrics helpers
+  orchestrator/   prepare/setup/train/results lifecycle
+  packager/       project packaging
+  pairing/        pairing workflow
+  project/        ldgcc.yaml parsing/validation
+  scheduler/      Worker selection
+  sharder/        dataset splitting implementations
+  tests/          higher-level integration tests
+  workers/        authenticated Worker state and pairing store
+```
+
+Files worth knowing for a deep dive:
+
+If you only have a short amount of time to study the Master, these files give
+the best return because they show the primary state transitions and service
+boundaries.
+
+- `app/controller.go`: best first file for understanding control flow
+- `app/server.go`: best file for understanding how Studio/API commands are
+  exposed and authenticated
+- `orchestrator/prepare.go`: where job creation really starts
+- `orchestrator/training.go`: how training is coordinated
+- `orchestrator/results.go`: where output collection, verification, and summary
+  materialization happen
+- `jobs/manager.go`: active job state transitions
+- `jobs/state.go`: the shape of the persisted/in-memory job and summary model
+- `workers/manager.go`: Worker registration/heartbeat logic
+- `coordinator/coordinator.go`: runtime-facing validation and aggregator routing
+- `aggregator/service.go`: round lifecycle and barrier state
+- `grpc/handlers.go`: Worker-facing RPC entrypoints
+- `project/spec.go`: project contract and validation rules
 
-├── README.md
-│
-├── go.mod
-├── master_config.json
-│
-├── cmd/
-│   └── master/
-│       └── main.go
-│
-├── grpc/
-│   ├── handlers.go
-│   └── server.go
-│
-├── aggregator/
-│   ├── aggregate.go
-│   ├── service.go
-│   └── state.go
-│
-├── coordinator/
-│   └── coordinator.go
-│
-├── jobs/
-│   ├── manager.go
-│   └── state.go
-│
-├── internal/
-│   ├── config/
-│   │   └── config.go
-│   │
-│   └── errors/
-│       └── errors.go
-│
-├── generated/
-│
-└── tests/
-```
-
----
-
-## File Responsibilities
-
-### internal/errors/errors.go
-
-Contains request validation errors.
-
-Examples:
-
-* Invalid runtime version
-* Missing job ID
-* Missing worker ID
-* Missing chunks
-
----
-
-### internal/config/config.go
-
-Loads:
-
-```text
-master_config.json
-```
-
-Provides:
-
-```go
-Config
-```
-
-Current configuration:
-
-```json
-{
-  "grpc_port": "60051"
-}
-```
-
----
-
-### aggregator/aggregate.go
-
-Core business logic.
-
-Responsibilities:
-
-* Request validation
-* Identity aggregation
-* Response construction
-
-Validation rules:
-
-```text
-runtime_version > 0
-
-job_id != ""
-
-worker_id != ""
-
-chunks != nil
-```
-
----
-
-### grpc/handlers.go
-
-Implements:
-
-```text
-SynchronizeGradients()
-```
-
-Responsibilities:
-
-* Receive request
-* Call Aggregator
-* Return response
-
-Contains no business logic.
-
----
-
-### grpc/server.go
-
-Responsibilities:
-
-* Create listener
-* Create gRPC server
-* Register WorkerBridge service
-* Start serving
-
----
-
-### cmd/master/main.go
-
-Responsibilities:
-
-* Load configuration
-* Create Aggregator
-* Create gRPC server
-* Start service
-* Graceful shutdown
-
----
-
-### generated/
-
-Generated protobuf code.
-
-Produced from:
-
-```text
-protocol/gradient.proto
-```
-
----
-
-# Testing
-
-Master Phase 1 includes three validation levels.
-
----
-
-## aggregator_test.go
-
-Validates:
-
-* Request validation
-* Identity aggregation
-* Response construction
-
-without gRPC.
-
----
-
-## handler_test.go
-
-Validates:
-
-```text
-Handler
-    ↓
-Aggregator
-```
-
-without networking.
-
----
-
-## integration_test.go
-
-Validates:
-
-```text
-Client
-    ↓
-gRPC
-    ↓
-Master
-    ↓
-Aggregator
-    ↓
-gRPC
-    ↓
-Client
-```
-
-using a real gRPC server.
-
----
-
-# Startup Validation
-
-Validated using:
-
-```bash
-go run cmd/master/main.go
-```
-
-Expected:
-
-```text
-master service listening on port 60051
-```
-
-This validates:
-
-* Config loading
-* Aggregator creation
-* Server registration
-* Port binding
-* Startup path
-
----
-
-# Phase 1 Result
-
-Master Phase 1 successfully validates:
-
-```text
-Worker
-    ↓
-Master Server
-    ↓
-Aggregator Service
-    ↓
-Master Server
-    ↓
-Worker
-```
-
-using Identity Aggregation.
-
-This establishes the Worker ↔ Master contract.
-
----
-
-# Master Phase 2
-
-## Goal
-
-Master Phase 2 upgrades the Master Aggregator from Identity Aggregation to real distributed gradient synchronization.
-
-Phase 2 is intentionally narrow.
-
-It implements:
-
-* Gradient storage for the current aggregation round
-* Barrier synchronization
-* Multi-worker gradient collection
-* Duplicate worker submission replacement
-* Gradient averaging
-* Aggregation round advancement
-* Round reset after all waiting workers receive the result
-
-It does not implement:
-
-* Worker discovery
-* Worker registration
-* Scheduling
-* Dataset sharding
-* Workspace distribution
-* Training orchestration
-* Fault tolerance
-* Retry logic
-* Timeouts
-* Checkpointing
-
----
-
-## Phase 2 Architecture
-
-Phase 2 follows the frozen Master responsibility split:
-
-```text
-Worker
-    ↓
-Master gRPC Handler
-    ↓
-Coordinator
-    ↓
-Job Manager
-    ↓
-Aggregator
-```
-
-The responsibilities are separated as follows.
-
-### Job Manager
-
-Owns job metadata only.
-
-Responsibilities:
-
-* Current job
-* Expected worker count
-* Job status
-
-The Job Manager does not:
-
-* Store gradients
-* Track aggregation rounds
-* Average tensors
-* Synchronize workers
-* Manage barriers
-
----
-
-### Coordinator
-
-Owns request workflow only.
-
-For gradient synchronization:
-
-```text
-Receive request
-    ↓
-CurrentJob()
-    ↓
-Aggregator.Aggregate(request, expectedWorkers)
-```
-
-The Coordinator does not:
-
-* Store gradients
-* Average gradients
-* Track per-round state
-* Implement barrier logic
-
----
-
-### Aggregator
-
-Owns all distributed synchronization state.
-
-Responsibilities:
-
-* Current aggregation round
-* Per-round gradient storage
-* Barrier synchronization
-* Duplicate worker replacement
-* Gradient averaging
-* Shared response construction
-* Round reset
-
-The Aggregator does not:
-
-* Create jobs
-* Own job metadata
-* Register workers
-* Schedule workers
-* Start or stop training
-
----
-
-## Phase 2 Gradient Flow
-
-```text
-Runtime
-    ↓
-Worker Service
-    ↓
-Master gRPC Handler
-    ↓
-Coordinator
-    ↓
-Job Manager
-    ↓
-Aggregator
-    ↓
-Barrier Wait
-    ↓
-Average Gradients
-    ↓
-Return AggregatedGradientResponse
-    ↓
-Worker Service
-    ↓
-Runtime
-```
-
-During aggregation, every worker waits until all expected workers submit for the current round.
-
-Example with two workers:
-
-```text
-worker-a submits gradients
-    ↓
-waits
-
-worker-b submits gradients
-    ↓
-barrier opens
-    ↓
-average gradients
-    ↓
-worker-a and worker-b receive identical result
-```
-
----
-
-## Duplicate Worker Submission
-
-If the same worker submits more than once in the same round:
-
-```text
-currentRound.Gradients[worker_id] = latestSubmission
-```
-
-The latest submission replaces the older one.
-
-The worker count does not increase.
-
----
-
-## Gradient Averaging
-
-For every matching gradient chunk:
-
-```text
-Average = (G1 + G2 + ... + Gn) / N
-```
-
-where:
-
-```text
-N = expected worker count
-```
-
-All waiting workers receive the exact same averaged gradient chunks.
-
-Supported runtime dtypes:
-
-* torch.float16
-* torch.float32
-* torch.float64
-* torch.bfloat16
-
----
-
-## Aggregation Rounds
-
-The Aggregator starts at round 1.
-
-After a round completes:
-
-```text
-round 1
-    ↓
-all workers receive response
-    ↓
-clear round state
-    ↓
-round 2
-```
-
-The completed round number is returned in:
-
-```text
-AggregatedGradientResponse.aggregation_round
-```
-
----
-
-## Phase 2 File Responsibilities
-
-### aggregator/state.go
-
-Defines per-round Aggregator state.
-
-Contains:
-
-* Round number
-* Worker gradient submissions
-* Completed response
-* Aggregation error
-* Waiting receiver count
-
----
-
-### aggregator/service.go
-
-Defines the Aggregator service and synchronization primitives.
-
-Responsibilities:
-
-* Create Aggregator service
-* Own mutex and condition variable
-* Store gradients by worker ID
-* Count received workers
-* Check barrier status
-* Reset completed rounds
-
----
-
-### aggregator/aggregate.go
-
-Core Phase 2 aggregation logic.
-
-Responsibilities:
-
-* Validate incoming gradient submissions
-* Store current-round gradients
-* Block workers at the barrier
-* Replace duplicate worker submissions
-* Average gradient bytes by dtype
-* Return identical aggregated responses
-* Advance/reset aggregation rounds
-
----
-
-### coordinator/coordinator.go
-
-Workflow layer between gRPC and internal Master components.
-
-Responsibilities:
-
-* Start the current job through Job Manager
-* Read current job metadata
-* Pass expected worker count into Aggregator
-
-No aggregation logic belongs here.
-
----
-
-### jobs/manager.go
-
-Owns job metadata lifecycle.
-
-Responsibilities:
-
-* Create a current job
-* Store expected worker count
-* Return current job metadata
-
-Does not store gradients or aggregation rounds.
-
----
-
-### jobs/state.go
-
-Defines job metadata.
-
-Contains:
-
-* Job ID
-* Expected worker count
-* Job status
-
----
-
-### grpc/handlers.go
-
-Receives external WorkerBridge gRPC requests.
-
-Responsibilities:
-
-* Accept SynchronizeGradients requests
-* Call Coordinator
-* Return AggregatedGradientResponse
-
-Contains no aggregation logic.
-
----
-
-### grpc/server.go
-
-Creates and registers the Master gRPC server.
-
-Responsibilities:
-
-* Open listener
-* Create gRPC server
-* Register WorkerBridge service
-* Route requests through MasterServer
-
----
-
-### cmd/master/main.go
-
-Master process entry point.
-
-Responsibilities:
-
-* Load configuration
-* Create Aggregator
-* Create Job Manager
-* Create Coordinator
-* Create gRPC server
-* Start service
-* Graceful shutdown
-
----
-
-## Phase 2 Tests
-
-### aggregator_test.go
-
-Validates:
-
-* Single-worker aggregation
-* Barrier blocking
-* Multi-worker averaging
-* Duplicate worker replacement
-* Round advancement
-* Request validation
-
----
-
-### handler_test.go
-
-Validates:
-
-```text
-Master gRPC Handler
-    ↓
-Coordinator
-    ↓
-Job Manager
-    ↓
-Aggregator
-```
-
-without opening a network listener.
-
----
-
-### integration_test.go
-
-Validates:
-
-```text
-gRPC Client
-    ↓
-Master gRPC Server
-    ↓
-Coordinator
-    ↓
-Job Manager
-    ↓
-Aggregator
-    ↓
-gRPC Response
-```
-
-using a real local gRPC server.
-
----
-
-## Phase 2 Validation
-
-Validated using:
-
-```bash
-env GOCACHE=/tmp/locdist-go-cache go test ./...
-```
-
-Expected result:
-
-```text
-ok github.com/Vikaspal8923/Locdist/master/tests
-```
-
----
-
-## Phase 2 Result
-
-Master Phase 2 successfully validates:
-
-```text
-Worker
-    ↓
-Master Server
-    ↓
-Coordinator
-    ↓
-Job Manager
-    ↓
-Aggregator
-    ↓
-Barrier Synchronization
-    ↓
-Gradient Averaging
-    ↓
-Master Server
-    ↓
-Worker
-```
-
-This completes real distributed gradient synchronization inside the Master Aggregator.
-
----
-
-# Master Phase 3
-
-## Goal
-
-Master Phase 3 adds the first Worker lifecycle foundation:
-
-```text
-Worker starts
-    ↓
-RegisterWorker
-    ↓
-Master stores Worker metadata
-    ↓
-UpdateWorkerStatus(IDLE)
-    ↓
-Master stores current status
-```
-
-Worker discovery, approval UI, heartbeats, scheduling, persistence, and
-training launch remain outside this phase.
-
-## Architecture
-
-```text
-Worker Service
-    ↓ RegisterWorker / UpdateWorkerStatus
-Master gRPC Handler
-    ↓
-Coordinator
-    ↓
-Worker Manager
-    ↓
-In-memory Worker State
-```
-
-The Worker Manager owns a concurrency-safe map keyed by `worker_id`.
-Registering an existing ID refreshes its host and gRPC port instead of
-creating a duplicate. Status updates are accepted only for registered
-workers.
-
-Supported statuses:
-
-```text
-IDLE
-PREPARING
-INSTALLING
-RUNNING
-COMPLETED
-FAILED
-```
-
-`UNKNOWN` is reserved as the protobuf zero value and is not accepted as a
-reported lifecycle status.
+If someone asks you "where should I start reading?", those are the right files.
+
+## State And Algorithms
 
-## File Responsibilities
+This section explains the most important state machines and algorithms in the
+current Master implementation.
+This is the section that matters most for technical interviews, because it
+explains not only what the Master does, but how it decides and coordinates
+state across multiple machines.
+
+### Job state model
+
+The job state model is the Master-side representation of a distributed training
+run. It captures not only metadata like job id and entrypoint, but also the
+per-Worker progress needed to safely move a job through setup, execution, and
+cleanup.
+
+`jobs.Manager` keeps:
 
-`protocol/gradient.proto`
+- at most one active `currentJob`
+- one archived `lastSummary`
 
-Defines Worker status values, registration messages, status messages, and
-the two control RPCs.
+The active job contains:
 
-`workers/state.go`
+- job id and metadata
+- Worker assignments
+- shard assignments
+- communication settings
+- training settings
+- per-worker setup state
+- per-worker run state
+
+This is simple by design. The Master is currently optimized around one active
+job at a time rather than full multi-job scheduling.
+
+### Worker state model
+
+The Worker state model is the Master-side view of the cluster membership. It
+separates discovered presence from authenticated participation and tracks which
+Workers are healthy enough to be assigned work.
+
+`workers.Manager` keeps:
+
+- `workers`: current authenticated Worker runtime state
+- `pairings`: persisted pairing credentials
+
+Worker state is updated by:
+
+- registration
+- heartbeat
+- explicit status updates
+- offline notification
+- stale/offline sweeps
+
+This model separates "discovered Worker exists" from "paired/authenticated
+Worker is allowed to participate in jobs."
+
+### Worker selection algorithm
+
+The current Worker selection algorithm is intentionally simple and
+deterministic. It favors predictability and easy reasoning over dynamic
+optimization.
 
-Defines the metadata and lifecycle state stored for one Worker.
+Current selection in `scheduler.SelectOnline(...)`:
 
-`workers/manager.go`
+1. filter Workers by `AvailabilityOnline`
+2. sort by `WorkerID`
+3. take the first `required` Workers
 
-Validates registrations and status updates, refreshes duplicate
-registrations, and provides concurrency-safe Worker lookup.
+Tradeoff:
 
-`coordinator/coordinator.go`
+- good: deterministic and easy to reason about
+- weak: not yet network-aware or load-aware
 
-Coordinates registration and status requests between gRPC handlers and the
-Worker Manager.
+### Dataset sharding strategy
 
-`grpc/handlers.go`
+Dataset sharding is format-specific because each dataset type has different
+correctness requirements. The Master uses a dispatch layer so that each format
+can have its own sharding logic while the overall prepare flow stays the same.
 
-Exposes `RegisterWorker` and `UpdateWorkerStatus`.
+In simple terms, the Master first checks `dataset.type`, then sends the work to
+the matching sharder. This keeps the orchestration code clean while still
+letting each dataset type use the right algorithm.
 
-`cmd/master/main.go`
+The `Preparer` does not implement sharding itself. It delegates to the dataset-
+specific sharder through `shardDataset(...)`.
 
-Creates the Worker Manager and injects it into the Coordinator.
+#### `jsonl` sharding
 
-`tests/workers_test.go`
+For `jsonl`, the system treats each valid non-empty JSON line as one sample.
 
-Covers registration, status changes, duplicate replacement, and invalid
-status updates.
+The algorithm is:
 
----
+1. open the dataset file
+2. read it line by line
+3. skip empty lines
+4. validate that every kept line is valid JSON
+5. build a clean in-memory sample list
+6. split the sample count evenly across selected Workers
+7. give one extra sample to the first few Workers if there is a remainder
+8. write one shard file per Worker
 
-# LDGCC Phase 4: LAN Discovery
+Important details:
 
-## Goal
+- each Worker gets a contiguous range of samples
+- the split is balanced by sample count
+- shard metadata records `start`, `end`, and `count`
+- prepare fails early if:
+  - the dataset is empty
+  - a line is invalid JSON
+  - there are fewer samples than selected Workers
 
-Phase 4 lets Master find running LDGCC Worker Apps on the same LAN without
-knowing their addresses in advance.
+This is the simplest sharding path because the dataset already has a natural
+record boundary: one line equals one sample.
 
-```text
-Worker owner clicks Start Worker
-    ↓
-Worker advertises _ldgcc-worker._tcp.local
-    ↓
-Master scans with mDNS/DNS-SD
-    ↓
-Master stores a temporary discovery record
-```
-
-Discovery records are deliberately separate from registered Worker state.
-An mDNS result provides a network location, not a trusted identity.
-
-## Advertised Metadata
-
-```text
-worker name
-host/address
-Worker gRPC port
-protocol version
-pairing status
-```
-
-## Master Components
-
-`discovery/browser.go`
-
-Scans `_ldgcc-worker._tcp.local` and converts DNS-SD records into LDGCC
-discovery records.
-
-`discovery/registry.go`
-
-Maintains a concurrency-safe temporary registry, refreshes repeated
-sightings, and expires Workers that stop advertising.
-
-`discovery/service.go`
-
-Runs periodic scans and records Worker arrival and disappearance.
-
-`discovery/state.go`
-
-Defines temporary discovery metadata.
-
-`cmd/master/main.go`
-
-Starts and stops discovery with the Master process.
-
-## Scope Boundary
-
-Included:
-
-* Same-LAN Worker discovery
-* Temporary presence tracking
-* Protocol and pairing-state metadata
-* Discovery expiry
-
-Deferred:
-
-* Pairing request
-* Accept or reject
-* Authentication
-* Permanent identity assignment
-* Automatic Worker configuration
-* Heartbeats and scheduling
-
----
-
-# LDGCC Phase 5: Worker Pairing and Connection Management
-
-## Goal
-
-Phase 5 connects temporary Phase 4 discovery to trusted Phase 3
-registration:
-
-```text
-Master discovers unpaired Worker
-    ↓
-Master owner clicks Connect
-    ↓
-Worker owner accepts or rejects
-    ↓
-Master reserves worker_id and credential
-    ↓
-Worker stores one pairing record
-    ↓
-Worker performs authenticated registration
-    ↓
-Worker reports IDLE
-```
-
-## V1 Topology Rule
-
-```text
-One Master → multiple Workers
-One Worker → one Master at a time
-```
-
-A paired Worker rejects requests from every other Master. Changing Master
-requires Reset Previous Connection on the Worker.
-
-## Master Components
-
-`app/`
-
-Provides the local Master control surface at `127.0.0.1:6060`, lists
-discovered Workers, and starts pairing requests.
-
-`pairing/service.go`
-
-Generates random request IDs, Worker IDs, and 256-bit pairing credentials;
-reserves credentials before contacting Worker; and waits for the owner's
-decision.
-
-`workers/store.go`
-
-Atomically persists Master-side pairing credentials with owner-only file
-permissions so Workers can reconnect after a Master restart.
-
-`workers/manager.go`
-
-Authenticates registration and unpair requests against the saved pairing
-credential.
-
-## Connection Reset
-
-When an online Worker resets its previous connection:
-
-```text
-Worker sends authenticated UnpairWorker
-    ↓
-Master revokes credential and registered state
-    ↓
-Worker deletes its local pairing
-```
-
-If the old Master is offline, Worker still removes its local pairing and can
-join another Master. The deleted credential is no longer available to the
-Worker.
-
-## Security Boundary
-
-Phase 5 provides random pairing credentials, credential-authenticated
-registration/unpairing, atomic files, and `0600` credential-file
-permissions. TLS, certificate pinning, OS credential-vault storage, and
-signed installers remain production hardening outside this phase.
-
----
-
-# LDGCC Phase 6: Worker Heartbeats and Availability
-
-## Goal
-
-Phase 6 makes paired Workers continuously prove they are still reachable.
-
-```text
-Worker registers
-    ↓
-Worker sends authenticated Heartbeat
-    ↓
-Master updates last_seen and availability
-    ↓
-Master sweeper marks stale/offline when heartbeats stop
-```
-
-## Availability States
-
-```text
-ONLINE
-STALE
-OFFLINE
-```
-
-`ONLINE` means the Master recently received a valid registration or
-heartbeat. `STALE` means heartbeats are late. `OFFLINE` means the Worker
-explicitly stopped or missed the offline timeout.
-
-## Master Components
-
-`workers/state.go`
-
-Adds Worker availability and `last_seen` tracking.
-
-`workers/manager.go`
-
-Authenticates `Heartbeat` and `GoingOffline`, updates Worker status/job
-metadata, and runs the availability sweep.
-
-`coordinator/coordinator.go`
-
-Exposes heartbeat and offline actions to the gRPC layer.
-
-`grpc/handlers.go`
-
-Implements the new protocol RPC handlers.
-
-`cmd/master/main.go`
-
-Runs the periodic availability sweeper.
-
----
-
-# LDGCC Phase 7: Job Spec and Dataset Sharding Foundation
-
-## Goal
-
-Phase 7 teaches the Master how to prepare a user project for a distributed
-training job before any Worker execution exists.
-
-```text
-VS Code project folder
-    ↓
-ldgcc.yaml
-    ↓
-Master selects ONLINE Workers
-    ↓
-Master validates dataset/train.jsonl
-    ↓
-Master creates one shard per selected Worker
-    ↓
-Prepared job metadata is stored in memory
-```
-
-## Frozen V1 Project Spec
-
-`ldgcc.yaml`
-
-```yaml
-job:
-  name: movie-review-training
-
-entrypoint: train.py
-
-dataset:
-  train: dataset/train.jsonl
-
-workers:
-  count: 3
-
-outputs:
-  - model/model.pt
-  - results/
-```
-
-`job.name` is optional. `entrypoint`, `dataset.train`, and
-`workers.count` are required. `outputs` is optional and accepts relative files
-or directories. Both `ldgcc.yaml` and `ldgcc.yml` are supported; `.yml` is
-preferred when both exist.
-
-## Dataset Rule
-
-V1 supports line-based JSONL sharding only.
-
-```text
-dataset/train.jsonl
-```
-
-Each non-empty line must be one JSON object. The Master splits lines across
-the selected Workers and writes each shard back under the same relative
-path.
-
-```text
-master/jobs/<job_id>/shards/
-    worker-a/dataset/train.jsonl
-    worker-b/dataset/train.jsonl
-    worker-c/dataset/train.jsonl
-```
-
-Worker code will still read:
-
-```text
-dataset/train.jsonl
-```
-
-but each Worker will receive different file contents in a later workspace
-distribution phase.
-
-## Phase 7 Components
-
-`project/`
-
-Loads and validates `ldgcc.yaml`.
-
-`scheduler/`
-
-Selects exactly `workers.count` Workers from registered Workers with
-`ONLINE` availability.
-
-`sharder/`
-
-Validates JSONL, computes even shard ranges, and writes per-Worker shard
-files.
-
-`orchestrator/`
-
-Combines project spec loading, Worker selection, dataset sharding, and job
-metadata preparation.
-
-`jobs/`
-
-Stores prepared job metadata, selected Workers, and shard assignments.
-
-## Not In Phase 7
-
-```text
-Project zip packaging
-Workspace upload to Worker
-Dependency installation
-Training process execution
-VS Code extension UI
-Output collection
-```
-
----
-
-# Master Phase Roadmap
-
-## Master Phase 2
+#### `image_folder` sharding
 
-Status:
+For `image_folder`, the system treats each image file inside a class directory
+as one sample.
 
-```text
-COMPLETE
-```
-
-Completed Goal:
-
-```text
-Worker
-    ↓
-Master
-    ↑
-Worker
-```
-
-Real Master-side gradient synchronization.
-
----
-
-## Master Phase 3
-
-Status:
-
-```text
-COMPLETE
-```
-
-Completed Goal:
-
-* Worker Registration
-* Worker Status Foundation
-* Duplicate Registration Refresh
-* In-Memory Worker Registry
-
-Heartbeats and failure detection are deferred to a later phase.
-
----
-
-## Master Phase 4
-
-Status:
-
-```text
-COMPLETE
-```
-
-Completed Goal:
-
-* mDNS/DNS-SD Worker Discovery
-* Temporary Discovered-Worker Registry
-* Worker Presence Expiry
-
----
-
-## Master Phase 5
-
-Status:
-
-```text
-COMPLETE
-```
-
-Completed Goal:
-
-* Pairing and Approval
-* Permanent Worker Identity
-* Automatic Worker Configuration
-* One-Master Enforcement
-* Pairing Persistence and Revocation
-
----
-
-## Master Phase 6
-
-Status:
-
-```text
-COMPLETE
-```
-
-Completed Goal:
-
-* Authenticated Worker Heartbeats
-* Worker Availability Tracking
-* Stale and Offline Detection
-* Explicit GoingOffline Handling
-
----
-
-## Master Phase 7
-
-Status:
-
-```text
-COMPLETE
-```
-
-Completed Goal:
-
-* `ldgcc.yaml` Project Spec
-* Required Worker Count
-* ONLINE Worker Selection
-* JSONL Dataset Validation
-* Per-Worker Dataset Shards
-* Prepared Job Metadata
-
----
-
-# LDGCC Phase 8: Project Packaging and Worker Workspace Delivery
-
-Phase 8 turns the Phase 7 job plan into real, Worker-specific project
-workspaces. The Master packages the user's full project once per selected
-Worker, replaces `dataset/train.jsonl` with that Worker's shard at the same
-relative path, writes `job_config.json`, and sends the ZIP over authenticated
-gRPC.
-
-```text
-Prepare project and shards (Phase 7)
-    -> Build one project ZIP per Worker
-    -> Replace original dataset with assigned shard
-    -> Authenticate with saved pairing credentials
-    -> PrepareWorkspace gRPC
-    -> Worker validates and extracts workspaces/<job_id>
-```
-
-## Phase 8 Components
-
-* `packager/package.go`: copies project files, applies exclusions, substitutes
-  the shard, emits `job_config.json`, skips symlinks, and enforces a 64 MiB ZIP
-  limit.
-* `orchestrator/distribute.go`: maps shards to Workers, builds each package,
-  authenticates with the pairing token, and delivers it to the Worker.
-* `PrepareAndDistribute`: joins Phase 7 preparation and Phase 8 delivery for
-  the future VS Code extension command.
-* `protocol/gradient.proto`: defines the `PrepareWorkspace` request/response.
-
-Excluded local state includes `.git`, virtual environments, Python caches,
-`.ldgcc`, and `ldgcc_jobs`. Phase 8 prepares files only; dependency setup and
-training process execution belong to the next phase.
-
----
-
-# LDGCC Phase 9: Worker Setup and Readiness
-
-Phase 9 prepares every selected Worker for training without starting the user
-entrypoint. It is the backend for the future VS Code extension's **Set Up
-Workers** action.
-
-```text
-User chooses Set Up Workers
-    -> Master sends SetupJob to all assigned Workers concurrently
-    -> Worker creates a private .venv
-    -> Worker installs requirements.txt when present
-    -> Worker returns READY or SETUP_FAILED
-    -> Master enables Start Training only when every Worker is READY
-```
-
-## Phase 9 Components
-
-* `orchestrator/setup.go`: runs setup concurrently, stores each response, checks
-  the all-ready barrier, retries one failed Worker, or retries all failures.
-* `jobs/manager.go`: owns job-specific setup states and the `AllWorkersReady`
-  gate.
-* `protocol/gradient.proto`: defines authenticated `SetupJob` messages and the
-  `WORKSPACE_RECEIVED`, `SETTING_UP`, `READY`, and `FAILED` states.
-
-Setup may take several minutes, so each Worker receives an independent
-15-minute request timeout. A failure does not start training. Retrying rebuilds
-only that Worker's environment; Workers already marked READY are not repeated.
-
-Phase 9 intentionally does not launch `train.py`. The user-controlled,
-synchronized start belongs to Phase 10.
-
----
-
-# LDGCC Phase 10: Synchronized Training Start
-
-Phase 10 implements the backend for the user-controlled **Start Training**
-action. Master starts only a prepared job whose assigned Workers are all READY,
-online, and not already training.
-
-```text
-User selects Start Training
-    -> Master sends ArmJob concurrently
-    -> Every Worker validates and returns ARMED
-    -> Master sends ReleaseJob concurrently
-    -> Workers launch their training entrypoints
-    -> Runtime -> local Worker -> Master aggregation begins
-```
-
-`orchestrator/training.go` owns the all-Worker arm barrier. Any arm or release
-failure triggers authenticated `StopJob` rollback and marks the complete job
-FAILED. The explicit stop path stops all assigned Workers and marks the job
-CANCELLED.
-
-`jobs/manager.go` tracks each Worker's ARMED, RUNNING, FAILED, or CANCELLED
-result. Continuous completion polling and disconnect recovery remain Phase 11.
-
----
-
-# LDGCC Phase 11: Lifecycle Monitoring and Job Reset
-
-Phase 11 monitors every required training process after synchronized start. A
-failed, cancelled, offline, or unreachable Worker fails the complete job.
-
-```text
-Poll authenticated Worker status
-    -> any Worker fails/disconnects
-    -> abort the aggregation barrier
-    -> stop surviving processes
-    -> capture exit codes and bounded log tails
-    -> remove Master and Worker job data
-    -> archive a compact final summary
-    -> clear the active job
-```
-
-Pairing and online Worker registration are preserved. The user returns to the
-connected-Workers state and must run **Prepare Job**, **Set Up Workers**, and
-**Start Training** again. New preparation reads the project again and removes
-old Master job data. A Worker that missed cleanup while offline removes stale
-workspaces when it accepts the next job.
-
-`orchestrator/lifecycle.go` also supports job timeout, explicit cancellation,
-and successful completion when every Worker reports COMPLETED.
+The algorithm is:
 
----
+1. scan the dataset root for class directories
+2. walk each class directory recursively
+3. keep only supported image files
+4. group discovered samples by class name
+5. sort class names and sample paths so the result is deterministic
+6. compute an equal target image count per Worker
+7. assign images across Workers in a rotating pattern while respecting the
+   target count
+8. copy the selected image files into each Worker's shard directory while
+   keeping the relative class-folder structure
 
-# LDGCC Phase 12: Configurable Results and Logs
+Important details:
 
-Phase 12 collects only outputs declared by the user in `ldgcc.yml`, plus setup
-and training logs. When `outputs` is omitted, LDGCC collects logs and the final
-summary without guessing which project files are models or metrics.
+- the shard output is a directory, not a single file
+- class folders are preserved, so training code still sees an
+  `ImageFolder`-style layout
+- balancing is done by total image count
+- the rotating assignment pattern helps avoid dumping a whole class onto just
+  one Worker by default
+- the current implementation expects exact balancing and returns an error if it
+  cannot hit the target cleanly
 
-```yaml
-outputs:
-  - model/model.pt
-  - results/metrics.json
-  - checkpoints/
-```
-
-Workers return an authenticated manifest containing relative paths, sizes, and
-SHA-256 checksums. Master downloads files through bounded gRPC streams, verifies
-every size and checksum, and atomically publishes:
-
-```text
-ldgcc_results/<job_id>/
-  summary.json
-  logs/<worker_id>/
-  workers/<worker_id>/outputs/<declared paths>
-```
-
-Successful jobs require every configured output. Failed jobs preserve whatever
-safe logs and outputs are available. Absolute paths, traversal, symlinks,
-undeclared downloads, files over 64 MiB, and Worker result sets over 256 MiB are
-rejected. Worker workspaces are cleaned only after collection.
-
----
-
-# LDGCC Phase 13: Unified Local Application API
-
-Phase 13 composes discovery, pairing, preparation, setup, training, lifecycle,
-and results into one localhost API for the VS Code extension.
-
-```text
-GET  /health
-GET  /state
-GET  /events
-POST /discovery/start
-GET  /workers/discovered
-POST /workers/{instance}/pair
-POST /jobs/prepare
-POST /jobs/setup
-POST /jobs/setup/retry
-POST /jobs/start
-POST /jobs/stop
-GET  /jobs/current
-GET  /jobs/last-summary
-GET  /results/{job_id}
-POST /shutdown
-```
-
-The API accepts only loopback hosts and requires the extension's bearer session
-token. `/events` uses Server-Sent Events for Worker, setup, training, failure,
-completion, and result notifications. `/state` returns one secret-free snapshot
-with readable state names.
-
-Production process options:
-
-```text
---config
---data-dir
---app-host
---app-port
---session-token
-```
-
-Port `0` selects an available port. Master writes a mode-0600,
-`master-session.json` atomically with PID, host, port, version, address, and
-session token. The extension can health-check/reuse that process and request
-graceful shutdown. Pairings, jobs, results, and session metadata live under the
-provided data directory.
-
----
-
-# LDGCC Phase 14: VS Code Extension Control Surface
-
-Phase 14 adds `extension/`, the first user-facing Brain Laptop control surface
-for LDGCC V1. It uses the Phase 13 localhost API instead of talking directly to
-Master internals.
-
-```text
-VS Code extension
-    -> start or reuse local Master
-    -> read master-session.json
-    -> authenticate with bearer token
-    -> subscribe to /events
-    -> drive discovery, pairing, prepare, setup, training, and results
-```
-
-Development mode starts Master with `go run ./cmd/master`. Production mode can
-set `ldgcc.master.binaryPath` to the bundled Master binary while keeping the
-same session-file and API contract.
-
-The extension contributes:
-
-* `LDGCC` activity bar view
-* cluster tree for Master, discovered Workers, registered Workers, job state,
-  and last results
-* commands for Start/Stop Master, Discover Workers, Pair Worker, Prepare Job,
-  Set Up Workers, Retry Setup, Start/Stop Training, and Open Results
-* Server-Sent Events subscription for live state refreshes
-
----
-
-# LDGCC Phase 16: Communication Compression
-
-Phase 16 adds the first performance-oriented gradient communication path.
-`ldgcc.yml` can now carry a `communication` block:
-
-```yaml
-communication:
-  precision: fp16
-  compression:
-    type: topk
-    mode: global
-    top_k: 5%
-    error_feedback: true
-    warmup_steps: 0
-```
-
-Master validates and packages this config into each Worker's `job_config.json`.
-Worker injects it into the training process as `LDGCC_COMMUNICATION`. Runtime
-uses it to choose dense, global top-k, or per-layer top-k communication.
-
-The protocol now marks every gradient chunk with payload dtype, encoding mode,
-and sparse indices for top-k chunks. Master aggregation reconstructs sparse
-chunks safely, checks index bounds and duplicate indices, averages in float32,
-and returns dense averaged gradients.
-
-Defaults:
-
-```text
-precision: fp32
-compression.type: none
-top-k mode default: global
-top-k default: 5%
-error feedback: required for top-k
-warmup_steps: 0
-```
-
----
-
-# LDGCC Phase 17: Sparse Aggregated Response
-
-Phase 17 completes the top-k communication path by compressing the return trip
-from Master back to Runtime.
-
-```text
-Runtime -> Worker -> Master
-    sparse top-k upload
-
-Master -> Worker -> Runtime
-    sparse union response
-```
-
-When Workers submit top-k chunks, each Worker may send different indices. Master
-averages over the union of submitted indices and returns only that sparse union.
-Missing indices from a Worker count as zero for that round, matching the Phase
-16 dense reconstruction semantics.
-
-Dense warmup and `compression.type: none` still return dense gradients.
-
-For a 50M parameter model with `top_k: 5%` and fp16 values, the rough shape is:
-
-```text
-Before Phase 17:
-  upload   ~25 MB+
-  download ~100 MB
-
-After Phase 17:
-  upload   ~25 MB+
-  download ~25 MB+
-```
-
-Runtime applies sparse responses by creating a zero gradient tensor and filling
-only returned indices. Dropped local values remain protected by residual/error
-feedback.
-
----
-
-# LDGCC Phase 18: Packed Sparse Indices
+This path is more physical than JSONL sharding because it must copy real image
+files and preserve the folder layout the user code expects.
 
-Phase 18 reduces top-k payload size by replacing protobuf `repeated int64`
-sparse indices with packed little-endian uint32 bytes.
+#### `yolo_split` sharding
 
-```text
-Before:
-  fp16 value = 2 bytes
-  int64 index = 8 bytes
-  total      = 10 bytes per selected gradient
-
-After:
-  fp16 value  = 2 bytes
-  uint32 index = 4 bytes
-  total       = 6 bytes per selected gradient
-```
-
-The protocol keeps the old `indices` field for compatibility and adds
-`indices_u32` for the compact form. Runtime writes `indices_u32`; Master reads
-either format and returns `indices_u32` for sparse responses.
-
-For a 50M parameter model with `top_k: 5%`, one sparse direction drops from
-roughly:
-
-```text
-2.5M selected gradients * 10 bytes = ~25 MB+
-2.5M selected gradients *  6 bytes = ~15 MB+
-```
-
-If a sparse index exceeds uint32 capacity, aggregation fails clearly instead of
-silently changing payload format.
-
----
-
-# LDGCC Phase 19: V1 Image Folder Sharding
-
-Phase 19 expands V1 dataset support from JSONL-only to:
-
-```text
-jsonl
-image_folder
-yolo_split
-```
-
-`jsonl` remains the default and keeps the existing rule:
-
-```text
-one line = one sample
-```
-
-`image_folder` supports the common image classification layout used by
-PyTorch-style `ImageFolder` datasets:
-
-```yaml
-dataset:
-  train: dataset/train
-  type: image_folder
-```
-
-Expected structure:
-
-```text
-dataset/train/
-  caries/
-    c1.jpg
-    c2.jpg
-  calculus/
-    a1.jpg
-    a2.jpg
-```
-
-Sharding preserves class folders and distributes images per class across
-Workers:
-
-```text
-worker-a/dataset/train/
-  caries/c1.jpg
-  calculus/a1.jpg
-
-worker-b/dataset/train/
-  caries/c2.jpg
-  calculus/a2.jpg
-```
-
-The Worker receives the shard at the same dataset path, so user training code
-continues to load `dataset/train` normally.
-
-`yolo_split` supports one strict object-detection layout where `dataset.train`
-points at a train split directory that already contains both `images/` and
-`labels/`:
-
-```yaml
-dataset:
-  train: dataset/train
-  type: yolo_split
-```
+For `yolo_split`, the system treats one image and its matching label file as
+one logical sample.
 
-Expected structure:
+The expected layout is:
 
 ```text
 dataset/train/
   images/
-    a.jpg
-    nested/b.jpg
   labels/
-    a.txt
-    nested/b.txt
 ```
 
-Sharding preserves relative paths under both folders and keeps image/label
-pairs together for each Worker. Broader YOLO/COCO dataset variants remain
-outside this narrow V1 support path.
+The algorithm is:
 
----
+1. scan `images/` recursively for image files
+2. compute the matching label path under `labels/` using the same relative
+   name and a `.txt` extension
+3. build a sorted list of image/label pairs
+4. split that list evenly across Workers using the same balanced range logic
+   used by JSONL sharding
+5. copy images and labels into each Worker's shard directory
+6. if a label file is missing, create an empty label file in the shard output
 
-# LDGCC Phase 20: End-to-End Local Validation
+Important details:
 
-Phase 20 adds a local smoke harness for validating the main LDGCC V1 flow with
-real Master and Worker App processes.
+- the shard output is a directory
+- relative image paths are preserved
+- relative label paths are preserved
+- image-label pairing is based on matching relative names
+- prepare fails if:
+  - `images/` is missing
+  - `labels/` is missing
+  - there are no image files
+  - there are fewer samples than selected Workers
 
-```bash
-# from the repository root
-python3 tools/e2e_local_validation.py
-```
+This matters because object-detection datasets are not just loose files. The
+image path and label path must stay aligned for training to work correctly.
 
-The harness:
+#### Why the Master keeps separate sharding logic
 
-* builds local Master and Worker App binaries
-* writes temporary Master and Worker configs
-* starts Master and Worker App on localhost ports
-* starts the Worker from its local app API
-* waits for LAN discovery
-* sends and accepts pairing
-* prepares a tiny JSONL project
-* sets up the Worker environment
-* starts training
-* waits for completion
-* verifies declared output collection
-* stops processes and removes temporary state
+The Master does not try to force every dataset through one generic sharder.
+That would make the code look simpler, but it would make correctness weaker.
 
-This is not a replacement for unit tests. It is a real-process validation path
-for the full local control flow before production packaging.
+Instead, the current design is:
 
----
+- one shared prepare flow
+- one dataset-specific sharder per supported format
 
-# Current Status
+That is a good tradeoff here because it keeps the orchestration path readable
+without breaking dataset-specific assumptions.
+
+### Training launch algorithm
+
+The launch algorithm is a coordinated release pattern rather than a single
+"start now" command. This reduces the chance that one Worker begins training
+while others are still not ready to enter the same phase.
+
+Current launch is two-phase:
+
+1. `ArmJob` on all assigned Workers
+2. `ReleaseJob` on all assigned Workers
+
+If arm fails on some Workers:
+
+- already-armed Workers are stopped
+- job becomes failed
+
+If release fails:
+
+- all assigned Workers are stopped
+- job becomes failed
+
+This is a simple coordination pattern that avoids partial early starts.
+
+### Aggregation algorithm
+
+The aggregation algorithm is barrier-oriented. That means the Master does not
+finish a synchronization round just because one Worker has sent gradients. It
+waits until the expected set of Workers has submitted data for the same round,
+then computes one shared aggregated result and releases that result back to all
+participants.
+
+At a high level, the dense whole-gradient path works like this:
+
+1. a Worker submission arrives
+2. the Master validates basic request fields
+3. the submission is stored in the current round state
+4. the Master checks whether the barrier has been reached
+5. if not, the request waits
+6. if yes, the Master aggregates all submissions for that round
+7. the aggregated response is shared with all waiting Workers
+8. once all waiting receivers have collected the response, the round state is
+   reset and the next round can begin
+
+This is simple to reason about and gives clear round boundaries, which is why
+it is a good starting point for correctness.
+
+#### Round state in the Master
+
+The aggregator keeps explicit round state instead of trying to compute
+everything from transient RPC calls.
+
+The main state structures are:
+
+- `RoundState`:
+  used for whole-gradient submissions; stores the current round number, the
+  submissions received so far, the final aggregated response, any error, and
+  how many receivers are still waiting to read the result
+
+- `ChunkRoundState`:
+  used when a single parameter chunk is synchronized as its own round unit;
+  stores the chunk-round key, layer key, per-worker submissions, response, and
+  waiter count
+
+- `GroupRoundState`:
+  used for grouped chunk synchronization, where several chunks are treated as a
+  higher-level grouped payload
+
+This explicit state is important because synchronization is not just "receive
+and reply." The Master may need to hold submissions from some Workers while it
+waits for others, and it must do that without mixing rounds or returning
+partial results.
+
+#### Whole-gradient averaging path
+
+For the whole-gradient path, the Master uses one `GradientSubmission` per
+Worker.
+
+The aggregation logic:
+
+1. chooses a reference submission
+2. checks that every Worker submitted the same number of chunks
+3. checks that the metadata for matching chunks is the same across Workers
+4. gathers corresponding chunks from all Workers
+5. averages those chunks
+6. builds an `AggregatedGradientResponse` for the whole round
+
+Important details:
+
+- the Master sorts Worker ids before using them, which keeps processing
+  deterministic
+- metadata mismatch is treated as an error because it means Workers are no
+  longer synchronizing the same model structure
+- no response is returned until the barrier condition is satisfied
+- after the last waiting receiver reads the result, the round state is reset
+
+#### Chunk-based synchronization path
+
+The current Master does more than whole-gradient sync. It also supports a
+chunk-based path where one logical layer chunk can move through the system as
+its own unit.
+
+This path exists because later runtime and compression work needed finer
+control over synchronization than "send the entire model gradient every time."
+
+The chunk flow is:
+
+1. each chunk submission is keyed by job id, sync round, layer order, and layer
+   name
+2. the Master stores per-worker submissions for that exact chunk-round key
+3. once submissions from all expected Workers arrive, that chunk is averaged
+4. the response is returned as an `AggregatedGradientChunkResponse`
+5. completed chunk rounds are tracked so stale chunk submissions can be
+   rejected later
+
+Important details:
+
+- duplicate chunk submissions from the same Worker are rejected
+- conflicting duplicates are also rejected
+- stale chunk rounds are rejected using the `completedChunks` tracking map
+- the Master waits separately on each chunk round, not just one global round
+
+This makes the aggregator more flexible, but it also makes state management
+more complex than the original dense path.
+
+#### Group and batch synchronization path
+
+The Master also supports grouped chunk batches. In this path, several chunks
+can be wrapped into a higher-level group so synchronization can happen in more
+structured batches.
+
+At a practical level, this means:
+
+- the request may contain `groups`
+- the Master registers those grouped submissions separately from plain chunk
+  submissions
+- each group round is averaged when all expected Workers have submitted it
+- the result can be returned either as a batched response or as a stream of
+  chunk/group responses
+
+This matters because later performance-oriented runtime work pushed the Master
+beyond one flat synchronization path. Grouping and batching make it possible to
+coordinate richer runtime behavior without discarding the barrier model.
+
+#### Error handling and abort behavior in aggregation
+
+Aggregation code has to handle failure carefully because synchronization bugs
+often show up as hangs rather than clean crashes.
+
+The current aggregator has explicit behavior for:
+
+- invalid runtime version
+- missing job id
+- missing worker id
+- missing chunks
+- metadata mismatch
+- duplicate chunk submissions
+- stale chunk submissions
+- job abort/reset while waiters still exist
+
+The `AbortJob(...)` path is especially important. If a job is aborted while
+Workers are blocked waiting on round completion, the aggregator sets round
+errors, wakes the waiters, and resets state safely instead of leaving threads
+stuck forever.
+
+That is one of the places where the current Master is clearly stronger than an
+earlier minimal design.
+
+#### Metrics and timing in aggregation
+
+The dense aggregation path also records timing and size metrics, including:
+
+- total request time
+- lock wait time
+- previous-round wait time
+- submission store time
+- barrier wait time
+- aggregation time
+- response clone time
+- bytes received and returned
+
+These metrics are useful because distributed training often feels "slow" for
+many possible reasons. Without timing breakdowns, it is hard to tell whether
+the problem is network cost, barrier wait, aggregation work, or lock
+contention.
+
+#### Why this section matters for the architecture story
+
+The aggregator is one of the clearest examples of how the Master evolved over
+time.
+
+Early on, the basic idea was simple:
+
+- receive gradients
+- wait for all Workers
+- average
+- reply
+
+The current design still keeps that simple barrier model, but it now supports:
+
+- dense full-gradient rounds
+- chunk rounds
+- grouped/batched rounds
+- stale-round rejection
+- safer abort/reset behavior
+- timing instrumentation
+
+So the algorithm did not change from "barrier" to something completely
+different. Instead, the same basic coordination idea was extended into a more
+capable and more defensive synchronization service.
+
+## Failure Handling
+
+Failure handling is a first-class concern in the Master because this component
+owns shared cluster state. If a failure is handled poorly here, the entire
+system can become inconsistent even if the underlying Worker or runtime code is
+correct.
+
+The Master contains explicit guardrails around several common failure modes.
+
+### Invalid project spec
+
+`project/spec.go` rejects invalid:
+
+- dataset types
+- communication config
+- compression config
+- path escapes
+- output duplication
+- missing required fields
+
+### No available Workers
+
+`scheduler.SelectOnline(...)` returns an error if the required Worker count is
+not available online.
+
+### Duplicate active jobs
+
+Both `jobs.Manager` and `orchestrator.Preparer` reject starting a new active job
+while another job is already active.
+
+### Worker authentication failure
+
+Registration, heartbeats, and offline/unpair operations all validate pairing
+credentials before mutating state.
+
+### Worker drops during execution
+
+Training start checks that every assigned Worker is still online before launch.
+Lifecycle and result logic then handle the consequences of later failures.
+
+### Partial arm/release failures
+
+If some Workers succeed and others fail:
+
+- successful Workers are explicitly stopped
+- job status is moved to failed/cancelled as appropriate
+
+### Aggregation abort/reset
+
+`aggregator.Service.AbortJob(...)` propagates an abort error to waiting rounds
+and resets round state safely, including chunk/group waiters.
+
+This is important because synchronization bugs in distributed training often
+turn into deadlocks if abort paths are not explicit.
+
+## Design Decisions And Tradeoffs
+
+This section explains why the Master looks the way it does today. The current
+design is not an accident; it reflects deliberate tradeoffs in favor of
+correctness, debuggability, and local-cluster usability.
+
+### Centralized coordination
+
+Why:
+
+- simpler correctness model
+- easier debugging
+- easier UI/state reporting
+- easier pairing/security model
+
+Tradeoff:
+
+- Master can become a bottleneck
+- all aggregation traffic funnels through one node
+
+### One active job at a time
+
+Why:
+
+- simpler lifecycle management
+- clearer failure handling
+- less state complexity in early versions
+
+Tradeoff:
+
+- limited scheduling sophistication
+- not yet a general multi-tenant cluster manager
+
+### Deterministic Worker selection
+
+Why:
+
+- easy to reason about
+- repeatable
+- low implementation complexity
+
+Tradeoff:
+
+- not yet optimized for network quality, hardware class, or observed throughput
+
+### Barrier-based synchronization
+
+Why:
+
+- straightforward distributed correctness
+- all Workers see the same aggregation round boundary
+
+Tradeoff:
+
+- slowest Worker influences overall step completion
+- synchronization overhead can dominate on small jobs
+
+### Distinct packages for spec, sharding, orchestration, and aggregation
+
+Why:
+
+- keeps responsibilities separate
+- makes testing easier
+- allows the architecture to evolve subsystem-by-subsystem
+
+Tradeoff:
+
+- more moving pieces
+- more wiring code in coordinator/app layers
+
+## Transition: From Early V1 To Current Master
+
+This section explains how the Master evolved over time. It is useful both for
+understanding the current codebase and for explaining the project in an
+interview without pretending the architecture was perfect from day one.
+
+The current Master did not appear all at once. It evolved in layers.
+
+### Early V1 shape
+
+The early V1 Master was focused on making the core loop work end to end:
+discover machines, assign them work, launch training, and coordinate basic
+aggregation. It was functional, but structurally simpler.
+
+The early Master implementation focused on the minimum usable cluster loop:
+
+- basic Master service
+- Worker discovery
+- Worker registration
+- heartbeats
+- one-job orchestration model
+- initial job spec and dataset sharding
+
+At that stage, the system was much closer to:
 
 ```text
-Shared Protocol
-    ✓ COMPLETE
-
-Master V1 Architecture
-    ✓ FROZEN
-
-Master Phase 1
-    ✓ COMPLETE
-
-Master Phase 2
-    ✓ COMPLETE
-
-Master Phase 3
-    ✓ COMPLETE
-
-Worker Registration
-    ✓ COMPLETE
-
-Worker Status Foundation
-    ✓ COMPLETE
-
-LDGCC Phase 4
-    ✓ COMPLETE
-
-LAN Worker Discovery
-    ✓ COMPLETE
-
-LDGCC Phase 5
-    ✓ COMPLETE
-
-LDGCC Phase 6
-    ✓ COMPLETE
-
-LDGCC Phase 7
-    ✓ COMPLETE
-
-LDGCC Phase 8
-    ✓ COMPLETE
-
-LDGCC Phase 9
-    ✓ COMPLETE
-
-LDGCC Phase 10
-    ✓ COMPLETE
-
-LDGCC Phase 11
-    ✓ COMPLETE
-
-LDGCC Phase 12
-    ✓ COMPLETE
-
-LDGCC Phase 13
-    ✓ COMPLETE
-
-LDGCC Phase 14
-    ✓ COMPLETE
-
-LDGCC Phase 16
-    ✓ COMPLETE
-
-LDGCC Phase 17
-    ✓ COMPLETE
-
-LDGCC Phase 18
-    ✓ COMPLETE
-
-LDGCC Phase 19
-    ✓ COMPLETE
-
-LDGCC Phase 20
-    ✓ COMPLETE
-
-Job Spec Foundation
-    ✓ COMPLETE
-
-Dataset Sharding Foundation
-    ✓ COMPLETE
-
-Worker Heartbeats
-    ✓ COMPLETE
-
-Availability Detection
-    ✓ COMPLETE
-
-Worker Pairing and Approval
-    ✓ COMPLETE
-
-Authenticated Registration
-    ✓ COMPLETE
-
-Identity Aggregation
-    ✓ COMPLETE
-
-Real Gradient Aggregation
-    ✓ COMPLETE
-
-Barrier Synchronization
-    ✓ COMPLETE
-
-Aggregation Rounds
-    ✓ COMPLETE
-
-gRPC Server
-    ✓ COMPLETE
-
-Unit Tests
-    ✓ COMPLETE
-
-Integration Tests
-    ✓ COMPLETE
-
-go build ./...
-    ✓ PASS
-
-go test ./...
-    ✓ PASS
-
-go run cmd/master/main.go
-    ✓ PASS
+discover Workers
+assign work
+start training
+aggregate gradients
 ```
 
----
+with fewer dataset types, fewer lifecycle guarantees, and simpler runtime
+synchronization assumptions.
 
-# LDGCC Phase 21: Production Packaging Foundation
+### What was added after the initial V1 foundation
 
-The Master binary now supports install-style startup. When the configured
-`--config` file does not exist, Master creates a default `master_config.json`
-with restricted permissions before loading it.
+As the system matured, the Master expanded from a basic coordinator into a
+clearer control plane with stronger spec handling, more dataset support,
+improved orchestration phases, richer synchronization paths, and better
+observability.
 
-Production ownership:
+From the current code and the phase-style history in the repo, the Master grew
+through these major capability additions:
+
+- explicit job spec parsing and validation:
+  the system gained a proper project contract through `ldgcc.yaml`, so invalid
+  inputs could fail early instead of turning into confusing runtime problems
+
+- dataset sharding as a first-class subsystem:
+  sharding became its own piece of the architecture instead of being hidden
+  inside prepare logic, which made dataset behavior easier to extend and test
+
+- workspace delivery support:
+  the Master moved beyond just selecting Workers and began coordinating how
+  code and data are actually delivered to them
+
+- Worker environment setup coordination:
+  setup became a real tracked phase, so a Worker is only treated as ready after
+  it has received the workspace and prepared its runtime environment
+
+- training execution lifecycle:
+  launch, stop, cleanup, and status checking became explicit coordinated
+  operations instead of looser remote actions
+
+- recovery and lifecycle cleanup:
+  the Master gained better ways to return the system to a usable state after
+  failure, cancellation, or partial job completion
+
+- result collection:
+  the system gained structured manifest handling, file download, checksum
+  verification, and summary writing so finished jobs produce inspectable
+  outputs
+
+- application API and Studio integration:
+  the Master gained a clearer app-facing control surface with controller logic,
+  HTTP endpoints, and event streaming for the Studio experience
+
+- image-folder dataset support:
+  the project expanded from text-style datasets into image classification
+  folder layouts
+
+- YOLO split dataset support:
+  the Master added sharding for paired image/label directory layouts, which
+  moved the system closer to object-detection style workloads
+
+- compression-aware communication config:
+  the project spec and runtime contract expanded to include communication
+  precision, compression type, selection method, sample rate, payload factor,
+  and related sync controls
+
+- sparse index and chunk metadata handling:
+  the gradient protocol became richer, which made it possible to support more
+  structured and compressed synchronization behavior
+
+- chunk batch synchronization:
+  the Master moved beyond only whole-gradient sync paths and added chunked and
+  batched synchronization flows
+
+- deadlock-safe synchronization fixes:
+  later improvements made abort and reset behavior safer, which matters because
+  blocked synchronization rounds can otherwise leave the system hanging
+
+- sync metrics and timing instrumentation:
+  the system gained metrics files and timing signals so developers can inspect
+  overhead, blocking time, and runtime sync behavior
+
+- gradient accumulation alignment and runtime-related control refinements:
+  newer updates improved how the Master fits with prepared runtime paths,
+  accumulation-aware execution, and later overlap-related behavior
+
+### What the current Master is now
+
+The current Master should be thought of as a LAN-first distributed training
+orchestrator, not just a gradient relay. It now owns explicit state and
+workflow boundaries for most of the lifecycle around a distributed job.
+
+Today, the Master is more than a "launch jobs and average gradients" service.
+It is a structured control plane with:
+
+- explicit Worker authentication and pairing state
+- explicit active job state
+- multiple dataset sharding implementations
+- explicit setup and training orchestration stages
+- richer synchronization modes in the aggregator
+- result collection and summary archiving
+- Studio-facing control and event surfaces
+
+That is the right way to talk about the transition in an interview:
 
 ```text
-VS Code extension
-    -> starts ldgcc-master
-    -> passes --config
-    -> passes --data-dir
-    -> reads master-session.json
+The system started as a minimal local distributed training coordinator.
+It evolved into a more complete control plane with stronger orchestration,
+dataset handling, runtime synchronization support, and observability.
 ```
 
-The `--data-dir` folder owns persistent Master state:
+### What is still intentionally simple
 
-```text
-master-session.json
-master_pairings.json
-ldgcc_jobs/
-ldgcc_results/
-```
+Even after these improvements, some design choices remain conservative on
+purpose. Those choices keep the system understandable and workable for a local
+distributed training project, even if they leave performance and scale on the
+table.
 
-This keeps production Master state independent of the repository working
-directory.
+Even after this evolution, some parts are still deliberately conservative:
 
----
+- one active job at a time
+- deterministic, not adaptive, Worker selection
+- centralized aggregation
+- LAN-first topology assumptions
 
-# Master Phase 1 Success Criteria
+So the current Master is more mature than the earliest V1 phases, but it is
+still optimized for a local-first, understandable architecture rather than a
+large-scale distributed scheduler.
 
-Master Phase 1 is considered complete because:
+## Current Limits And Future Work
 
-```text
-go build ./...
-    ✓ PASS
+This section is not a list of weaknesses so much as the most obvious next
+design moves. The current Master works, but there are clear places where a
+future version could become smarter, more durable, or more scalable.
 
-go test ./...
-    ✓ PASS
+If the next evolution of the Master continues, the most natural improvements
+are:
 
-go run cmd/master/main.go
-    ✓ PASS
-```
+- smarter Worker selection using network and hardware signals
+- stronger persistence of job state across Master restarts
+- richer recovery semantics for interrupted jobs
+- broader task/dataset support
+- lower-overhead aggregation paths
+- better observability for prepare/setup/train/result phases
+- clearer separation between control-plane API and data-plane sync concerns
+- eventual support for more than one active job
 
-and:
+In other words, the Master is already a real orchestrator, but the next phase
+would make it more adaptive, more observable, and less dependent on one
+centralized happy path.
 
-```text
-Worker
-    ↓
-Master Server
-    ↓
-Aggregator Service
-    ↓
-Master Server
-    ↓
-Worker
-```
+## Interview Questions This README Should Help You Answer
 
-works correctly using the shared LDGCC protocol.
+After reading this file, you should be able to answer:
+
+- What does the Master own that Workers do not?
+- Why is LDGCC centralized instead of peer-to-peer?
+- How is a job prepared from `ldgcc.yaml`?
+- How are Workers selected and tracked?
+- How does one training launch work?
+- How does gradient aggregation work at a high level?
+- What happens if one Worker fails or is offline?
+- How did the Master evolve from the earlier version to the current one?
+- What are the main limitations of the current design?

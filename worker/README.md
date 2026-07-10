@@ -1,2157 +1,960 @@
-# LDGCC Worker Service V1
+# LDGCC Worker
+
+This README is the developer-facing deep dive for the `worker/` component.
+
+It is written for two audiences:
+
+- contributors who want to understand how the Worker service behaves internally
+- interview/review readers who want to explain the Worker architecture, control
+  flow, and design tradeoffs with confidence
+
+The top-level [README.md](../README.md) is the user-facing overview. This file
+describes the current Worker codebase as it exists today.
 
 ## Overview
 
-LDGCC (LocDist Distributed GPU Compute Cluster) is a local-first distributed training platform that transforms nearby laptops into a temporary machine learning training cluster.
+The Worker is the machine-side execution agent in LDGCC.
 
-Version 1 (V1) follows a coordinator-based architecture:
+It runs on a Worker laptop and acts as the local service that connects the
+Brain/Master to the machine that will actually execute the job. In practice,
+the Worker has to do several jobs at once:
 
-* Master coordinates the cluster.
-* Workers execute training-related tasks.
-* Runtime runs inside the user's Python training process.
-* All synchronization flows through centralized infrastructure.
+- advertise itself on the LAN
+- accept and store pairing with one Master
+- register itself with that Master
+- keep the Master updated through heartbeat and status signals
+- receive workspace packages and prepare them locally
+- build or reuse the Python environment needed for the training project
+- launch and monitor the training process
+- bridge runtime gradient synchronization traffic to the Master
+- expose results back to the Master after training finishes
 
-Workers never communicate directly with each other.
+The Worker is not the global coordinator. It does not schedule jobs across the
+cluster or decide which machines should train. That is the Master’s job.
 
----
+Instead, the Worker is the local execution-side controller that turns Master
+commands into local machine actions safely and consistently.
 
-# High Level LDGCC Architecture
+## Responsibilities
 
-```text
-                     Brain Laptop
+The Worker owns the following responsibilities in the current codebase.
+These responsibilities are split across discovery, trust/pairing, local job
+execution, runtime bridging, and result handling.
 
-┌───────────────────────────────────────────────┐
-│                    MASTER                     │
-│                                               │
-│ Discovery                                     │
-│ Scheduler                                     │
-│ Aggregator                                    |
-| Storage                                       |
-| Worker Manager                                │
-│ Orchestrator                                  │
-└───────────────────────────────────────────────┘
-                     ▲
-                     │ Persistent gRPC
-                     │
-                     ▼
+### Local presence and identity
 
-┌───────────────────────────────────────────────┐
-│               WORKER SERVICE                  │
-└───────────────────────────────────────────────┘
-                     ▲
-                     │ Local gRPC
-                     │
-                     ▼
+This is the part of the Worker that makes the machine visible and identifiable
+on the LAN before a job even exists.
 
-┌───────────────────────────────────────────────┐
-│              LOCDIST RUNTIME                  │
-└───────────────────────────────────────────────┘
-                     ▲
-                     │
-                     ▼
+- advertise Worker presence on the LAN
+- expose Worker name, host, port, and pairing status
+- provide the local app/API surface for the Worker machine
 
-                 train.py
-```
+### Pairing and trust
 
----
+Pairing is how the Worker decides which Master is allowed to control it.
 
-# Component Responsibilities
+- accept or reject a pending Master pairing request
+- persist pairing credentials locally
+- allow only one active Master pairing at a time
+- reset a pairing cleanly when the user disconnects
 
-## Runtime
+### Master communication
 
-Runtime runs inside the user's training process.
+Once paired, the Worker becomes a client of the Master for control and runtime
+communication.
 
-Example:
+- register with the Master
+- send heartbeat and status information
+- notify the Master when going offline
+- forward runtime synchronization requests to the Master
 
-```python
-loss.backward()
+### Workspace and setup
 
-locdist.sync_gradients(model)
+The Worker is responsible for turning a transferred job package into a runnable
+local workspace.
 
-optimizer.step()
-```
+- receive workspace data
+- unpack it safely
+- validate required files
+- create Worker-local workspace directories
+- build or reuse the Python environment for the job
+- install runtime and project dependencies
+- validate CUDA GPU availability
 
-Runtime owns:
+### Training execution
 
-* Gradient extraction
-* Gradient reconstruction
-* Serialization
-* Proto conversion
-* Transport client
-* Runtime API
+The Worker owns the local training process lifecycle.
 
-Runtime does NOT own:
+- arm a job
+- launch the training process
+- set runtime environment variables
+- capture logs
+- report status
+- stop and clean up local process state
 
-* Aggregation
-* Scheduling
-* Discovery
-* Cluster coordination
+### Runtime bridge and results
 
----
+The Worker is also the local bridge between Python runtime code and the Master.
 
-## Worker Service
+- expose synchronization RPCs to the runtime
+- forward synchronization calls to the Master
+- provide result manifest and file download endpoints
+- expose benchmark upload support for network checks
 
-Worker Service acts as the communication layer between Runtime and the rest of LDGCC infrastructure.
+## System Position
 
-Future responsibilities:
+The Worker sits between the local machine and the rest of the cluster.
 
-* Runtime communication
-* Aggregator communication
-* Workspace management
-* Environment management
-* Process execution
-* Status reporting
+In practical terms:
 
----
-
-## Master
-
-Master owns cluster orchestration.
-
-Responsibilities:
-
-* Discovery
-* Scheduling
-* Aggregation
-* Sharding
-* Coordination
-
----
-
-# Shared Protocol
-
-LDGCC uses a shared protobuf contract.
+- the Master decides what should happen
+- the Worker makes that happen on one machine
+- the runtime uses the Worker as its local network-facing bridge
 
 ```text
-ldgcc/
+Brain / Studio
+    -> Master
+    -> Worker control RPCs
 
-├── protocol/
-│   └── gradient.proto
-│
-├── runtime/
-├── worker/
-└── master/
+Worker service
+    -> pairing / status / setup / training / results / runtime bridge
+
+Python runtime
+    -> local Worker gRPC server
+    -> Worker runtime bridge
+    -> Master synchronizer
 ```
 
-Important:
-
-There must be exactly one source of truth for protobuf definitions.
-
-All components generate code from:
+The important architectural rule is:
 
 ```text
-protocol/gradient.proto
+The Worker is a local execution agent, not a peer-to-peer coordinator.
+It talks upward to the Master, not sideways to other Workers.
 ```
 
----
+That gives the Worker three major roles:
 
-# Worker Service Final Architecture (V1)
+- machine-local control service
+- runtime communication bridge
+- local job execution manager
 
-The complete Worker Service architecture is:
+## Request And Training Flows
 
-```text
-Worker Service
+The Worker has two big classes of flow:
 
-├── Runtime Bridge
-├── Executor Manager
-├── Workspace Manager
-├── Environment Manager
-└── Status Manager
-```
+- control flows driven by the local user and by the Master
+- runtime flows driven by the training process
 
-Responsibilities:
+Another simple way to think about the Worker is:
 
-### Runtime Bridge
+- before pairing, it behaves like a discoverable local service
+- after pairing, it behaves like a controlled execution agent
+- during training, it behaves like both a process manager and a runtime bridge
 
-Handles communication between Runtime and LDGCC infrastructure.
+### 1. Worker start and advertisement flow
 
-Future flow:
+When the Worker starts, it becomes a discoverable machine on the LAN and opens
+its local server stack.
 
-```text
-Runtime
-    ↓
-Worker Service
-    ↓
-Master Server
-    ↓
-Aggregator Component
-```
+The flow is:
 
----
+1. `service.Agent.Start()` creates the runtime bridge and Worker gRPC server
+2. the Worker server starts listening
+3. if a saved pairing record exists, the Worker tries to reconnect to that
+   Master
+4. the Worker starts LAN advertisement through `discovery/advertiser.go`
+5. the Worker starts background heartbeat behavior
 
-### Executor Manager
+Important idea:
 
-Responsible for:
+- startup is not just "open a port"
+- it is "become discoverable, restore trust state if possible, and prepare to
+  receive commands"
 
-```text
-Launch train.py
-Monitor process
-Collect logs
-Handle crashes
-```
+### 2. Discovery and pairing flow
 
----
+Discovery and pairing are different steps.
 
-### Workspace Manager
+- discovery means "the machine can be seen"
+- pairing means "this Master is allowed to control this Worker"
 
-Responsible for:
+The pairing flow is:
 
-```text
-Workspace creation
-Project extraction
-Dataset storage
-Cleanup
-```
+1. a Master sends a `PairWorkerRequest`
+2. `pairing.Manager.Request(...)` validates that request and stores it as
+   pending
+3. the local Worker user accepts or rejects it
+4. if accepted, the pairing record is saved locally
+5. `service.Agent.AcceptPairing()` connects to the Master and registers
+6. the Worker becomes `PAIRED_ONLINE` or `PAIRED_OFFLINE` depending on whether
+   the Master is reachable immediately
 
----
+Important idea:
 
-### Environment Manager
+- the Worker owner must approve the pairing
+- the Worker will not accept a second Master while already paired
 
-Responsible for:
+That makes pairing the trust boundary for the whole Worker.
 
-```text
-Virtual environment creation
-Dependency installation
-Python validation
-```
+### 3. Registration and heartbeat flow
 
----
+After pairing, the Worker becomes an active cluster participant by registering
+with the Master and then sending heartbeat updates.
 
-### Status Manager
+The flow is:
 
-Responsible for:
+1. `service.Agent.connect(...)` builds a `masterclient.Client`
+2. the Worker calls `RegisterWorker`
+3. the Master accepts the Worker if pairing credentials match
+4. the Worker keeps sending heartbeat requests
+5. status and liveness are maintained through the Master-facing client path
 
-```text
-IDLE
-PREPARING
-RUNNING
-COMPLETED
-FAILED
-```
+Important idea:
 
-status reporting.
+- pairing says the Worker is allowed
+- registration says the Worker is connected
+- heartbeat says the Worker is still alive now
 
----
+### 4. Workspace receive and prepare flow
 
-# Worker Service Phase 1
+Before a job can run, the Worker has to receive and unpack a job-specific
+workspace.
 
-## Purpose
+The flow is:
 
-Phase 1 is NOT distributed training.
+1. the Master uploads a workspace package
+2. `grpc.WorkerBridgeServer` receives either a direct workspace request or a
+   streamed upload
+3. `workspace.Manager` validates job id and safe relative paths
+4. the archive is extracted into a Worker-local workspace directory
+5. the Worker checks that required files exist:
+   - entrypoint
+   - `job_config.json`
+   - dataset path
+6. `logs/` and `artifacts/` directories are created
 
-Phase 1 is a communication and integration milestone.
+Important details:
 
-Goal:
+- only safe paths are allowed
+- symlink-like unsafe archive entries are rejected
+- extracted size limits are enforced
+- old unrelated workspaces are removed so the Worker stays in a simple
+  one-workspace-at-a-time model
 
-Validate the complete Runtime → Proto → gRPC → Worker → Proto → Runtime path.
+### 5. Setup flow
 
----
+Setup turns a received workspace into a runnable training environment.
 
-## What Phase 1 Does NOT Implement
+The flow is:
 
-Phase 1 intentionally excludes:
+1. the Master calls `SetupJob`
+2. `setup.Manager.Setup(...)` ensures the job is not already setting up
+3. the Worker checks for an NVIDIA CUDA GPU using `nvidia-smi`
+4. project requirements are filtered so LDGCC-managed runtime packages are not
+   accidentally overwritten
+5. a dependency fingerprint is computed
+6. if a matching cached environment exists, it is reused
+7. otherwise the Worker creates a virtual environment
+8. CUDA PyTorch, runtime requirements, and project requirements are installed
+9. a venv marker file is written into the workspace
+10. the Worker returns `READY` or `FAILED`
 
-```text
-Master Communication
+Important idea:
 
-Aggregator Communication
+- setup is not just pip install
+- it is the Worker’s local "make this job executable on this machine" phase
 
-Worker Coordination
+This is also where the Worker enforces the current GPU-first design of LDGCC.
 
-Barrier Synchronization
+### 6. Training launch flow
 
-Workspace Manager
+The Worker uses an arm/release execution model that mirrors the Master’s
+coordinated launch design.
 
-Environment Manager
+The flow is:
 
-Executor
+1. the Master sends `ArmJob`
+2. `training.Manager.Arm(...)` validates readiness and required files
+3. the Worker reads `job_config.json`
+4. the Worker records the entrypoint, log path, and serialized communication /
+   training config
+5. the Worker enters `ARMED`
+6. the Master later sends `ReleaseJob`
+7. `training.Manager.Release(...)` creates the actual process
+8. the Worker sets runtime environment variables such as:
+   - `LDGCC_JOB_ID`
+   - `LDGCC_WORKER_ID`
+   - `LDGCC_MASTER_HOST`
+   - `LDGCC_MASTER_PORT`
+   - `LDGCC_COMMUNICATION`
+   - `LDGCC_TRAINING`
+9. the Python training process starts and logs are written locally
+10. the Worker moves into `RUNNING`
 
-Status Manager
+Important idea:
 
-Scheduling
+- `ArmJob` prepares local process state
+- `ReleaseJob` actually starts execution
 
-Discovery
+That split lets the Master coordinate a cleaner multi-Worker launch.
 
-Distributed Aggregation
-```
+### 7. Runtime synchronization flow
 
----
+Once training is running, the Worker becomes the local network bridge between
+the Python runtime and the Master.
 
-## Phase 1 Architecture
+The flow is:
 
-```text
-Runtime
-    ↓
-GradientSubmission
-    ↓
-protobuf
-    ↓
-gRPC
-    ↓
-Worker Service
-    ↓
-Runtime Bridge
-    ↓
-Identity Aggregation
-    ↓
-AggregatedGradientResponse
-    ↓
-gRPC
-    ↓
-protobuf
-    ↓
-Runtime
-```
+1. the runtime sends a synchronization request to the local Worker gRPC server
+2. `grpc.WorkerBridgeServer` receives that request
+3. the request is passed to `runtimebridge.Service`
+4. the runtime bridge calls the current `Synchronizer`
+5. once paired, that synchronizer is a `masterclient.Client`
+6. the request is forwarded to the Master
+7. the aggregated response comes back through the same path
 
----
+The Worker supports several sync paths through the synchronizer interface:
 
-## Identity Aggregation
+- `Synchronize(...)`
+- `SynchronizeBatch(...)`
+- `SynchronizeBatchStream(...)`
+- `SynchronizeChunk(...)`
 
-Phase 1 uses a special aggregation algorithm:
+Important idea:
 
-```text
-Identity Aggregation
-```
+- the runtime does not talk directly to the Master
+- it talks to the local Worker bridge, and the Worker bridge talks to the
+  Master
 
-Mathematically:
+This keeps the runtime API simpler and lets the Worker own network-side control
+and authentication behavior.
 
-```text
-G = G
-```
+### 8. Status, stop, and finalize flow
 
-Meaning:
+The Worker is responsible for keeping the Master informed about local training
+state and for shutting down local execution cleanly.
 
-```text
-Aggregated Gradient
-=
-Original Gradient
-```
+The status and stop path is:
 
-No:
+1. the Master asks for status through `GetJobStatus`
+2. the Worker returns the current local process state
+3. if the Master sends `StopJob`, the Worker interrupts the process
+4. if the process does not stop in time, the Worker kills it
+5. the Worker marks the job `CANCELLED`, `FAILED`, or `COMPLETED` depending on
+   how the process ends
+6. `CleanupJob` removes local tracked setup/training state for that job
 
-* averaging
-* reduction
-* scaling
-* compression
-* optimization
+Important idea:
 
-The response gradient must be identical to the request gradient.
+- the Worker owns the truth about the local process
+- the Master owns the truth about the global job
 
----
+So status polling and stop/cleanup calls are how those two views stay aligned.
 
-## Phase 1 Success Criterion
+### 9. Result collection flow
 
-The most important requirement is:
+After training, the Worker exposes local outputs back to the Master.
 
-```python
-loss.backward()
+The flow is:
 
-locdist.sync_gradients(model)
+1. the Master asks for a result manifest
+2. the Worker builds the manifest from local output paths
+3. the Worker returns:
+   - files
+   - missing outputs
+   - collection errors
+4. the Master downloads selected files through `DownloadResult`
+5. the Worker streams file chunks back
 
-optimizer.step()
-```
+This makes the Worker the source of truth for the local artifacts produced by
+its training run.
 
-must behave identically to:
+## Internal Components
 
-```python
-loss.backward()
+This section maps the current `worker/` folders to responsibilities in the
+running system.
 
-optimizer.step()
-```
+The packages under `worker/` are not arbitrary folders. They roughly follow the
+boundaries between local service startup, Master communication, workspace and
+environment handling, runtime bridging, and training execution.
 
-for a single worker.
+### `service/`
 
-Meaning:
+Owns top-level Worker process orchestration.
+This package is the best place to understand how the Worker starts, reconnects,
+advertises itself, and wires its subsystems together.
 
-```text
-Gradient Before Sync
-=
-Gradient After Sync
-```
+- `agent.go`: top-level Worker agent; owns start/stop, reconnect, heartbeat,
+  pairing reset, runtime bridge setup, and advertisement lifecycle
+- `network.go`: network-related Worker service helpers
+- tests cover the Agent lifecycle and state transitions
 
----
+### `app/`
 
-# Phase 1 Repository Structure
+Owns the local app/control layer for the Worker machine.
+This package is the user-facing side of the Worker process.
+
+- `controller.go`: app-side control logic for local actions
+- `server.go`: HTTP/app server wiring
+- tests cover local control behavior
+
+### `grpc/`
+
+Owns the Worker gRPC server surface.
+This package is the transport edge seen by both the Master and the local
+runtime.
+
+- `server.go`: gRPC server wiring
+- `handlers.go`: `WorkerBridge` RPC handlers
+- `handlers.go` authenticates Master-issued control requests and dispatches to
+  workspace, setup, training, results, and runtime bridge managers
+
+### `runtimebridge/`
+
+Owns the local bridge from runtime requests to the current synchronizer.
+This package is the narrow Worker-side abstraction that hides whether the
+runtime is currently paired to a real Master client or only has an unavailable
+fallback.
+
+- `synchronizer.go`: synchronizer interface definition
+- `sync.go`: runtime bridge service implementation
+- `unavailable.go`: fallback synchronizer used before Master connection exists
+
+### `masterclient/`
+
+Owns outbound communication from the Worker to the Master.
+This package is the Worker’s client-side transport adapter.
+
+- `client.go`: Master gRPC client for register, heartbeat, status updates,
+  unpair, and all synchronization calls
+
+This package is intentionally low-level. It should send requests, not decide
+job policy.
+
+### `pairing/`
+
+Owns Worker-side trust state with the Master.
+This package decides which Master, if any, is currently allowed to control the
+Worker.
+
+- `manager.go`: pending pairing request handling, accept/reject, record access,
+  reset behavior
+- `store.go`: persistent record storage
+- tests cover pairing behavior
+
+### `discovery/`
+
+Owns Worker advertisement on the LAN.
+This package is how the Worker becomes visible to the Master before pairing.
+
+- `advertiser.go`: LAN advertisement behavior and metadata exposure
+
+### `workspace/`
+
+Owns local job workspace extraction and validation.
+This package turns uploaded archives into safe local workspace directories.
+
+- `manager.go`: workspace creation, archive extraction, path safety checks,
+  required-file validation, removal, and lookup
+- tests cover path safety and extraction behavior
+
+### `setup/`
+
+Owns environment preparation for a job.
+This package is where "received workspace" becomes "runnable Python job."
+
+- `manager.go`: CUDA check, dependency filtering, environment caching, venv
+  creation, pip install, setup state management
+- tests cover setup behavior and retry handling
+
+### `training/`
+
+Owns local process execution for training jobs.
+This package is where the Worker becomes a real process manager.
+
+- `manager.go`: arm/release/stop/status/cleanup, process state tracking, log
+  path handling, runtime env injection, and process wait logic
+- tests cover launch, stop, cleanup, and status behavior
+
+### `status/`
+
+Owns Worker-to-Master status reporting.
+This package wraps status update behavior and tracks the last local status
+value.
+
+- `manager.go`: set current Worker status and report it to the Master
+
+### `results/`
+
+Owns result manifesting and file access.
+This package exposes local outputs back to the Master in a controlled way.
+
+- `manager.go`: manifest building, file lookup, and safe result access
+- tests cover result handling behavior
+
+### `metrics/`
+
+Owns Worker-side sync metrics helpers.
+This package supports observability for runtime synchronization behavior on the
+Worker side.
+
+- `sync.go`: metrics support for synchronization reporting
+
+### `tests/`
+
+Higher-level cross-package coverage:
+
+- handler behavior
+- heartbeat behavior
+- Master client behavior
+- runtime bridge behavior
+- setup flow
+- training flow
+- sync flow
+- status flow
+
+These tests matter because many important Worker behaviors only show up once
+local managers, gRPC handlers, and Master communication are all wired together.
+
+## Folder Structure
+
+Current `worker/` tree at a high level:
 
 ```text
 worker/
-
-├── cmd/
-│   └── worker/
-│       └── main.go
-
-├── grpc/
-│   ├── handlers.go
-│   └── server.go
-
-├── runtimebridge/
-│   └── sync.go
-
-├── internal/
-│   ├── config/
-│   │   └── config.go
-│   └── errors/
-│       └── errors.go
-
-├── generated/
-│   └── gradient/
-│       ├── gradient.pb.go
-│       └── gradient_grpc.pb.go
-
-├── tests/
-│   ├── runtimebridge_test.go
-│   ├── handler_test.go
-│   └── sync_test.go
-
-├── go.mod
-├── go.sum
-└── README.md
-```
-
----
-# Phase 1 File Responsibilities
-
-## internal/errors/errors.go
-
-Purpose:
-
-Centralized location for all Runtime → Worker request validation errors.
-
-This file prevents validation logic from scattering across multiple packages and provides a single source of truth for request validation failures.
-
-Current Phase 1 Errors:
-
-```text
-ErrInvalidRuntimeVersion
-
-ErrMissingJobID
-
-ErrMissingWorkerID
-
-ErrMissingChunks
-```
-
-These errors are consumed by:
-
-```text
-runtimebridge/sync.go
-```
-
-during request validation.
-
-Flow:
-
-```text
-GradientSubmission
-        ↓
-Runtime Bridge Validation
-        ↓
-errors.go
-        ↓
-Error Returned
-```
-
-No business logic exists here.
-
-Only error definitions.
-
----
-
-## internal/config/config.go
-
-Purpose:
-
-Contains Worker Service configuration.
-
-Current Phase 1 Configuration:
-
-```text
-Port
-```
-
-Example:
-
-```text
-50051
-```
-
-This configuration is used when creating the gRPC server.
-
-Flow:
-
-```text
-main.go
-      ↓
-Load Config
-      ↓
-grpc/server.go
-      ↓
-Start Listener
-```
-
-Future versions may include:
-
-```text
-Aggregator Address
-
-Workspace Path
-
-Environment Path
-
-Heartbeat Interval
-
-Logging Configuration
-```
-
-but those are intentionally excluded from Phase 1.
-
----
-
-## runtimebridge/sync.go
-
-Purpose:
-
-Core business logic of Worker Service Phase 1.
-
-This is the most important file in the entire Phase 1 implementation.
-
-It implements:
-
-```text
-Identity Aggregation
-```
-
-which acts as a simulated one-worker aggregation step.
-
-Phase 1 Flow:
-
-```text
-GradientSubmission
-        ↓
-Validate Request
-        ↓
-Identity Aggregation
-        ↓
-AggregatedGradientResponse
-```
-
-### Validation Logic
-
-Allowed validations:
-
-```text
-runtime_version > 0
-
-job_id != ""
-
-worker_id != ""
-
-chunks != nil
-```
-
-Worker Service intentionally does NOT validate:
-
-```text
-Tensor Shapes
-
-Parameter Ordering
-
-Model Architecture
-
-Gradient Values
-
-Dtypes
-
-Tensor Sizes
-```
-
-These responsibilities belong to Runtime.
-
-Worker trusts Runtime.
-
-### Identity Aggregation
-
-Mathematically:
-
-```text
-G = G
-```
-
-Implementation:
-
-```text
-response.chunks
-        =
-request.chunks
-```
-
-No averaging.
-
-No reduction.
-
-No scaling.
-
-No compression.
-
-No optimization.
-
-### Response Construction
-
-Input:
-
-```text
-GradientSubmission
-```
-
-Output:
-
-```text
-AggregatedGradientResponse
-```
-
-Important:
-
-```text
-response != request
-```
-
-The protobuf message changes.
-
-Only the gradient payload is preserved.
-
-Response fields:
-
-```text
-runtime_version
-    = request.runtime_version
-
-job_id
-    = request.job_id
-
-participating_workers
-    = 1
-
-aggregation_round
-    = 1
-
-chunks
-    = request.chunks
-```
-
-This mirrors what a real Aggregator will eventually return in future phases.
-
----
-
-## grpc/handlers.go
-
-Purpose:
-
-Expose Runtime Bridge functionality through gRPC.
-
-This file contains the implementation of:
-
-```text
-SynchronizeGradients()
-```
-
-Responsibilities:
-
-```text
-Receive RPC Request
-
-Call Runtime Bridge
-
-Return RPC Response
-```
-
-Flow:
-
-```text
-Runtime
-      ↓
-gRPC
-      ↓
-SynchronizeGradients()
-      ↓
-Runtime Bridge
-      ↓
-AggregatedGradientResponse
-      ↓
-gRPC
-      ↓
-Runtime
-```
-
-This file contains no aggregation logic.
-
-This file contains no validation logic.
-
-All business decisions are delegated to Runtime Bridge.
-
-Responsibilities are intentionally kept small.
-
----
-
-## grpc/server.go
-
-Purpose:
-
-Create and manage the Worker Service gRPC server.
-
-Responsibilities:
-
-```text
-Create TCP Listener
-
-Create gRPC Server
-
-Register WorkerBridge Service
-
-Start Serving Requests
-
-Graceful Shutdown
-```
-
-Initialization Flow:
-
-```text
-main.go
-      ↓
-NewServer()
-      ↓
-net.Listen()
-      ↓
-grpc.NewServer()
-      ↓
-RegisterWorkerBridge()
-      ↓
-Serve()
-```
-
-This file is infrastructure only.
-
-No business logic exists here.
-
----
-
-## cmd/worker/main.go
-
-Purpose:
-
-Application entry point.
-
-This file bootstraps the entire Worker Service.
-
-Startup Flow:
-
-```text
-Start Process
-      ↓
-Load Config
-      ↓
-Create Runtime Bridge
-      ↓
-Create gRPC Server
-      ↓
-Register Services
-      ↓
-Start Listening
-      ↓
-Wait For Shutdown Signal
-```
-
-Shutdown Flow:
-
-```text
-SIGINT / SIGTERM
-      ↓
-GracefulStop()
-      ↓
-Worker Service Exit
-```
-
-Responsibilities:
-
-```text
-Configuration Initialization
-
-Dependency Wiring
-
-Server Startup
-
-Graceful Shutdown
-```
-
-No business logic exists here.
-
-Its only responsibility is application lifecycle management.
-
----
-
-# Testing
-
-Phase 1 uses a layered testing strategy.
-
-Each test validates a different architectural layer.
-
----
-
-## runtimebridge_test.go
-
-Purpose:
-
-Validate Runtime Bridge independently of gRPC.
-
-Tests:
-
-```text
-Valid Request
-
-Invalid Runtime Version
-
-Missing Job ID
-
-Missing Worker ID
-
-Missing Chunks
-
-Identity Aggregation
-
-Response Construction
-```
-
-Architecture:
-
-```text
-Test
-      ↓
-Runtime Bridge
-```
-
-No networking.
-
-No protobuf transport.
-
-No gRPC.
-
-This is pure business logic testing.
-
----
-
-## handler_test.go
-
-Purpose:
-
-Validate the gRPC handler layer.
-
-Tests:
-
-```text
-Request Routing
-
-Runtime Bridge Invocation
-
-Response Return
-```
-
-Architecture:
-
-```text
-Test
-      ↓
-Handler
-      ↓
-Runtime Bridge
-```
-
-No network communication.
-
-The handler is tested in isolation.
-
-This verifies that RPC requests are correctly forwarded to Runtime Bridge.
-
----
-
-## sync_test.go
-
-Purpose:
-
-Validate the complete Runtime ↔ Worker communication stack.
-
-This is the most important test in Phase 1.
-
-Architecture:
-
-```text
-Client
-      ↓
-protobuf
-      ↓
-gRPC
-      ↓
-Worker Service
-      ↓
-Runtime Bridge
-      ↓
-Identity Aggregation
-      ↓
-AggregatedGradientResponse
-      ↓
-gRPC
-      ↓
-protobuf
-      ↓
-Client
-```
-
-What it validates:
-
-```text
-Proto Serialization
-
-Proto Deserialization
-
-gRPC Transport
-
-Handler Routing
-
-Runtime Bridge
-
-Identity Aggregation
-
-Response Construction
-```
-
-This test proves that the complete communication stack works correctly.
-
----
-
-# Current Status
-
-```text
-Shared Protocol
-    ✓ COMPLETE
-
-Generated Protobuf Code
-    ✓ COMPLETE
-
-Configuration Layer
-    ✓ COMPLETE
-
-Validation Layer
-    ✓ COMPLETE
-
-Runtime Bridge
-    ✓ COMPLETE
-
-Identity Aggregation
-    ✓ COMPLETE
-
-gRPC Handler
-    ✓ COMPLETE
-
-gRPC Server
-    ✓ COMPLETE
-
-Worker Bootstrap
-    ✓ COMPLETE
-
-Unit Tests
-    ✓ COMPLETE
-
-Integration Tests
-    ✓ COMPLETE
-
-go build ./...
-    ✓ PASS
-
-go test ./...
-    ✓ PASS
-```
-
----
-
-# Phase 1 Result
-
-Worker Service Phase 1 successfully validates the complete Runtime → Proto → gRPC → Worker → Proto → Runtime communication stack.
-
-The implementation proves that:
-
-```python
-loss.backward()
-
-locdist.sync_gradients(model)
-
-optimizer.step()
-```
-
-can safely cross the Worker Service boundary while preserving gradient correctness.
-
-Identity Aggregation guarantees:
-
-```text
-Gradient Before Sync
-        =
-Gradient After Sync
-```
-
-for a single worker.
-
-This establishes the Runtime ↔ Worker contract and provides the foundation for Phase 2, where Worker Service will evolve from a local synchronization service into a true Runtime Bridge that communicates with the Master Server and participates in real distributed gradient aggregation through the Aggregator component.
-
-
-NOTE:
-
-Phase 1 stores worker_config.json in the Worker root directory.
-
-This is a temporary development setup.
-
-A future Worker Infrastructure phase may relocate the file to:
-
-configs/worker_config.json
-
-or
-
-~/.ldgcc/worker_config.json
-
-to support installation-wide configuration and Master-managed deployment.
-
-
-# Worker Phase 2
-
-## Goal
-
-Worker Phase 2 exists to connect the Worker Service to the Master.
-
-Phase 1 validated:
-
-```text
-Runtime
-    ↓
-Worker
-    ↓
-Identity Aggregation
-    ↓
-Runtime
-```
-
-Phase 2 replaces local Identity Aggregation with a real Master connection.
-
-Target architecture:
-
-```text
-Runtime
-    ↓
-Worker
-    ↓
-Master
-    ↓
-Aggregator
-    ↓
-Master
-    ↓
-Worker
-    ↓
-Runtime
-```
-
----
-
-## Worker Phase 2 Architecture Decisions
-
-### Worker Becomes A Proxy
-
-Worker no longer owns aggregation logic.
-
-Current:
-
-```text
-Runtime
-    ↓
-Worker
-    ↓
-Identity Aggregation
-```
-
-Phase 2:
-
-```text
-Runtime
-    ↓
-Worker
-    ↓
-Master
-```
-
-Aggregation is owned entirely by Master.
-
----
-
-### Runtime API Remains Unchanged
-
-Runtime continues using:
-
-```python
-loss.backward()
-
-locdist.sync_gradients(model)
-
-optimizer.step()
-```
-
-No Runtime modifications were required.
-
----
-
-### Persistent Worker → Master Connection
-
-Worker maintains:
-
-```text
-ONE persistent gRPC connection
-```
-
-to Master.
-
-Connection creation occurs once during Worker startup.
-
-The connection is reused throughout training.
-
----
-
-### Configuration Driven
-
-Master location comes from:
-
-```text
-worker_config.json
-```
-
-Example:
-
-```json
-{
-  "grpc_port": "50051",
-
-  "master_host": "127.0.0.1",
-  "master_port": "60051"
-}
-```
-
-No Master networking values are hardcoded.
-
----
-
-### Shared Protocol
-
-Worker and Master continue using:
-
-```text
-GradientSubmission
-
-AggregatedGradientResponse
+  app/           local Worker control/API layer
+  cmd/           executable entrypoints
+  discovery/     LAN advertisement
+  generated/     generated protobuf bindings
+  grpc/          WorkerBridge gRPC server
+  internal/      config and internal helper packages
+  masterclient/  outbound Master client
+  metrics/       sync metrics helpers
+  pairing/       pairing request and record management
+  results/       result manifest and file access
+  runtimebridge/ runtime-to-Master synchronization bridge
+  service/       top-level Worker agent
+  setup/         environment preparation
+  status/        Worker status reporting
+  tests/         higher-level integration-style tests
+  training/      local process execution
+  workspace/     workspace extraction and validation
 ```
 
-No new protobuf definitions were introduced.
+Files worth knowing for a deep dive:
 
----
+- `service/agent.go`: best first file for understanding the Worker lifecycle
+- `grpc/handlers.go`: best file for understanding the Worker RPC surface
+- `runtimebridge/sync.go`: best file for understanding how runtime calls are
+  forwarded
+- `masterclient/client.go`: best file for understanding Worker-to-Master RPCs
+- `workspace/manager.go`: best file for understanding local workspace safety
+- `setup/manager.go`: best file for understanding environment creation and
+  caching
+- `training/manager.go`: best file for understanding process launch and stop
+- `pairing/manager.go`: best file for understanding Worker-side trust state
 
-## Phase 2 Execution Flow
+If someone asks "where should I start reading the Worker?", those are the right
+files.
 
-```text
-Runtime
-    ↓
-
-Worker Handler
-
-    ↓
-
-RuntimeBridge
-
-    ↓
-
-MasterClient
-
-    ↓
-
-Master Server
-
-    ↓
-
-Aggregator
-
-    ↓
-
-Master Server
-
-    ↓
-
-MasterClient
-
-    ↓
-
-RuntimeBridge
-
-    ↓
-
-Worker Handler
-
-    ↓
-
-Runtime
-```
-
----
-
-## New Components
-
-### masterclient/client.go
-
-Introduced in Phase 2.
-
-Responsibilities:
-
-* Create Master connection
-* Create WorkerBridge client
-* Forward GradientSubmission
-* Receive AggregatedGradientResponse
-* Manage connection lifecycle
-
----
-
-### runtimebridge/synchronizer.go
-
-Introduced in Phase 2.
-
-Provides:
-
-```go
-type Synchronizer interface
-```
-
-Purpose:
-
-* Decouple RuntimeBridge from MasterClient
-* Improve testability
-* Allow fake implementations during tests
-
----
-
-## RuntimeBridge Refactor
-
-Phase 1:
-
-```text
-Validate
-    ↓
-Identity Aggregation
-    ↓
-Return
-```
-
-Phase 2:
-
-```text
-Validate
-    ↓
-Synchronizer
-    ↓
-Master
-    ↓
-Return
-```
-
-RuntimeBridge no longer performs aggregation.
-
----
-
-## Testing Refactor
-
-Phase 1 tests depended on local Identity Aggregation.
-
-Phase 2 introduced:
-
-```text
-FakeSynchronizer
-```
-
-for testing.
-
-Production:
-
-```text
-Synchronizer
-    ↓
-MasterClient
-```
-
-Tests:
-
-```text
-Synchronizer
-    ↓
-FakeSynchronizer
-```
-
-This preserves isolated Worker tests without requiring a running Master.
-
----
-
-## Live Validation
-
-### Validation 1
-
-Master Running
-
-Runtime integration test:
-
-```text
-Before Sync
-After Sync
-Identical: True
-```
-
-Result:
-
-```text
-Runtime
-    ↓
-Worker
-    ↓
-Master
-    ↓
-Aggregator
-    ↓
-Master
-    ↓
-Worker
-    ↓
-Runtime
-```
-
-validated successfully.
-
----
-
-### Validation 2
-
-Master Stopped
-
-Runtime integration test produced:
-
-```text
-SynchronizationError
-
-connection refused
-
-127.0.0.1:60051
-```
-
-Result:
-
-```text
-Runtime
-    ↓
-Worker
-    ↓
-Master
-```
-
-failed as expected.
-
-This proves Worker is forwarding requests to Master and no longer performs local aggregation.
-
----
-
-## Phase 2 Result
-
-Worker Phase 2 successfully replaces local Identity Aggregation with a real Master connection.
-
-Validated communication path:
-
-```text
-Runtime
-    ↓
-Worker
-    ↓
-Master
-    ↓
-Aggregator
-    ↓
-Master
-    ↓
-Worker
-    ↓
-Runtime
-```
-
-using the shared LDGCC protocol.
-
-This establishes the first complete end-to-end LDGCC execution path.
-
----
-
-# Worker Phase 3
-
-Worker Phase 3 adds config-based identity, Master registration, and Worker
-status reporting.
-
-## Startup Flow
-
-```text
-Worker reads worker_config.json
-    ↓
-Worker connects to Master
-    ↓
-RegisterWorker(worker_id, host, grpc_port)
-    ↓
-UpdateWorkerStatus(IDLE)
-    ↓
-Worker starts its Runtime-facing gRPC server
-```
-
-The Worker does not discover itself or receive an invitation in this phase.
-Its stable `worker_id` is supplied in `worker_config.json`. A later discovery
-and approval phase may create or update that configuration.
-
-## Configuration
-
-```json
-{
-  "worker_id": "worker-a",
-  "grpc_port": "50051",
-  "host": "127.0.0.1",
-  "master_host": "127.0.0.1",
-  "master_port": "60051"
-}
-```
-
-## Status Model
-
-The Worker status manager reports and stores:
-
-```text
-IDLE
-PREPARING
-INSTALLING
-RUNNING
-COMPLETED
-FAILED
-```
-
-Local status changes are committed only after Master acknowledges the
-update.
-
-## File Responsibilities
-
-`internal/config/config.go`
-
-Loads `worker_id`, the advertised Worker host and gRPC port, and the Master
-address.
-
-`masterclient/client.go`
-
-Provides registration and status RPCs with bounded control-call timeouts,
-alongside gradient synchronization.
-
-`status/manager.go`
-
-Owns the Worker's current status and reports transitions to Master.
-
-`cmd/worker/main.go`
-
-Registers the Worker, reports initial `IDLE`, and then starts the
-Runtime-facing service.
-
-`tests/masterclient_test.go`
-
-Tests registration, status, and gradient calls over a real local gRPC
-connection.
-
-`tests/status_test.go`
-
-Tests successful status storage and failed-report behavior.
+## State And Algorithms
 
----
+This section explains the most important state models and operational algorithms
+in the current Worker implementation. This is the part that matters most for
+technical interviews, because it explains how the Worker behaves under real job
+conditions.
 
-# LDGCC Phase 4: Worker App and LAN Discovery
+### Connection state model
 
-## Goal
+The Worker tracks a high-level connection state through the service Agent.
 
-Phase 4 gives the Worker laptop owner an explicit Start/Stop control and
-makes a running Worker visible to Master on the same LAN.
+Current states include:
 
-```text
-Open LDGCC Worker App
-    ↓
-Click Start Worker
-    ↓
-Start Worker gRPC service
-    ↓
-Advertise with mDNS/DNS-SD
-    ↓
-Master discovers Worker
-```
-
-Stopping the Worker removes its advertisement and stops its gRPC service.
-
-## Worker Modes
-
-Unpaired:
-
-```text
-No worker_id
-    ↓
-Worker becomes discoverable
-    ↓
-Gradient synchronization remains unavailable
-```
-
-Paired:
-
-```text
-worker_id exists
-    ↓
-Phase 3 registration and IDLE reporting
-    ↓
-Worker becomes discoverable as paired
-```
-
-This allows first-run discovery without weakening the existing registration
-path.
-
-## Folder Responsibilities
-
-`app/`
-
-Contains the UI-independent Start/Stop controller and the local clickable
-Worker App surface.
-
-`discovery/`
-
-Owns `_ldgcc-worker._tcp.local` advertisement and its DNS-SD metadata.
-
-`service/`
-
-Coordinates Worker gRPC, discovery, Master registration, and shutdown as one
-lifecycle.
-
-`cmd/worker-app/`
-
-Starts the Worker App at `http://127.0.0.1:5050`. The app initially shows a
-stopped Worker and provides Start Worker and Stop Worker actions.
-
-`cmd/worker/`
-
-Retains headless startup for service installations and automated deployment.
-
-## Configuration
-
-Phase 4 adds:
-
-```json
-{
-  "worker_name": "Vikas-Laptop",
-  "app_port": "5050"
-}
-```
-
-`worker_name` is the human-readable LAN discovery name. It is not a trusted
-or permanent Worker identity.
-
-## Scope Boundary
-
-Included:
-
-* Start Worker
-* Stop Worker
-* Running and discoverable state
-* Paired and unpaired startup modes
-* mDNS/DNS-SD advertisement
-* Master discovery
-
-Deferred:
-
-* Native tray packaging and OS installer integration
-* Pairing request UI
-* Accept or reject
-* Pairing credentials
-* Automatic `worker_config.json` creation
-* Scheduling and training execution
-
----
-
-# LDGCC Phase 5: Pairing and Connection Management
-
-## Goal
-
-Phase 5 removes the need to manually add `worker_id` or Master connection
-values to `worker_config.json`.
-
-```text
-Worker advertises as unpaired
-    ↓
-Master sends PairWorker
-    ↓
-Worker App shows Master identity
-    ↓
-Owner selects Accept or Reject
-```
-
-On acceptance:
-
-```text
-Save pairing.json
-    ↓
-Connect to saved Master
-    ↓
-Register with pairing credential
-    ↓
-Report IDLE
-    ↓
-PAIRED_ONLINE
-```
-
-## Connection States
-
-Connection state is separate from training state:
-
-```text
-UNPAIRED
-PAIRING_PENDING
-PAIRED_ONLINE
-PAIRED_OFFLINE
-```
-
-The Worker App can start when its saved Master is offline. It remains
-`PAIRED_OFFLINE`; it does not silently delete or replace the pairing.
-
-## One-Master Rule
-
-LDGCC V1 supports exactly one saved Master per Worker. A second Master is
-rejected until the owner uses Reset Previous Connection.
-
-## Reset Previous Connection
-
-Reset:
-
-* Revokes the credential on an online Master
-* Closes the old Master client
-* Deletes the local pairing file
-* Returns Worker to `UNPAIRED`
-* Refreshes its LAN advertisement
-
-Training-state enforcement will block reset during active execution once
-the Executor phase introduces running jobs.
-
-## Folder Responsibilities
-
-`pairing/manager.go`
-
-Owns pending requests, Accept/Reject decisions, one-Master enforcement, and
-the current pairing record.
-
-`pairing/store.go`
-
-Atomically writes and deletes `pairing.json` with `0600` permissions.
-
-`service/agent.go`
-
-Coordinates connection states, approval, authenticated registration,
-offline startup, advertisement refresh, and reset.
+- `UNPAIRED`
+- `PAIRING_PENDING`
+- `PAIRED_ONLINE`
+- `PAIRED_OFFLINE`
 
-`app/`
+This model is useful because the Worker has to represent both trust state and
+network reachability at the same time.
 
-Displays pending Master identity, Accept/Reject actions, current connection
-state, and Reset Previous Connection.
+For example:
 
-## Configuration Ownership
+- paired + reachable Master -> `PAIRED_ONLINE`
+- paired + unreachable Master -> `PAIRED_OFFLINE`
 
-`worker_config.json` contains installation settings:
+That is better than a single boolean like `connected=true/false`.
 
-```text
-worker_name
-Worker gRPC port
-Worker App port
-host
-pairing file location
-```
-
-Accepted pairing creates `pairing.json` containing:
-
-```text
-worker_id
-master_id and name
-Master host and gRPC port
-pairing credential
-```
-
-The Master supplies these values; Worker writes them locally.
-
-## Security Boundary
-
-Pairing credentials are randomly generated and registration/reset are
-credential-authenticated. Credential files are atomic and owner-readable
-only. TLS, certificate pinning, and OS credential-vault integration remain
-production hardening work.
-
----
-
-# LDGCC Phase 6: Heartbeats and Reconnect
-
-## Goal
-
-Phase 6 keeps a paired Worker visible to its saved Master after initial
-registration.
-
-```text
-Worker App starts
-    ↓
-Worker loads pairing.json if present
-    ↓
-Worker registers with saved Master
-    ↓
-Worker sends authenticated heartbeat every few seconds
-    ↓
-Master keeps Worker ONLINE
-```
+### Pairing state model
 
-If the saved Master is temporarily unavailable:
+The pairing manager holds:
 
-```text
-Heartbeat or reconnect fails
-    ↓
-Worker closes Master client
-    ↓
-Worker stays PAIRED_OFFLINE
-    ↓
-Next heartbeat tick tries saved Master again
-```
-
-No re-pairing is needed for normal reconnect. The owner only uses Reset
-Previous Connection when they intentionally want this Worker to join a
-different Master.
-
-## Worker Components
-
-`service/agent.go`
-
-Starts the heartbeat loop, reconnects with the saved pairing record, sends
-`GoingOffline` on stop, and moves between `PAIRED_ONLINE` and
-`PAIRED_OFFLINE`.
-
-`masterclient/client.go`
-
-Adds Master RPC calls for `Heartbeat` and `GoingOffline`.
+- one saved pairing record
+- at most one pending pairing request
 
-`pairing.json`
+This means:
 
-Remains the source of truth for reconnect credentials.
+- the Worker only allows one controlling Master at a time
+- the Worker owner can explicitly approve or reject a new Master
+- the Worker can persist trust across restarts
 
----
+This is a deliberately simple model, but it keeps the trust boundary easy to
+understand.
 
-## Current Status
+### Workspace preparation algorithm
 
-```text
-Worker Phase 1
-    ✓ COMPLETE
-
-Worker Phase 2
-    ✓ COMPLETE
-
-Worker Phase 3
-    ✓ COMPLETE
-
-Worker Registration
-    ✓ COMPLETE
+The workspace manager follows a safety-first extraction path.
 
-Worker Status Foundation
-    ✓ COMPLETE
+At a high level:
 
-LDGCC Phase 4
-    ✓ COMPLETE
+1. validate job id and relative paths
+2. validate archive size
+3. clear unrelated previous workspaces
+4. extract into a temporary directory
+5. reject unsafe archive entries
+6. enforce extracted size limits
+7. verify required files exist
+8. create standard output directories
+9. atomically move the temporary workspace into place
 
-Worker App Start/Stop
-    ✓ COMPLETE
+Important details:
 
-LAN Discovery Advertisement
-    ✓ COMPLETE
+- job ids must be safe
+- entrypoint and dataset paths must be safe relative paths
+- symlink-style unsafe archive entries are rejected
+- archive extraction is bounded
+- required files are checked before the workspace is accepted
 
-LDGCC Phase 5
-    ✓ COMPLETE
+This is important because the Worker is the place where transferred packages
+become real local files on disk.
 
-LDGCC Phase 6
-    ✓ COMPLETE
+### Setup algorithm
 
-Worker Heartbeat Loop
-    ✓ COMPLETE
+The setup manager turns a workspace into a runnable Python environment.
 
-Paired Reconnect
-    ✓ COMPLETE
+At a high level:
 
-Explicit Offline Signal
-    ✓ COMPLETE
+1. check whether setup is already running or already ready
+2. locate the workspace
+3. create `logs/setup.log`
+4. verify CUDA GPU availability with `nvidia-smi`
+5. read and filter user `requirements.txt`
+6. build a dependency fingerprint
+7. reuse a cached environment if one matches
+8. otherwise create a new venv
+9. install CUDA PyTorch
+10. install LDGCC runtime requirements
+11. install filtered project requirements
+12. write the venv marker file and mark the cache ready
 
-Pairing Accept/Reject
-    ✓ COMPLETE
+Important details:
 
-One Master per Worker
-    ✓ ENFORCED
+- setup is cache-aware, not always rebuild-from-zero
+- user requirements are filtered so they do not overwrite LDGCC’s runtime
+  package decisions
+- setup is GPU-gated in the current design
+- retry behavior is explicit
 
-Reset Previous Connection
-    ✓ COMPLETE
+This makes setup one of the most operationally important Worker subsystems.
 
-MasterClient
-    ✓ COMPLETE
+### Training execution algorithm
 
-Synchronizer Interface
-    ✓ COMPLETE
+The training manager uses a two-step launch model:
 
-RuntimeBridge Refactor
-    ✓ COMPLETE
+1. arm
+2. release
 
-Unit Tests
-    ✓ PASS
+The arm path:
 
-Integration Tests
-    ✓ PASS
+- checks readiness
+- verifies required files
+- reads `job_config.json`
+- records local process metadata
 
-Runtime ↔ Worker ↔ Master
-    ✓ LIVE VALIDATED
+The release path:
 
-go build ./...
-    ✓ PASS
+- resolves the Python path for the job
+- opens the training log
+- injects LDGCC runtime environment variables
+- launches the Python entrypoint
+- tracks the process until completion
 
-go test ./...
-    ✓ PASS
-```
-
----
+Important details:
 
-# LDGCC Phase 8: Worker Workspace Receiver
+- one process record is tracked per job id
+- stop first tries interrupt, then force kill after timeout
+- final status is inferred from process exit behavior
+- log output is kept locally for later result collection
 
-The Worker now accepts a project workspace only from its currently paired
-Master. It verifies `worker_id`, `master_id`, and the pairing token, then safely
-extracts the ZIP into `workspaces/<job_id>`.
+This package is where the Worker really becomes an execution agent.
 
-`workspace/manager.go` rejects absolute paths, parent-directory traversal,
-symlinks, oversized archives, duplicate job workspaces, and packages missing
-the configured entrypoint, dataset, or `job_config.json`. Successful workspaces
-also receive private `logs/` and `artifacts/` directories. The root is set by
-`workspace_root` in `worker_config.json`.
+### Runtime bridge algorithm
 
-This phase does not install dependencies or launch `train.py`; it creates the
-validated filesystem boundary that execution will use.
+The runtime bridge is intentionally narrow.
 
----
+The current model is:
 
-# LDGCC Phase 9: Environment Setup and Readiness
+1. runtime submits a sync request locally
+2. the bridge forwards that request to the current synchronizer
+3. once the Worker is paired and connected, that synchronizer is the Master
+   client
+4. if no Master connection exists yet, an unavailable synchronizer protects the
+   path from pretending sync is possible
 
-After Phase 8 creates `workspaces/<job_id>`, the paired Master can call the
-authenticated `SetupJob` RPC. The Worker verifies an NVIDIA CUDA GPU with
-`nvidia-smi`, creates `.venv`, installs LDGCC-owned runtime dependencies,
-installs filtered user `requirements.txt` when it exists, and writes command
-output to `logs/setup.log`.
+This design keeps the runtime path simple while still letting the Worker swap
+between disconnected and connected states cleanly.
 
-LDGCC-owned packages are `torch`, `grpcio`, `protobuf`, and `numpy`. They are
-installed by Worker setup and removed from the user requirements install list so
-the project cannot accidentally replace the LDGCC CUDA PyTorch runtime.
+### Status reporting algorithm
 
-```text
-WORKSPACE_RECEIVED -> SETTING_UP -> READY
-                                  -> SETUP_FAILED
-```
+The Worker keeps a local status manager that:
 
-`setup/manager.go` prevents duplicate concurrent setup. A READY setup is
-idempotent. A failed setup remains failed until an explicit retry; retry removes
-and rebuilds only `.venv` and truncates `logs/setup.log`, preserving project
-code, the assigned dataset shard, and `job_config.json`.
+1. sends a status update request to the Master
+2. only updates its own local cached state after the remote update succeeds
 
-No training process is launched in this phase.
+That is a small but good design choice because it reduces the chance that the
+Worker and Master drift apart on what status was actually accepted.
 
----
+## Failure Handling
 
-# LDGCC Phase 10: Training Process Lifecycle
+Failure handling is a first-class concern in the Worker because it touches the
+real machine: local files, local environments, local processes, and network
+reachability.
 
-The paired Master controls training through authenticated `ArmJob`,
-`ReleaseJob`, and `StopJob` RPCs.
+The Worker contains explicit guardrails around several common failure modes.
 
-* Arm validates READY setup state, `.venv/bin/python`, `job_config.json`, and
-  the configured entrypoint without launching user code.
-* Release launches the entrypoint from its workspace and injects the local
-  Runtime connection values.
-* Standard output and errors are written to `logs/training.log`.
-* Stop interrupts a running process, force-stops it after a timeout, and
-  preserves its workspace and logs.
+### Pairing failure
 
-The Worker prevents duplicate arm/release operations and locally tracks ARMED,
-RUNNING, COMPLETED, FAILED, and CANCELLED states.
+- incomplete pairing requests are rejected
+- a second pending pairing request is rejected
+- a second Master cannot pair while the Worker is already paired
+- reset is blocked while a pairing request is still pending
 
----
+### Master connectivity failure
 
-# LDGCC Phase 11: Status, Cleanup, and Fresh Jobs
+- reconnect can fail while the Worker still remains paired locally
+- this is represented as `PAIRED_OFFLINE`
+- the runtime bridge can fall back to an unavailable synchronizer until the
+  Master client is restored
 
-The Worker exposes authenticated `GetJobStatus` and `CleanupJob` RPCs. Status
-includes process state, failure reason, exit code, log path, and at most the
-last 1 MiB of `training.log`.
+### Unsafe workspace input
 
-Cleanup stops an active process, returns its final evidence, removes
-`workspaces/<job_id>`, and forgets setup/process state. Pairing is untouched.
-When an offline Worker later receives a different job, workspace preparation
-first removes any stale previous workspace so changed code, dependencies, and
-dataset shards are always delivered fresh.
+- unsafe job ids are rejected
+- unsafe relative paths are rejected
+- invalid archives are rejected
+- oversized archives are rejected
+- missing required files are rejected
 
----
+### Setup failure
 
-# LDGCC Phase 12: Declared Output Collection
+- no CUDA GPU -> setup fails
+- invalid or missing Python environment creation -> setup fails
+- dependency install failures -> setup fails
+- failed setup state is tracked and can be retried
 
-`results/manager.go` reads the optional `outputs` list from `job_config.json`,
-expands declared directories, and always includes available setup/training logs.
-It exposes authenticated manifest and streaming-download RPCs.
+### Training failure
 
-Only manifest-listed files may be downloaded. Paths are confined to the job
-workspace, symlinks are rejected at every path component, and SHA-256, per-file,
-and total-size metadata is enforced. Invalid configured outputs are reported
-without hiding otherwise safe logs.
+- releasing a job that is not armed fails
+- starting a job with missing required files fails
+- process launch failures are returned immediately
+- runtime process failures are captured and converted to final job status
+- stop escalation goes from interrupt to kill if needed
 
----
+### Result handling failure
 
-# LDGCC Phase 15: Worker App Production UX
+- result access is gated through the result manager
+- manifest generation can return missing outputs and collection errors
+- file streaming is explicit instead of exposing arbitrary local file access
 
-Phase 15 turns the Worker App into the production-facing control surface for the
-Worker laptop owner.
+## Design Decisions And Tradeoffs
 
-```text
-Open Worker App
-    -> review Worker name, host, ports, workspace
-    -> Start Worker
-    -> advertise on LAN
-    -> accept or reject Master pairing
-    -> show paired/connected/training-ready state
-    -> reset saved Master when intentionally switching Masters
-```
+This section explains why the Worker looks the way it does today. The current
+design favors local correctness, debuggability, and controlled machine access
+over aggressive complexity.
 
-The app still runs locally on loopback at `http://127.0.0.1:<app_port>`.
-Starting the Worker starts the Worker gRPC service and mDNS/DNS-SD
-advertisement. Stopping the Worker removes the advertisement and shuts down the
-local service.
+### Worker as a service, not just a training script launcher
 
-## Phase 15 Components
+Why:
 
-`app/controller.go`
+- the machine needs a long-lived identity
+- pairing and trust need to survive beyond one job
+- runtime sync requires a local RPC bridge
+- setup, training, and results are separate phases
 
-Exposes richer Worker state for the UI, including status label, public config,
-paired Master name/id, pending pairing request, and last error.
+Tradeoff:
 
-`app/server.go`
+- more moving parts than a one-shot remote command runner
 
-Adds `POST /api/config` and replaces the minimal page with a local dashboard
-for Start/Stop, Reset Previous Connection, pairing approval, and install
-settings.
+### One paired Master at a time
 
-`internal/config/config.go`
+Why:
 
-Adds atomic `worker_config.json` saving with `0600` permissions. The app can
-update installation settings while the Worker is stopped.
+- clearer ownership model
+- simpler trust and reset behavior
+- less chance of conflicting cluster control
 
-`service/agent.go`
+Tradeoff:
 
-Exposes the current config and accepts config updates before startup. Runtime
-service behavior, discovery, pairing, heartbeats, setup, training, cleanup, and
-results remain owned by the existing Worker services.
+- not yet designed for shared multi-Master control
 
-## Settings Rule
+### Local runtime bridge instead of direct runtime-to-Master calls
 
-Settings can be changed only while the Worker is stopped. This avoids changing
-the advertised Worker name, gRPC port, host, or workspace root while the gRPC
-server and LAN advertisement are already active.
+Why:
 
----
+- keeps runtime API simpler
+- lets the Worker own connection and authentication behavior
+- keeps the machine-local control plane in one place
 
-# LDGCC Phase 21: Production Packaging Foundation
+Tradeoff:
 
-The Worker binaries now support install-style startup with explicit config and
-data paths.
+- one extra local hop in the sync path
 
-```bash
-ldgcc-worker-app --config /path/to/worker_config.json --data-dir /path/to/worker-data
-```
+### Cached environment setup
 
-If the configured file does not exist, the Worker creates a default
-`worker_config.json` with restricted permissions. Relative `pairing_path` and
-`workspace_root` values are resolved under the Worker data directory, so pairing
-state and job workspaces no longer depend on the shell working directory.
+Why:
 
-Production ownership:
+- repeated installs are expensive
+- many benchmark or repeated training runs share the same dependency shape
 
-```text
-Worker App
-    -> starts local Worker service
-    -> owns worker_config.json
-    -> owns pairing.json
-    -> owns workspaces/
-```
+Tradeoff:
 
----
+- caching logic is more complex than always building from scratch
 
-# LDGCC Phase 23: Worker App Production Packaging
+### GPU-only setup gate
 
-The Worker App can now be staged as a worker-laptop package:
+Why:
 
-```bash
-python3 tools/stage_worker_app.py
-```
+- current LDGCC target is NVIDIA CUDA training
+- failing early is better than silently running on an unsupported setup
 
-The staged package includes:
+Tradeoff:
 
-```text
-run-worker-app.sh
-manifest.json
-README.md
-bin/<platform>-<arch>/ldgcc-worker-app
-bin/<platform>-<arch>/ldgcc-worker
-```
+- less flexible than a broader CPU/GPU compatibility story
 
-Worker user flow:
+## Transition: From Early V1 To Current Worker
 
-```text
-Run Worker App package
-    -> open local Worker page
-    -> click Start Worker
-    -> accept pairing request
-    -> leave the app running during setup/training
-```
+This section explains how the Worker evolved over time. It is useful both for
+understanding the current codebase and for explaining the project in an
+interview without pretending the Worker started as a fully formed execution
+agent.
 
-The launcher uses `~/.ldgcc/worker` by default for `worker_config.json`,
-`pairing.json`, and `workspaces/`. This keeps Worker state stable even when the
-package is moved or started from a different directory.
+### Early V1 shape
 
----
+The early Worker was much closer to a narrow bridge and connectivity milestone:
 
-# LDGCC Phase 25: Cross-Platform Worker Packages
+- runtime bridge experiments
+- basic Worker communication
+- early discovery and pairing ideas
+- simpler execution expectations
 
-Worker packages can now be staged for Linux and Windows:
+At that stage, the Worker was more about proving the communication path than
+about owning a full local job lifecycle.
 
-```bash
-python3 tools/stage_worker_app.py --target linux-x64
-python3 tools/stage_worker_app.py --target windows-x64
-```
+### What was added after the early foundation
 
-The release bundle includes both by default:
+As the system matured, the Worker grew through these major additions:
 
-```text
-ldgcc-worker-app-linux-x64.zip
-ldgcc-worker-app-windows-x64.zip
-```
+- stronger pairing and persistence logic:
+  the Worker gained a clearer trust model and local storage of pairing records
 
-This allows one Master to train with mixed Worker laptops, for example Linux
-Worker 1 and Windows Worker 2 in the same LAN job.
+- better Worker app and control surface:
+  the machine-side service became easier to operate and integrate with UI flows
 
----
+- workspace delivery and extraction:
+  the Worker moved from only being a bridge to becoming the place where job
+  packages are received and materialized
 
-# LDGCC Phase 26: Worker Native Installer / Desktop Launcher
+- setup as a real lifecycle phase:
+  environment creation, dependency install, and readiness became explicit
 
-Worker packages now include OS-specific install scripts.
+- training execution lifecycle:
+  arm, release, stop, status, and cleanup became structured local operations
 
-Linux package:
+- result collection:
+  the Worker gained manifest and file-download support for returning outputs
 
-```text
-install-worker-app.sh
-    -> installs package files to ~/.local/share/ldgcc-worker-app
-    -> creates ~/.local/bin/ldgcc-worker-app
-    -> creates an LDGCC Worker desktop/app-menu entry
-```
+- image-folder and later YOLO-oriented dataset handling on the broader system
+  side:
+  this made the Worker’s workspace/setup/training responsibilities more
+  important because the local file layouts became richer
 
-Windows package:
+- compression-aware runtime synchronization:
+  the Worker had to support more advanced sync paths than a single dense RPC
 
-```text
-install-worker-app.bat
-    -> installs package files to %LOCALAPPDATA%\LDGCC\WorkerApp
-    -> creates Desktop shortcut
-    -> creates Start Menu shortcut
-```
+- chunk, group, and batch sync support:
+  the runtime bridge and Master client path expanded to support newer
+  synchronization shapes
 
-After this install step, the worker laptop user opens `LDGCC Worker` like a
-normal app, then clicks `Start Worker` and accepts the pairing request.
+- metrics and timing support:
+  the Worker gained more observability for sync behavior and local execution
 
----
+- cached environments and GPU enforcement:
+  setup became more practical for repeated runs and more explicit about what
+  hardware is required
 
-## Future TODOs
+### What the current Worker is now
 
-### Master Phase 2
+Today, the Worker should be thought of as a machine-local execution service,
+not just a runtime proxy.
 
-Current:
+It now owns:
 
-```text
-G = G
-```
+- local trust state
+- Master connectivity
+- workspace materialization
+- environment setup
+- process execution
+- runtime bridging
+- result exposure
 
-Future:
+That is the right way to talk about the transition in an interview:
 
 ```text
-G = Average(All Worker Gradients)
+The Worker started as a communication-side component and evolved into a full
+local execution agent that manages the machine-side lifecycle of a distributed
+training job.
 ```
-
----
-
-### Barrier Synchronization
-
-Aggregator will eventually:
-
-* Wait for all workers
-* Coordinate aggregation rounds
-* Release workers simultaneously
-
----
 
-### Multi-Worker Training
+### What is still intentionally simple
 
-Current:
+Even after this evolution, some choices remain conservative on purpose:
 
-```text
-Single Worker Validation
-```
+- one paired Master at a time
+- one local execution service per machine
+- simple cached environment model
+- Master-driven control flow instead of Worker-to-Worker coordination
 
-Future:
-
-```text
-Multiple Workers
-    ↓
-Master
-    ↓
-Aggregation
-```
+Those choices keep the Worker understandable and operationally manageable for a
+local distributed training project.
 
----
+## Current Limits And Future Work
 
-## Worker Phase 2 Success Criteria
+The current Worker works well for the local-first LDGCC model, but there are
+clear next steps if the design grows further:
 
-Worker Phase 2 is considered complete because:
+- richer local observability for setup and training phases
+- stronger recovery across Worker restarts
+- broader hardware/runtime support
+- more advanced environment reuse and cleanup policies
+- tighter sync-path optimization
+- clearer separation between app-facing Worker UX and machine-facing execution
+  logic
 
-```text
-go build ./...
-    ✓ PASS
-
-go test ./...
-    ✓ PASS
-```
+In other words, the Worker is already a real local execution agent, but the
+next phase would make it more robust, more flexible, and easier to operate at
+scale.
 
-and:
+## Interview Questions This README Should Help You Answer
 
-```text
-Runtime
-    ↓
-Worker
-    ↓
-Master
-    ↓
-Aggregator
-    ↓
-Master
-    ↓
-Worker
-    ↓
-Runtime
-```
+After reading this file, you should be able to answer:
 
-has been successfully validated using a real Runtime process, Worker Service, and Master Service.
+- What does the Worker own that the Master does not?
+- Why does the Worker need both pairing logic and a Master client?
+- Why does the runtime talk to the local Worker instead of directly to the
+  Master?
+- How does the Worker turn a transferred package into a runnable job?
+- How does setup caching work at a high level?
+- Why is training launched through arm and release?
+- How does the Worker expose results back to the Master?
+- How did the Worker evolve from an early communication component into a fuller
+  execution service?
