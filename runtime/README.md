@@ -966,18 +966,3 @@ design continues to evolve:
 
 In other words, the runtime is already much more than a V1 prototype, but the
 next phase would make it faster, more observable, and easier to tune safely.
-
-## Interview Questions This README Should Help You Answer
-
-After reading this file, you should be able to answer:
-
-- What exactly does `locdist.sync_gradients(model)` do?
-- Why is the prepared path different from the simple sync path?
-- How does top-k compression work at a high level in this runtime?
-- What is the difference between per-layer and global top-k?
-- What is error feedback and why is it used here?
-- How does the runtime make sure the correct aggregated gradient is applied
-  back to the right parameter?
-- Why does the runtime wrap the optimizer in the prepared path?
-- How did the runtime evolve from a simple sync layer into a more capable
-  synchronization engine?

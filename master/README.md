@@ -1367,17 +1367,3 @@ are:
 In other words, the Master is already a real orchestrator, but the next phase
 would make it more adaptive, more observable, and less dependent on one
 centralized happy path.
-
-## Interview Questions This README Should Help You Answer
-
-After reading this file, you should be able to answer:
-
-- What does the Master own that Workers do not?
-- Why is LDGCC centralized instead of peer-to-peer?
-- How is a job prepared from `ldgcc.yaml`?
-- How are Workers selected and tracked?
-- How does one training launch work?
-- How does gradient aggregation work at a high level?
-- What happens if one Worker fails or is offline?
-- How did the Master evolve from the earlier version to the current one?
-- What are the main limitations of the current design?

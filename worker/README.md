@@ -943,18 +943,3 @@ clear next steps if the design grows further:
 In other words, the Worker is already a real local execution agent, but the
 next phase would make it more robust, more flexible, and easier to operate at
 scale.
-
-## Interview Questions This README Should Help You Answer
-
-After reading this file, you should be able to answer:
-
-- What does the Worker own that the Master does not?
-- Why does the Worker need both pairing logic and a Master client?
-- Why does the runtime talk to the local Worker instead of directly to the
-  Master?
-- How does the Worker turn a transferred package into a runnable job?
-- How does setup caching work at a high level?
-- Why is training launched through arm and release?
-- How does the Worker expose results back to the Master?
-- How did the Worker evolve from an early communication component into a fuller
-  execution service?
