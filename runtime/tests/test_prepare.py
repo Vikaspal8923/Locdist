@@ -28,6 +28,7 @@ class FakeTransport:
         self.last_metrics = {}
         self.chunk_calls = []
         self.batch_calls = []
+        self.stream_batch_calls = []
 
     def synchronize_chunk(self, package):
         time.sleep(0.01)
@@ -49,6 +50,37 @@ class FakeTransport:
 
     def synchronize_chunk_batch(self, package):
         time.sleep(0.01)
+        if package.groups:
+            self.batch_calls.append(
+                [
+                    tuple(chunk.metadata.layer_order for chunk in group.chunks)
+                    for group in package.groups
+                ]
+            )
+            self.last_metrics = {
+                "runtime_to_worker_proto_build_ms": 1.0,
+                "runtime_to_worker_rpc_ms": 2.0,
+                "runtime_response_decode_ms": 0.5,
+                "runtime_bytes_up": 256,
+                "runtime_bytes_down": 512,
+                "transport_mode": "chunk_batch",
+            }
+            return locdist.models.AggregatedGradientPackage(
+                runtime_version=package.runtime_version,
+                job_id=package.job_id,
+                participating_workers=1,
+                aggregation_round=package.groups[0].sync_round,
+                chunks=[],
+                groups=[
+                    GradientChunkGroup(
+                        group_id=group.group_id,
+                        sync_round=group.sync_round,
+                        chunks=group.chunks,
+                        byte_size=group.byte_size,
+                    )
+                    for group in package.groups
+                ],
+            )
         self.batch_calls.append([chunk.metadata.layer_order for chunk in package.chunks])
         self.last_metrics = {
             "runtime_to_worker_proto_build_ms": 1.0,
@@ -57,54 +89,11 @@ class FakeTransport:
             "runtime_bytes_up": 256,
             "runtime_bytes_down": 512,
         }
-        raise AssertionError("legacy batch response path should not be used in async test")
+        raise AssertionError("legacy chunk batch path should not be used in async test")
 
     def synchronize_chunk_batch_stream(self, package):
-        time.sleep(0.01)
-        if package.groups:
-            self.batch_calls.append(
-                [
-                    tuple(chunk.metadata.layer_order for chunk in group.chunks)
-                    for group in package.groups
-                ]
-            )
-            for index, group in enumerate(package.groups):
-                yield AggregatedGradientChunkPackage(
-                    runtime_version=package.runtime_version,
-                    job_id=package.job_id,
-                    participating_workers=1,
-                    aggregation_round=group.sync_round,
-                    group=GradientChunkGroup(
-                        group_id=group.group_id,
-                        sync_round=group.sync_round,
-                        chunks=group.chunks,
-                        byte_size=group.byte_size,
-                    ),
-                ), {
-                    "runtime_to_worker_proto_build_ms": 1.0 if index == 0 else 0.0,
-                    "runtime_to_worker_rpc_ms": 2.0,
-                    "runtime_response_decode_ms": 0.5,
-                    "runtime_bytes_up": 256 if index == 0 else 0,
-                    "runtime_bytes_down": 128,
-                    "transport_mode": "chunk_batch_stream",
-                }
-            return
-        self.batch_calls.append([chunk.metadata.layer_order for chunk in package.chunks])
-        for index, chunk in enumerate(package.chunks):
-            yield AggregatedGradientChunkPackage(
-                runtime_version=package.runtime_version,
-                job_id=package.job_id,
-                participating_workers=1,
-                aggregation_round=chunk.sync_round,
-                chunk=chunk,
-            ), {
-                "runtime_to_worker_proto_build_ms": 1.0 if index == 0 else 0.0,
-                "runtime_to_worker_rpc_ms": 2.0,
-                "runtime_response_decode_ms": 0.5,
-                "runtime_bytes_up": 256 if index == 0 else 0,
-                "runtime_bytes_down": 128,
-                "transport_mode": "chunk_batch_stream",
-            }
+        self.stream_batch_calls.append(package)
+        raise AssertionError("streaming batch response path should not be used in async test")
 
 
 class FakeBadTransport(FakeTransport):
@@ -114,9 +103,13 @@ class FakeBadTransport(FakeTransport):
         return response
 
     def synchronize_chunk_batch_stream(self, package):
-        for response, metrics in super().synchronize_chunk_batch_stream(package):
-            response.job_id = "wrong-job"
-            yield response, metrics
+        self.stream_batch_calls.append(package)
+        raise AssertionError("streaming batch response path should not be used in async test")
+
+    def synchronize_chunk_batch(self, package):
+        response = super().synchronize_chunk_batch(package)
+        response.job_id = "wrong-job"
+        return response
 
 
 class FakeHangingTransport(FakeTransport):
@@ -125,8 +118,12 @@ class FakeHangingTransport(FakeTransport):
         return super().synchronize_chunk(package)
 
     def synchronize_chunk_batch_stream(self, package):
+        self.stream_batch_calls.append(package)
+        raise AssertionError("streaming batch response path should not be used in async test")
+
+    def synchronize_chunk_batch(self, package):
         time.sleep(2.0)
-        yield from super().synchronize_chunk_batch_stream(package)
+        return super().synchronize_chunk_batch(package)
 
 
 def main():
@@ -188,6 +185,7 @@ def main():
         assert state.completed_rounds == [1]
         assert state.step_count == 1
         assert fake_transport.chunk_calls == []
+        assert fake_transport.stream_batch_calls == []
         flattened_batches = []
         for batch in fake_transport.batch_calls:
             if batch and isinstance(batch[0], tuple):
@@ -201,6 +199,7 @@ def main():
 
         metric = json.loads(metrics_file.read_text(encoding="utf-8").strip().splitlines()[-1])
         assert metric["sync_mode"] == "group_async"
+        assert metric["startup_grace_round"] is True
         assert metric["chunk_count"] == 4
         assert metric["chunk_send_count"] == 4
         assert metric["chunk_response_count"] == 4
@@ -269,7 +268,7 @@ def test_invalid_chunk_response_is_rejected():
         transport_module.get_transport = original_get_transport
 
 
-def test_accumulation_boundary_starts_round_at_optimizer_step():
+def test_accumulation_boundary_stays_idle_until_final_microstep():
     fake_transport = FakeTransport()
     original_get_transport = transport_module.get_transport
     state = None
@@ -279,7 +278,7 @@ def test_accumulation_boundary_starts_round_at_optimizer_step():
         model = locdist.prepare(model)
         state = get_prepared_runtime_state(model)
         assert state is not None
-        state.gradient_accumulation_steps = 10
+        state.gradient_accumulation_steps = 2
         state.configure_runtime(
             runtime_version=1,
             job_id="job-accum",
@@ -287,13 +286,22 @@ def test_accumulation_boundary_starts_round_at_optimizer_step():
             rpc_timeout_seconds=5,
         )
         optimizer = locdist.prepare_optimizer(torch.optim.SGD(model.parameters(), lr=0.1))
-        loss = model(torch.randn(4, 4)).sum()
-        loss.backward()
+        first_loss = model(torch.randn(4, 4)).sum()
+        first_loss.backward()
 
         time.sleep(0.05)
         assert state.active_round is None
         assert fake_transport.chunk_calls == []
         assert fake_transport.batch_calls == []
+        assert fake_transport.stream_batch_calls == []
+
+        second_loss = model(torch.randn(4, 4)).sum()
+        second_loss.backward()
+
+        time.sleep(0.05)
+        assert state.active_round == 1
+        assert fake_transport.batch_calls != []
+        assert fake_transport.stream_batch_calls == []
 
         optimizer.step()
 
@@ -307,14 +315,15 @@ def test_accumulation_boundary_starts_round_at_optimizer_step():
                 sent_layer_events.extend(batch)
         assert set(sent_layer_events) == {0, 1, 2, 3}
         assert max(Counter(sent_layer_events).values()) == 1
-        print("✓ accumulation-aware V2 emits optimizer-step blocking metrics")
+        print("✓ accumulation stays idle until the final microstep")
+        print("✓ final accumulation microstep starts async sends before optimizer.step()")
     finally:
         if state is not None:
             state.shutdown()
         transport_module.get_transport = original_get_transport
 
 
-def test_accumulation_boundary_metrics_mark_optimizer_step_trigger():
+def test_accumulation_boundary_metrics_mark_final_backward_trigger():
     fake_transport = FakeTransport()
     original_get_transport = transport_module.get_transport
     state = None
@@ -329,7 +338,7 @@ def test_accumulation_boundary_metrics_mark_optimizer_step_trigger():
         model = locdist.prepare(model)
         state = get_prepared_runtime_state(model)
         assert state is not None
-        state.gradient_accumulation_steps = 10
+        state.gradient_accumulation_steps = 2
         state.configure_runtime(
             runtime_version=1,
             job_id="job-accum-metric",
@@ -337,18 +346,21 @@ def test_accumulation_boundary_metrics_mark_optimizer_step_trigger():
             rpc_timeout_seconds=5,
         )
         optimizer = locdist.prepare_optimizer(torch.optim.SGD(model.parameters(), lr=0.1))
-        loss = model(torch.randn(4, 4)).sum()
-        loss.backward()
+        first_loss = model(torch.randn(4, 4)).sum()
+        first_loss.backward()
+        second_loss = model(torch.randn(4, 4)).sum()
+        second_loss.backward()
         optimizer.step()
 
         metric = json.loads(metrics_file.read_text(encoding="utf-8").strip().splitlines()[-1])
-        assert metric["round_trigger"] == "optimizer_step_capture"
-        assert metric["optimizer_step_capture_ms"] >= 0.0
+        assert metric["round_trigger"] == "accumulation_final_backward_hook"
+        assert metric["optimizer_step_capture_ms"] == 0.0
         assert metric["finalize_round_ms"] >= 0.0
         assert metric["optimizer_step_blocking_ms"] >= metric["step_wait_ms"]
         assert metric["non_overlap_overhead_ms"] == metric["optimizer_step_blocking_ms"]
         assert metric["blocking_capture_and_finalize_ms"] >= 0.0
-        print("✓ accumulation-aware V2 waits until optimizer.step() before sending")
+        assert metric["overlap_send_before_backward_complete_ms"] >= 0.0
+        print("✓ accumulation metrics now reflect final-backward overlap")
     finally:
         if state is not None:
             state.shutdown()
@@ -382,6 +394,7 @@ def test_round_timeout_is_cleaned_up():
             worker_id="worker-timeout",
             rpc_timeout_seconds=1,
         )
+        state.next_round = 2
         optimizer = locdist.prepare_optimizer(torch.optim.SGD(model.parameters(), lr=0.1))
         loss = model(torch.randn(4, 4)).sum()
         loss.backward()
@@ -396,6 +409,7 @@ def test_round_timeout_is_cleaned_up():
         assert len(state.inflight_groups) == 0
         assert metrics_file.exists()
         metric = json.loads(metrics_file.read_text(encoding="utf-8").strip().splitlines()[-1])
+        assert metric["startup_grace_round"] is False
         assert metric["round_status"] == "timeout"
         assert "failure_reason" in metric
         print("✓ timeout round cleanup emits terminal metric and clears async state")
@@ -414,6 +428,6 @@ def test_round_timeout_is_cleaned_up():
 if __name__ == "__main__":
     main()
     test_invalid_chunk_response_is_rejected()
-    test_accumulation_boundary_starts_round_at_optimizer_step()
-    test_accumulation_boundary_metrics_mark_optimizer_step_trigger()
+    test_accumulation_boundary_stays_idle_until_final_microstep()
+    test_accumulation_boundary_metrics_mark_final_backward_trigger()
     test_round_timeout_is_cleaned_up()

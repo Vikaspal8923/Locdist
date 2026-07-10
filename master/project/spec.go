@@ -35,8 +35,9 @@ type WorkerSpec struct {
 }
 
 type CommunicationSpec struct {
-	Precision   string          `json:"precision,omitempty"`
-	Compression CompressionSpec `json:"compression,omitempty"`
+	Precision         string          `json:"precision,omitempty"`
+	EstimatedLinkMbps float64         `json:"estimated_link_mbps,omitempty"`
+	Compression       CompressionSpec `json:"compression,omitempty"`
 }
 
 type TrainingSpec struct {
@@ -96,8 +97,8 @@ func (s Spec) Validate(projectRoot string) error {
 	if datasetType == "" {
 		datasetType = "jsonl"
 	}
-	if datasetType != "jsonl" && datasetType != "image_folder" {
-		return fmt.Errorf("dataset.type must be jsonl or image_folder")
+	if datasetType != "jsonl" && datasetType != "image_folder" && datasetType != "yolo_split" {
+		return fmt.Errorf("dataset.type must be jsonl, image_folder, or yolo_split")
 	}
 	if s.Workers.Count <= 0 {
 		return fmt.Errorf("workers.count must be greater than zero")
@@ -138,6 +139,9 @@ func (s Spec) Validate(projectRoot string) error {
 func (c CommunicationSpec) Validate() error {
 	if c.Precision != "" && c.Precision != "fp32" && c.Precision != "fp16" {
 		return fmt.Errorf("communication.precision must be fp32 or fp16")
+	}
+	if c.EstimatedLinkMbps < 0 {
+		return fmt.Errorf("communication.estimated_link_mbps must be non-negative")
 	}
 	if c.Compression.Type == "" {
 		return nil
@@ -248,6 +252,12 @@ func parse(file *os.File) (Spec, error) {
 			return Spec{}, fmt.Errorf("outputs must be a YAML list")
 		case section == "communication" && key == "precision":
 			spec.Communication.Precision = value
+		case section == "communication" && key == "estimated_link_mbps":
+			mbps, err := strconv.ParseFloat(value, 64)
+			if err != nil {
+				return Spec{}, fmt.Errorf("communication.estimated_link_mbps must be a number")
+			}
+			spec.Communication.EstimatedLinkMbps = mbps
 		case section == "communication" && key == "compression":
 			spec.Communication.Compression.Type = value
 			spec.Communication.Compression.ErrorFeedback = true

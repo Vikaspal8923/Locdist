@@ -49,6 +49,8 @@ class CommunicationConfig:
 
     warmup_steps: int = 0
 
+    estimated_link_mbps: float | None = None
+
 @dataclass
 class ParameterMetadata:
     """

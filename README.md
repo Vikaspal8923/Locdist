@@ -7,6 +7,23 @@ The goal is simple: keep the user's PyTorch training code mostly normal, while
 LDGCC handles worker discovery, pairing, project packaging, dataset sharding,
 environment setup, gradient synchronization, and result collection.
 
+This top-level README is written for normal users who want to understand what
+LDGCC is, what it supports, and how to run it.
+
+If you want implementation details or want to work on the codebase itself, use
+the component developer docs instead:
+
+- [master/README.md](master/README.md)
+- [worker/README.md](worker/README.md)
+- [runtime/README.md](runtime/README.md)
+- [extension/README.md](extension/README.md)
+- [packaging/README.md](packaging/README.md)
+
+In short:
+
+- `README.md`: user-facing overview and usage
+- component READMEs: developer-facing architecture and implementation notes
+
 ## What LDGCC Does
 
 LDGCC turns nearby laptops into a small local training cluster:
@@ -334,17 +351,38 @@ Supported values:
 ```text
 jsonl
 image_folder
+yolo_split
 ```
 
 Default: `jsonl`.
 
 JSONL sharding is line-based. Image folder sharding expects class folders under
-the dataset path, similar to PyTorch `ImageFolder`.
+the dataset path, similar to PyTorch `ImageFolder`. `yolo_split` supports a
+single YOLO train split directory containing paired `images/` and `labels/`
+subdirectories.
 
 ```yaml
 dataset:
   train: dataset/train
   type: image_folder
+```
+
+```yaml
+dataset:
+  train: dataset/train
+  type: yolo_split
+```
+
+Expected `yolo_split` structure:
+
+```text
+dataset/train/
+  images/
+    a.jpg
+    nested/b.jpg
+  labels/
+    a.txt
+    nested/b.txt
 ```
 
 `outputs`

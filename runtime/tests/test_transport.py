@@ -26,12 +26,17 @@ def main():
     direct_master = TransportClient()
     assert direct_master.transport_peer == "master"
     assert direct_master.address == "10.0.0.7:60051"
+    assert direct_master._rpc_timeout_for_round(1) is None
+    assert direct_master._rpc_timeout_for_round(2) == direct_master.config.rpc_timeout_seconds
 
     print(
         "✓ Transport singleton OK"
     )
     print(
         "✓ Direct-to-master transport target OK"
+    )
+    print(
+        "✓ First-round startup grace timeout behavior OK"
     )
 
 

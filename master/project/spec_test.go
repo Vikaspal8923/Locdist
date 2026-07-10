@@ -123,6 +123,29 @@ outputs:
 	}
 }
 
+func TestLoadSpecAcceptsYOLOSplitDataset(t *testing.T) {
+	root := t.TempDir()
+	writeFile(t, filepath.Join(root, "train.py"), "print('train')\n")
+	writeFile(t, filepath.Join(root, "dataset", "train", "images", "1.jpg"), "image\n")
+	writeFile(t, filepath.Join(root, "dataset", "train", "labels", "1.txt"), "0 0.5 0.5 0.2 0.2\n")
+	writeFile(t, filepath.Join(root, DefaultSpecFile), `
+entrypoint: train.py
+dataset:
+  train: dataset/train
+  type: yolo_split
+workers:
+  count: 1
+`)
+
+	spec, err := LoadSpec(root)
+	if err != nil {
+		t.Fatalf("load spec: %v", err)
+	}
+	if spec.Dataset.Type != "yolo_split" {
+		t.Fatalf("unexpected dataset type: %q", spec.Dataset.Type)
+	}
+}
+
 func TestLoadSpecRejectsWindowsAbsolutePath(t *testing.T) {
 	root := t.TempDir()
 	writeFile(t, filepath.Join(root, "train.py"), "x")

@@ -21,10 +21,13 @@ from locdist.models import (
     ParameterMetadata,
 )
 
-ASYNC_MAX_GROUPS_PER_BATCH = 4
-ASYNC_MAX_TENSORS_PER_GROUP = 8
+ASYNC_MAX_GROUPS_PER_BATCH = 256
+# Keep async groups tensor-granular so the final accumulation backward pass
+# can enqueue work as soon as each parameter becomes ready. The sender still
+# coalesces many of these groups into one bulk RPC.
+ASYNC_MAX_TENSORS_PER_GROUP = 1
 ASYNC_MAX_GROUP_BYTES = 256 * 1024
-ASYNC_MAX_GROUP_BYTES_PER_BATCH = 768 * 1024
+ASYNC_MAX_GROUP_BYTES_PER_BATCH = 16 * 1024 * 1024
 ASYNC_BATCH_FLUSH_MS = 1.0
 
 
@@ -81,6 +84,9 @@ class PreparedRuntimeState:
     fallback_sync_rounds: list[int] = field(default_factory=list)
     emitted_chunk_count: int = 0
     step_count: int = 0
+    completed_accumulation_microsteps: int = 0
+    backward_pass_active: bool = False
+    backward_pass_final_microstep: bool = False
     sender_started: bool = False
     shutdown_sender: bool = False
     sender_thread: threading.Thread | None = None
@@ -125,7 +131,12 @@ class PreparedRuntimeState:
                     dtype=parameter_dtype,
                 ),
             )
-            if self.gradient_accumulation_steps > 1:
+            self._begin_backward_pass_locked()
+
+            if (
+                self.gradient_accumulation_steps > 1
+                and not self.backward_pass_final_microstep
+            ):
                 return
 
             if self.active_round is None:
@@ -137,6 +148,12 @@ class PreparedRuntimeState:
                         "runtime_to_worker_proto_build_ms": 0.0,
                         "runtime_to_worker_rpc_ms": 0.0,
                         "runtime_response_decode_ms": 0.0,
+                        "estimated_pure_transfer_ms": 0.0,
+                        "estimated_non_transfer_comm_overhead_ms": 0.0,
+                        "known_local_comm_overhead_ms": 0.0,
+                        "mixed_rpc_and_remote_ms": 0.0,
+                        "transport_total_ms": 0.0,
+                        "estimated_link_mbps": 0.0,
                         "runtime_bytes_up": 0,
                         "runtime_bytes_down": 0,
                         "chunk_send_count": 0,
@@ -159,7 +176,12 @@ class PreparedRuntimeState:
                         "step_wait_ms": 0.0,
                     },
                 )
-                self.round_capture_mode[self.active_round] = "backward_hook"
+                if self.gradient_accumulation_steps > 1:
+                    self.round_capture_mode[self.active_round] = (
+                        "accumulation_final_backward_hook"
+                    )
+                else:
+                    self.round_capture_mode[self.active_round] = "backward_hook"
 
             active_round = self.active_round
 
@@ -217,6 +239,12 @@ class PreparedRuntimeState:
                     "runtime_to_worker_proto_build_ms": 0.0,
                     "runtime_to_worker_rpc_ms": 0.0,
                     "runtime_response_decode_ms": 0.0,
+                    "estimated_pure_transfer_ms": 0.0,
+                    "estimated_non_transfer_comm_overhead_ms": 0.0,
+                    "known_local_comm_overhead_ms": 0.0,
+                    "mixed_rpc_and_remote_ms": 0.0,
+                    "transport_total_ms": 0.0,
+                    "estimated_link_mbps": 0.0,
                     "runtime_bytes_up": 0,
                     "runtime_bytes_down": 0,
                     "chunk_send_count": 0,
@@ -290,6 +318,42 @@ class PreparedRuntimeState:
                 self.condition.notify_all()
 
         return True
+
+    def _begin_backward_pass_locked(self) -> None:
+        if self.backward_pass_active:
+            return
+        self.backward_pass_active = True
+        next_microstep = self.completed_accumulation_microsteps + 1
+        accumulation_steps = max(1, self.gradient_accumulation_steps)
+        if next_microstep > accumulation_steps:
+            next_microstep = 1
+            self.completed_accumulation_microsteps = 0
+        self.backward_pass_final_microstep = next_microstep >= accumulation_steps
+        torch.autograd.Variable._execution_engine.queue_callback(  # type: ignore[attr-defined]
+            self._finish_backward_pass
+        )
+
+    def _finish_backward_pass(self) -> None:
+        backward_complete_ms = now_ms()
+        with self.condition:
+            if not self.backward_pass_active:
+                return
+            accumulation_steps = max(1, self.gradient_accumulation_steps)
+            if self.backward_pass_final_microstep:
+                self.completed_accumulation_microsteps = accumulation_steps
+                if self.active_round is not None:
+                    self.round_backward_complete_ms.setdefault(
+                        self.active_round,
+                        backward_complete_ms,
+                    )
+            else:
+                self.completed_accumulation_microsteps = min(
+                    accumulation_steps,
+                    self.completed_accumulation_microsteps + 1,
+                )
+            self.backward_pass_active = False
+            self.backward_pass_final_microstep = False
+            self.condition.notify_all()
 
     def note_optimizer_step_sync_start(self) -> None:
         with self.condition:
@@ -515,6 +579,9 @@ class PreparedRuntimeState:
             self.active_round = None
             self.ready_layers.clear()
             self.returned_layers.clear()
+            self.completed_accumulation_microsteps = 0
+            self.backward_pass_active = False
+            self.backward_pass_final_microstep = False
             self.step_count += 1
             self.condition.notify_all()
 
@@ -636,11 +703,10 @@ class PreparedRuntimeState:
 
             try:
                 expected_group_ids = {
-                    group_id
-                    for _, group_id, _ in batch_entries
+                    candidate_group_id
+                    for _, candidate_group_id, _ in batch_entries
                 }
-                received_group_ids: set[int] = set()
-                for aggregated, response_metrics in transport.synchronize_chunk_batch_stream(
+                aggregated = transport.synchronize_chunk_batch(
                     GradientPackage(
                         runtime_version=self.runtime_version,
                         job_id=self.job_id,
@@ -648,34 +714,49 @@ class PreparedRuntimeState:
                         chunks=[],
                         groups=[group for _, _, group in batch_entries],
                     )
-                ):
-                    if aggregated.group is None:
-                        raise SynchronizationError(
-                            "Returned streamed batch group missing payload"
-                        )
-                    returned_group_id = aggregated.group.group_id
-                    if returned_group_id not in expected_group_ids:
-                        raise SynchronizationError(
-                            f"Returned streamed batch unexpected group_id {returned_group_id}"
-                        )
-                    if returned_group_id in received_group_ids:
-                        raise SynchronizationError(
-                            f"Returned streamed batch duplicate group_id {returned_group_id}"
-                        )
-                    received_group_ids.add(returned_group_id)
-                    self._store_group_response(
-                        round_id=round_id,
-                        expected_group_id=returned_group_id,
-                        response=aggregated,
-                        metrics=response_metrics,
+                )
+                returned_groups = aggregated.groups or []
+                returned_group_ids = {
+                    group.group_id for group in returned_groups
+                }
+                unexpected_group_ids = sorted(
+                    returned_group_ids - expected_group_ids
+                )
+                if unexpected_group_ids:
+                    raise SynchronizationError(
+                        "Returned batch unexpected group ids: "
+                        f"{unexpected_group_ids}"
                     )
                 missing_group_ids = sorted(
-                    expected_group_ids - received_group_ids
+                    expected_group_ids - returned_group_ids
                 )
                 if missing_group_ids:
                     raise SynchronizationError(
-                        "Returned streamed batch ended before all groups arrived; "
-                        f"missing groups: {missing_group_ids}"
+                        "Returned batch missing groups: "
+                        f"{missing_group_ids}"
+                    )
+                response_metrics = dict(getattr(transport, "last_metrics", {}) or {})
+                response_by_group = {
+                    group.group_id: group
+                    for group in returned_groups
+                }
+                for index, (_, returned_group_id, _) in enumerate(batch_entries):
+                    group = response_by_group.get(returned_group_id)
+                    if group is None:
+                        raise SynchronizationError(
+                            f"Returned batch missing expected group_id {returned_group_id}"
+                        )
+                    self._store_group_response(
+                        round_id=round_id,
+                        expected_group_id=returned_group_id,
+                        response=AggregatedGradientChunkPackage(
+                            runtime_version=aggregated.runtime_version,
+                            job_id=aggregated.job_id,
+                            participating_workers=aggregated.participating_workers,
+                            aggregation_round=aggregated.aggregation_round,
+                            group=group,
+                        ),
+                        metrics=response_metrics if index == 0 else {},
                     )
             except Exception as exc:
                 with self.condition:
@@ -772,9 +853,18 @@ class PreparedRuntimeState:
                 "runtime_to_worker_proto_build_ms",
                 "runtime_to_worker_rpc_ms",
                 "runtime_response_decode_ms",
+                "estimated_pure_transfer_ms",
+                "estimated_non_transfer_comm_overhead_ms",
+                "known_local_comm_overhead_ms",
+                "mixed_rpc_and_remote_ms",
+                "transport_total_ms",
             ):
                 round_metrics[key] = float(round_metrics.get(key, 0.0)) + float(
                     metrics.get(key, 0.0)
+                )
+            if metrics.get("estimated_link_mbps"):
+                round_metrics["estimated_link_mbps"] = float(
+                    metrics["estimated_link_mbps"]
                 )
             for key in ("runtime_bytes_up", "runtime_bytes_down"):
                 round_metrics[key] = int(round_metrics.get(key, 0)) + int(
@@ -786,7 +876,9 @@ class PreparedRuntimeState:
         self,
         round_id: int,
     ) -> None:
-        deadline = time.monotonic() + max(1, self.rpc_timeout_seconds)
+        deadline = None
+        if round_id > 1:
+            deadline = time.monotonic() + max(1, self.rpc_timeout_seconds)
         expected_groups = {
             group.group_id
             for group in self.expected_groups
@@ -802,6 +894,10 @@ class PreparedRuntimeState:
                 returned_groups = self.returned_groups.get(round_id, set())
                 if returned_groups == expected_groups:
                     return
+
+                if deadline is None:
+                    self.condition.wait(timeout=0.1)
+                    continue
 
                 remaining = deadline - time.monotonic()
                 if remaining <= 0:
@@ -863,10 +959,16 @@ class PreparedRuntimeState:
         ) + float(
             metrics.get("runtime_response_decode_ms", 0.0)
         )
+        metrics["estimated_non_transfer_comm_overhead_ms"] = max(
+            0.0,
+            float(metrics.get("transport_call_ms", 0.0))
+            - float(metrics.get("estimated_pure_transfer_ms", 0.0)),
+        )
         metrics["total_ms"] = end_ms - send_start_ms
         metrics["chunk_count"] = len(self.expected_layers)
         metrics["group_count"] = len(self.expected_groups)
         metrics["sync_mode"] = "group_async"
+        metrics["startup_grace_round"] = round_id == 1
         metrics["round_trigger"] = self.round_capture_mode.get(round_id, "unknown")
         metrics["round_status"] = self.round_terminal_status.get(round_id, "unknown")
         if failure_reason is not None:
@@ -957,7 +1059,10 @@ class PreparedOptimizer:
         try:
             if self._ldgcc_runtime_state is not None:
                 self._ldgcc_runtime_state.note_optimizer_step_sync_start()
-                self._ldgcc_runtime_state.capture_accumulated_gradients(self._model)
+                if self._ldgcc_runtime_state.active_round is None:
+                    self._ldgcc_runtime_state.capture_accumulated_gradients(
+                        self._model
+                    )
                 self._ldgcc_runtime_state.complete_active_round(self._model)
             return self._optimizer.step(*args, **kwargs)
         finally:

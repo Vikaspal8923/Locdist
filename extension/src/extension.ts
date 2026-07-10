@@ -227,8 +227,8 @@ async function validateProjectBeforePrepare(projectRoot: string, onlineWorkers: 
     errors.push("workers.count must be greater than zero");
   }
   const datasetType = spec.datasetType || "jsonl";
-  if (datasetType !== "jsonl" && datasetType !== "image_folder") {
-    errors.push("dataset.type must be jsonl or image_folder");
+  if (datasetType !== "jsonl" && datasetType !== "image_folder" && datasetType !== "yolo_split") {
+    errors.push("dataset.type must be jsonl, image_folder, or yolo_split");
   }
   if (spec.precision && spec.precision !== "fp32" && spec.precision !== "fp16") {
     errors.push("communication.precision must be fp32 or fp16");

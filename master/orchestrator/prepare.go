@@ -114,6 +114,8 @@ func shardDataset(projectRoot string, spec project.Spec, outputRoot string, work
 		return sharder.ShardJSONL(sourcePath, spec.Dataset.Train, outputRoot, workerIDs)
 	case "image_folder":
 		return sharder.ShardImageFolder(sourcePath, spec.Dataset.Train, outputRoot, workerIDs)
+	case "yolo_split":
+		return sharder.ShardYOLOSplit(sourcePath, spec.Dataset.Train, outputRoot, workerIDs)
 	default:
 		return nil, fmt.Errorf("unsupported dataset.type %q", datasetType)
 	}

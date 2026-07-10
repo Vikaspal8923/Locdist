@@ -91,27 +91,42 @@ func (s *Service) SynchronizeChunk(
 func (s *Service) SynchronizeBatch(
 	request *gradient.GradientSubmission,
 ) (*gradient.AggregatedGradientResponse, error) {
+	response, _, err := s.SynchronizeBatchWithMetrics(request)
+	return response, err
+}
+
+func (s *Service) SynchronizeBatchWithMetrics(
+	request *gradient.GradientSubmission,
+) (*gradient.AggregatedGradientResponse, map[string]any, error) {
+	start := time.Now()
+
 	if request.GetRuntimeVersion() == 0 {
-		return nil, internalerrors.ErrInvalidRuntimeVersion
+		return nil, nil, internalerrors.ErrInvalidRuntimeVersion
 	}
 
 	if request.GetJobId() == "" {
-		return nil, internalerrors.ErrMissingJobID
+		return nil, nil, internalerrors.ErrMissingJobID
 	}
 
 	if request.GetWorkerId() == "" {
-		return nil, internalerrors.ErrMissingWorkerID
+		return nil, nil, internalerrors.ErrMissingWorkerID
 	}
 
 	if len(request.GetChunks()) == 0 {
-		return nil, internalerrors.ErrMissingChunks
+		return nil, nil, internalerrors.ErrMissingChunks
 	}
+	validationDone := time.Now()
 
 	s.mu.RLock()
 	synchronizer := s.synchronizer
 	s.mu.RUnlock()
 
-	return synchronizer.SynchronizeBatch(request)
+	response, err := synchronizer.SynchronizeBatch(request)
+	done := time.Now()
+	return response, map[string]any{
+		"worker_bridge_validation_ms": float64(validationDone.Sub(start).Microseconds()) / 1000.0,
+		"worker_to_master_rpc_ms":     float64(done.Sub(validationDone).Microseconds()) / 1000.0,
+	}, err
 }
 
 func (s *Service) SynchronizeBatchStream(

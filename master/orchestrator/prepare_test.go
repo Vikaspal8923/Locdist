@@ -55,6 +55,47 @@ workers:
 	}
 }
 
+func TestPrepareCreatesYOLOSplitShards(t *testing.T) {
+	projectRoot := t.TempDir()
+	writeFile(t, filepath.Join(projectRoot, "train.py"), "print('train')\n")
+	writeFile(t, filepath.Join(projectRoot, "dataset", "train", "images", "a.jpg"), "image-a")
+	writeFile(t, filepath.Join(projectRoot, "dataset", "train", "images", "b.jpg"), "image-b")
+	writeFile(t, filepath.Join(projectRoot, "dataset", "train", "labels", "a.txt"), "0 0.5 0.5 0.2 0.2\n")
+	writeFile(t, filepath.Join(projectRoot, "dataset", "train", "labels", "b.txt"), "1 0.4 0.4 0.1 0.1\n")
+	writeFile(t, filepath.Join(projectRoot, "ldgcc.yaml"), `
+entrypoint: train.py
+dataset:
+  train: dataset/train
+  type: yolo_split
+workers:
+  count: 2
+`)
+
+	workerManager := workers.New()
+	registerWorker(t, workerManager, "worker-b")
+	registerWorker(t, workerManager, "worker-a")
+
+	preparer := NewPreparer(
+		jobs.New(),
+		workerManager,
+		filepath.Join(t.TempDir(), "jobs"),
+	)
+	job, err := preparer.Prepare(projectRoot)
+	if err != nil {
+		t.Fatalf("prepare job: %v", err)
+	}
+
+	if len(job.Shards) != 2 {
+		t.Fatalf("unexpected shards: %#v", job.Shards)
+	}
+	if _, err := os.Stat(filepath.Join(job.Shards[0].Path, "images")); err != nil {
+		t.Fatalf("expected YOLO shard images dir: %v", err)
+	}
+	if _, err := os.Stat(filepath.Join(job.Shards[0].Path, "labels")); err != nil {
+		t.Fatalf("expected YOLO shard labels dir: %v", err)
+	}
+}
+
 func registerWorker(
 	t *testing.T,
 	manager *workers.Manager,

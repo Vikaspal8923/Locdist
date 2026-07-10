@@ -11,6 +11,8 @@ import (
 	grpcserver "google.golang.org/grpc"
 )
 
+const maxRPCBytes = 128 << 20
+
 type Server struct {
 	config     config.Config
 	grpcServer *grpcserver.Server
@@ -30,7 +32,10 @@ func NewServer(
 		return nil, err
 	}
 
-	grpcSrv := grpcserver.NewServer()
+	grpcSrv := grpcserver.NewServer(
+		grpcserver.MaxRecvMsgSize(maxRPCBytes),
+		grpcserver.MaxSendMsgSize(maxRPCBytes),
+	)
 
 	masterServer := NewMasterServer(
 		coordinatorService,

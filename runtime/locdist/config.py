@@ -61,6 +61,12 @@ def load_config(
         except json.JSONDecodeError as e:
             raise ConfigError("LDGCC_COMMUNICATION must be JSON") from e
 
+    estimated_link_mbps_env = os.environ.get("LDGCC_ESTIMATED_LINK_MBPS")
+    if estimated_link_mbps_env is not None:
+        communication = dict(data.get("communication", {}))
+        communication["estimated_link_mbps"] = estimated_link_mbps_env
+        data["communication"] = communication
+
     training_env = os.environ.get("LDGCC_TRAINING")
     if training_env:
         try:
@@ -365,6 +371,17 @@ def parse_communication_config(value) -> CommunicationConfig:
     if not isinstance(warmup_steps, int) or warmup_steps < 0:
         raise ConfigError("communication.compression.warmup_steps must be a non-negative integer")
 
+    estimated_link_mbps = value.get("estimated_link_mbps")
+    if estimated_link_mbps is not None:
+        if not isinstance(estimated_link_mbps, (int, float, str)):
+            raise ConfigError("communication.estimated_link_mbps must be numeric")
+        try:
+            estimated_link_mbps = float(estimated_link_mbps)
+        except ValueError as e:
+            raise ConfigError("communication.estimated_link_mbps must be numeric") from e
+        if estimated_link_mbps <= 0:
+            raise ConfigError("communication.estimated_link_mbps must be greater than zero")
+
     return CommunicationConfig(
         precision=precision,
         compression_type=compression_type,
@@ -376,6 +393,7 @@ def parse_communication_config(value) -> CommunicationConfig:
         device=device,
         error_feedback=error_feedback,
         warmup_steps=warmup_steps,
+        estimated_link_mbps=estimated_link_mbps,
     )
 
 

@@ -35,7 +35,10 @@ func NewServer(
 		return nil, err
 	}
 
-	grpcSrv := grpcserver.NewServer(grpcserver.MaxRecvMsgSize(workspace.MaxRPCBytes))
+	grpcSrv := grpcserver.NewServer(
+		grpcserver.MaxRecvMsgSize(workspace.MaxRPCBytes),
+		grpcserver.MaxSendMsgSize(workspace.MaxRPCBytes),
+	)
 
 	workerBridgeServer := NewWorkerBridgeServer(
 		runtimeBridge,

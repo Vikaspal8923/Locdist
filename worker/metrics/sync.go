@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
+	"strconv"
 	"sync"
 
 	"google.golang.org/protobuf/proto"
@@ -44,4 +45,23 @@ func ProtoBytes(message proto.Message) int {
 		return 0
 	}
 	return proto.Size(message)
+}
+
+func EstimatedLinkMbps() float64 {
+	value := os.Getenv("LDGCC_ESTIMATED_LINK_MBPS")
+	if value == "" {
+		return 0
+	}
+	parsed, err := strconv.ParseFloat(value, 64)
+	if err != nil || parsed <= 0 {
+		return 0
+	}
+	return parsed
+}
+
+func EstimateTransferMS(totalBytes int, linkMbps float64) float64 {
+	if totalBytes <= 0 || linkMbps <= 0 {
+		return 0
+	}
+	return (float64(totalBytes) * 8.0 * 1000.0) / (linkMbps * 1_000_000.0)
 }

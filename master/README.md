@@ -2046,6 +2046,7 @@ Phase 19 expands V1 dataset support from JSONL-only to:
 ```text
 jsonl
 image_folder
+yolo_split
 ```
 
 `jsonl` remains the default and keeps the existing rule:
@@ -2089,8 +2090,33 @@ worker-b/dataset/train/
 ```
 
 The Worker receives the shard at the same dataset path, so user training code
-continues to load `dataset/train` normally. Object detection formats such as
-YOLO/COCO and bounding-box annotations are intentionally outside V1 scope.
+continues to load `dataset/train` normally.
+
+`yolo_split` supports one strict object-detection layout where `dataset.train`
+points at a train split directory that already contains both `images/` and
+`labels/`:
+
+```yaml
+dataset:
+  train: dataset/train
+  type: yolo_split
+```
+
+Expected structure:
+
+```text
+dataset/train/
+  images/
+    a.jpg
+    nested/b.jpg
+  labels/
+    a.txt
+    nested/b.txt
+```
+
+Sharding preserves relative paths under both folders and keeps image/label
+pairs together for each Worker. Broader YOLO/COCO dataset variants remain
+outside this narrow V1 support path.
 
 ---
 

@@ -29,6 +29,19 @@ type WorkerBridgeServer struct {
 	results       *workerresults.Manager
 }
 
+func syncStepFromSubmission(request *gradient.GradientSubmission) uint64 {
+	if request == nil {
+		return 0
+	}
+	if groups := request.GetGroups(); len(groups) > 0 {
+		return groups[0].GetSyncRound()
+	}
+	if chunks := request.GetChunks(); len(chunks) > 0 {
+		return chunks[0].GetSyncRound()
+	}
+	return 0
+}
+
 func NewWorkerBridgeServer(
 	runtimeBridge *runtimebridge.Service,
 	pairingManager ...*pairing.Manager,
@@ -319,16 +332,29 @@ func (s *WorkerBridgeServer) SynchronizeGradients(
 	response, stageMetrics, err := s.runtimeBridge.SynchronizeWithMetrics(request)
 	done := time.Now()
 	if s.workspace != nil {
+		bytesFromRuntime := metrics.ProtoBytes(request)
+		bytesToRuntime := metrics.ProtoBytes(response)
+		estimatedLinkMbps := metrics.EstimatedLinkMbps()
+		estimatedPureTransferMS := metrics.EstimateTransferMS(
+			bytesFromRuntime+bytesToRuntime,
+			estimatedLinkMbps,
+		)
 		event := map[string]any{
-			"component":          "worker",
-			"job_id":             request.GetJobId(),
-			"worker_id":          request.GetWorkerId(),
-			"total_ms":           float64(done.Sub(start).Microseconds()) / 1000.0,
-			"bytes_from_runtime": metrics.ProtoBytes(request),
-			"bytes_to_runtime":   metrics.ProtoBytes(response),
+			"component":                  "worker",
+			"job_id":                     request.GetJobId(),
+			"worker_id":                  request.GetWorkerId(),
+			"total_ms":                   float64(done.Sub(start).Microseconds()) / 1000.0,
+			"bytes_from_runtime":         bytesFromRuntime,
+			"bytes_to_runtime":           bytesToRuntime,
+			"estimated_link_mbps":        estimatedLinkMbps,
+			"estimated_pure_transfer_ms": estimatedPureTransferMS,
 		}
 		for key, value := range stageMetrics {
 			event[key] = value
+		}
+		event["estimated_non_transfer_comm_overhead_ms"] = event["total_ms"].(float64) - estimatedPureTransferMS
+		if event["estimated_non_transfer_comm_overhead_ms"].(float64) < 0 {
+			event["estimated_non_transfer_comm_overhead_ms"] = 0.0
 		}
 		metrics.AppendJSONL(
 			metrics.SyncMetricsPath(s.workspace.Root(), request.GetJobId(), "ldgcc_worker_sync_metrics.jsonl"),
@@ -363,7 +389,41 @@ func (s *WorkerBridgeServer) SynchronizeGradientBatch(
 	if s.runtimeBridge == nil {
 		return nil, fmt.Errorf("runtime bridge is not available")
 	}
-	response, err := s.runtimeBridge.SynchronizeBatch(request)
+	start := time.Now()
+	response, stageMetrics, err := s.runtimeBridge.SynchronizeBatchWithMetrics(request)
+	done := time.Now()
+	if s.workspace != nil {
+		bytesFromRuntime := metrics.ProtoBytes(request)
+		bytesToRuntime := metrics.ProtoBytes(response)
+		estimatedLinkMbps := metrics.EstimatedLinkMbps()
+		estimatedPureTransferMS := metrics.EstimateTransferMS(
+			bytesFromRuntime+bytesToRuntime,
+			estimatedLinkMbps,
+		)
+		event := map[string]any{
+			"component":                  "worker",
+			"job_id":                     request.GetJobId(),
+			"worker_id":                  request.GetWorkerId(),
+			"sync_step":                  syncStepFromSubmission(request),
+			"total_ms":                   float64(done.Sub(start).Microseconds()) / 1000.0,
+			"bytes_from_runtime":         bytesFromRuntime,
+			"bytes_to_runtime":           bytesToRuntime,
+			"estimated_link_mbps":        estimatedLinkMbps,
+			"estimated_pure_transfer_ms": estimatedPureTransferMS,
+			"transport_mode":             "chunk_batch",
+		}
+		for key, value := range stageMetrics {
+			event[key] = value
+		}
+		event["estimated_non_transfer_comm_overhead_ms"] = event["total_ms"].(float64) - estimatedPureTransferMS
+		if event["estimated_non_transfer_comm_overhead_ms"].(float64) < 0 {
+			event["estimated_non_transfer_comm_overhead_ms"] = 0.0
+		}
+		metrics.AppendJSONL(
+			metrics.SyncMetricsPath(s.workspace.Root(), request.GetJobId(), "ldgcc_worker_sync_metrics.jsonl"),
+			event,
+		)
+	}
 	if err != nil {
 		return nil, err
 	}
@@ -392,10 +452,12 @@ func (s *WorkerBridgeServer) SynchronizeGradientBatchStream(
 			"component":          "worker",
 			"job_id":             request.GetJobId(),
 			"worker_id":          request.GetWorkerId(),
+			"sync_step":          syncStepFromSubmission(request),
 			"total_ms":           float64(done.Sub(start).Microseconds()) / 1000.0,
 			"bytes_from_runtime": metrics.ProtoBytes(request),
 			"bytes_to_runtime":   bytesToRuntime,
 			"streamed":           true,
+			"transport_mode":     "chunk_batch_stream",
 		}
 		for key, value := range stageMetrics {
 			event[key] = value
